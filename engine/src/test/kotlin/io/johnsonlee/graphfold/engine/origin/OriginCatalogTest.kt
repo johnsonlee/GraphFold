@@ -23,6 +23,26 @@ class OriginCatalogTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `cached provenance binds exact class bytes and rejects tampering`() {
+        val fixture = compile()
+        val file = manifest(fixture.project)
+        val document = mapper.readTree(file.toFile()) as ObjectNode
+        val runId = "gradle-v1-test-provider"
+        document.put("runId", runId)
+        document["records"].forEach { record ->
+            val binary = fixture.project.classes.resolve(record["owner"].asText().replace('.', '/') + ".class")
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(binary))
+                .joinToString("") { "%02x".format(it) }
+            (record as ObjectNode).put("classHash", hash)
+        }
+        mapper.writeValue(file.toFile(), document)
+        val cached = fixture.project.copy(originRunId = runId)
+        assertTrue(readOrigins(cached, fixture.root).diagnostics.isEmpty())
+        stripDebug(cached.classes)
+        assertTrue(readOrigins(cached, fixture.root).diagnostics.any { "class hash differs" in it })
+    }
+
+    @Test
     fun `actual Java origins distinguish same-line expressions after all debug attributes are removed`() {
         val fixture = compile()
         stripDebug(fixture.project.classes)

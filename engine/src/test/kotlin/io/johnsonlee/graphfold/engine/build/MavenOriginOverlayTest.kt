@@ -37,6 +37,7 @@ class MavenOriginOverlayTest {
             assertTrue("combine.self=\"override\"" in text, text)
             assertTrue("<scope>provided</scope>" in text, text)
             assertTrue("<optional>true</optional>" in text, text)
+            assertFalse("useIncrementalCompilation" in text, text)
             DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile())
         }
         assertContentEquals(original, Files.readAllBytes(pom))

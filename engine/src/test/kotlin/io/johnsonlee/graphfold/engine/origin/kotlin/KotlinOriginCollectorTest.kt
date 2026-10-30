@@ -17,6 +17,76 @@ import kotlin.test.assertTrue
 class KotlinOriginCollectorTest {
     @TempDir lateinit var temporary: Path
 
+    @Test fun `output inventory includes named anonymous and synthetic classes independently of origin records`() {
+        val source = Files.writeString(temporary.resolve("Example.kt"), "class Example { fun callback() = object {} }")
+        val owners = listOf("sample.Example", "sample.Example\$callback\$1", "sample.Example\$DefaultImpls")
+        val collector = collector()
+        collector.start()
+        assertTrue(document()["outputs"].isEmpty)
+        owners.forEach { collector.output(it, listOf(source)) }
+        collector.finish()
+
+        val result = document()
+        assertTrue(result["complete"].asBoolean())
+        assertTrue(result["records"].isEmpty)
+        assertEquals(owners.toSet(), result["outputs"].map { it["owner"].asText() }.toSet())
+        result["outputs"].forEach { output ->
+            val input = output["sources"].single()
+            assertEquals(source.toRealPath().toString(), input["path"].asText())
+            assertEquals(sha256(Files.readAllBytes(source)), input["hash"].asText())
+        }
+    }
+
+    @Test fun `multifile output retains each physical source hash once including escaped filenames`() {
+        val first = Files.writeString(temporary.resolve("First\"Part.kt"), "// 😀\r\nfun first() = 1\r\n")
+        val second = Files.writeString(temporary.resolve("SecondPart.kt"), "\uFEFFfun second() = 2\n")
+        val collector = collector()
+        collector.output("sample.CombinedFacade", listOf(first, second, first, second))
+        collector.finish()
+
+        val output = document()["outputs"].single()
+        assertEquals("sample.CombinedFacade", output["owner"].asText())
+        assertEquals(2, output["sources"].size())
+        val actual = output["sources"].associate { it["path"].asText() to it["hash"].asText() }
+        val expected = listOf(first, second).associate { it.toRealPath().toString() to sha256(Files.readAllBytes(it)) }
+        assertEquals(expected, actual)
+    }
+
+    @Test fun `output without compiler source associations remains explicit rather than disappearing`() {
+        val collector = collector()
+        collector.output("sample.Unverifiable", emptyList())
+        collector.finish()
+
+        val output = document()["outputs"].single()
+        assertEquals("sample.Unverifiable", output["owner"].asText())
+        assertTrue(output["sources"].isArray)
+        assertTrue(output["sources"].isEmpty)
+    }
+
+    @Test fun `missing output source prevents a completed ownership manifest`() {
+        val collector = collector()
+        collector.start()
+        assertFailsWith<java.io.IOException> {
+            collector.output("sample.Missing", listOf(temporary.resolve("absent.kt")))
+        }
+        assertFalse(document()["complete"].asBoolean())
+        assertTrue(document()["outputs"].isEmpty)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["directory", "invalidUtf8"])
+    fun `unreadable or malformed source cannot become verified output ownership`(input: String) {
+        val source = if (input == "directory") Files.createDirectory(temporary.resolve("Source.kt")) else {
+            Files.write(temporary.resolve("Source.kt"), byteArrayOf(INVALID_UTF8_LEAD, '('.code.toByte()))
+        }
+        val collector = collector()
+        collector.start()
+        val failure = assertFailsWith<IllegalArgumentException> { collector.output("sample.Invalid", listOf(source)) }
+        assertTrue(failure.message.orEmpty().contains("Compiler output source is unreadable"))
+        assertFalse(document()["complete"].asBoolean())
+        assertTrue(document()["outputs"].isEmpty)
+    }
+
     @Test fun `direct emission records exact UTF16 source and completes only after finalization`() {
         val text = "// 😀\nobject : Runnable { override fun run() {} }"
         val source = Files.writeString(temporary.resolve("Example.kt"), text)
@@ -254,5 +324,8 @@ class KotlinOriginCollectorTest {
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
-    private companion object { const val ANONYMOUS = "ANONYMOUS_OBJECT" }
+    private companion object {
+        const val ANONYMOUS = "ANONYMOUS_OBJECT"
+        const val INVALID_UTF8_LEAD: Byte = -61
+    }
 }

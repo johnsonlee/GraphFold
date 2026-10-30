@@ -39,7 +39,7 @@ class GitWorkspaceManagerTest {
     }
 
     @Test
-    fun `checks out exact commits without changing user checkout and cleans up`() {
+    fun `checks out exact commits without changing user checkout and releases leases`() {
         write("Example.java", "one\ntwo\nthree\n")
         val base = commit()
         write("Example.java", "one\nchanged\nthree\nfour\n")
@@ -56,8 +56,8 @@ class GitWorkspaceManagerTest {
         assertFalse(change.binary)
         workspace.close()
         workspace.close()
-        assertFalse(Files.exists(workspace.baseDirectory))
-        assertFalse(Files.exists(workspace.headDirectory))
+        assertTrue(Files.exists(workspace.baseDirectory))
+        assertTrue(Files.exists(workspace.headDirectory))
         assertEquals(head, head())
         assertEquals("user data", Files.readString(repository.resolve("untracked.txt")))
         assertFailsWith<IllegalStateException> { workspace.changes() }
@@ -181,7 +181,10 @@ class GitWorkspaceManagerTest {
         write("large.bin", "version https://git-lfs.github.com/spec/v1\noid sha256:123\nsize 42\n")
         val head = commit()
         assertFailsWith<GitOperationException> { manager.open(repository.toString(), base, head) }
-        Files.list(temporary.resolve("cache/runs")).use { assertEquals(0L, it.count()) }
+        Files.walk(temporary.resolve("cache/workspaces")).use { paths ->
+            assertEquals(0L, paths.filter { Files.isDirectory(it) && it.fileName.toString().startsWith("slot-") }.count())
+        }
+        manager.open(repository.toString(), base, base).close()
     }
 
     @Test
@@ -192,7 +195,10 @@ class GitWorkspaceManagerTest {
         commitIndex("submodule")
         val head = head()
         assertFailsWith<GitOperationException> { manager.open(repository.toString(), base, head) }
-        Files.list(temporary.resolve("cache/runs")).use { assertEquals(0L, it.count()) }
+        Files.walk(temporary.resolve("cache/workspaces")).use { paths ->
+            assertEquals(0L, paths.filter { Files.isDirectory(it) && it.fileName.toString().startsWith("slot-") }.count())
+        }
+        manager.open(repository.toString(), base, base).close()
     }
 
     @Test

@@ -2,6 +2,7 @@ package io.johnsonlee.graphfold.engine.git
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 
 /** A one-based inclusive changed line range. Empty sides of a hunk have no range. */
 data class ChangedLineRange(val start: Int, val end: Int) {
@@ -23,7 +24,7 @@ data class ChangedFile(
     val hunks: List<ChangedHunk> = emptyList(),
 )
 
-/** Owns only the two temporary checkouts created for this analysis. */
+/** Exclusively leases two persistent private checkouts; closing retains their incremental build outputs. */
 class GitWorkspace internal constructor(
     val baseDirectory: Path,
     val headDirectory: Path,
@@ -50,7 +51,7 @@ class GitWorkspace internal constructor(
 }
 
 internal fun deleteDirectory(path: Path) {
-    if (Files.exists(path)) {
+    if (Files.exists(path, NOFOLLOW_LINKS)) {
         Files.walk(path).use { paths ->
             paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
         }

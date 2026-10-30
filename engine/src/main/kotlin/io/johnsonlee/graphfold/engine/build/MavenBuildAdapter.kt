@@ -24,19 +24,38 @@ internal class MavenBuildAdapter(private val timeout: Duration) {
             checkBuild(Files.isRegularFile(model), "Maven did not export its effective compiler configuration")
             pom to model
         }.toMap()
-        val runId = CompilerOriginPlugin.runId(output)
-        val provider = CompilerOriginPlugin.extract(output)
-        MavenOriginOverlay(checkout, output, provider, effective, runId).use { overlay ->
+        val extracted = CompilerOriginPlugin.extract(output)
+        val identity = digest(extracted)
+        val state = Files.createDirectories(checkout.resolve("target/graphfold/maven"))
+        val identityFile = state.resolve("identity.txt")
+        val configurationIdentity = identity + effective.values.joinToString("") { digest(it) }
+        checkBuild(!Files.exists(identityFile) || Files.readString(identityFile) == configurationIdentity,
+            "Maven compiler configuration changed; previous incremental provenance cannot establish equivalent compiler inputs")
+        val provider = state.resolve("compiler-origin-plugin.jar")
+        if (!Files.exists(provider) || Files.mismatch(extracted, provider) != -1L) {
+            Files.copy(extracted, provider, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+        val runId = "maven-v1-$identity"
+        val provenance = MavenProvenance(state, runId)
+        val outputs = modules.map { it.resolve("target/classes") }
+        val inventory = MavenClassInventory(checkout, state, outputs)
+        inventory.prepare()
+        provenance.prepare()
+        MavenOriginOverlay(checkout, state, provider, effective, runId).use { overlay ->
             runBuild(
                 checkout, output.resolve("build.log"), executable + listOf(
                     "package", "-DskipTests", "-Dmaven.test.skip=true", "dependency:build-classpath", "-Dmdep.includeScope=compile",
                     "-Dmdep.outputFile=target/graphfold-classpath.txt",
                 ), timeout,
             )
-            val outputs = modules.map { it.resolve("target/classes") }
             val dependencies = dependencies(modules).filterNot(overlay::isProviderDependency)
             checkBuild(dependencies.all { Files.exists(it) }, "Maven exported missing dependencies")
-            return CompiledProject(collectClasses(output, outputs), roots, dependencies, output.resolve("origins"), runId)
+            inventory.reconcile(provenance.pending)
+            val classes = collectClasses(output, outputs)
+            val origins = output.resolve("origins")
+            provenance.publish(classes, origins)
+            Files.writeString(identityFile, configurationIdentity)
+            return CompiledProject(classes, roots, dependencies, origins, runId)
         }
     }
 

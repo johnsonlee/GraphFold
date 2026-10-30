@@ -185,10 +185,11 @@ Finding 分类：
 这保留了 worktree 方案希望达到的对象共享与工作目录隔离，但不是原生 linked worktree 管理。JGit 从 7.0 起支持读取 linked worktree，7.8 的公开 API 仍缺少 add/list/remove/move 管理命令；不能把“缺少管理命令”表述为完全不支持 worktree。依据：[7.0 发布说明](https://github.com/eclipse-jgit/jgit/wiki/New-and-Noteworthy-7.0)、[维护者对管理 API 的说明](https://github.com/eclipse-jgit/jgit/issues/264)。
 
 ```text
-cache/repositories/<repository-key>/   # bare 仓库，共享 objects
-runs/<run-id>/base/.git/               # 独立元数据，alternates 指向缓存 objects
-runs/<run-id>/head/.git/               # 独立元数据，alternates 指向缓存 objects
-runs/<run-id>/analysis/                # 图、IR 快照和中间结果
+cache/repositories/<repository-key>.git/              # bare 仓库，共享 objects
+cache/workspaces/<repository-key>/slot-0.lock         # 进程间租约；位于 checkout 外
+cache/workspaces/<repository-key>/slot-0/base/.git/   # 独立元数据，alternates 指向 objects
+cache/workspaces/<repository-key>/slot-0/head/.git/   # 分别保留构建目录与增量状态
+cache/workspaces/<repository-key>/slot-1/...         # 并发分析使用另一对 checkout
 ```
 
 流程：
@@ -196,15 +197,15 @@ runs/<run-id>/analysis/                # 图、IR 快照和中间结果
 1. 规范化仓库身份，复用缓存；凭据不进入缓存键和日志。
 2. 通过 JGit fetch 缺失对象，将输入 revision 解析并固定为完整 commit SHA。
 3. 校验两个 commit 可读取；不依赖可变 branch 名继续分析。
-4. 创建本次分析专属的 checkout 元数据，以原始 commit blob 写出文件；不运行 checkout hook 或 smudge filter。
-5. 在独立工作目录构建与分析；用 JGit 读取 commit tree 与 diff。
-6. 完成或失败后关闭仓库句柄并移除本次临时目录；共享仓库保留。不能把正常异常清理等同于强杀恢复保证。
+4. 租用空闲 slot 中的一对持久 checkout；没有空闲 slot 才新增。以原始 commit blob 恢复源码，内容及 mode 未变化的文件不重写、保留 mtime；被构建修改的 tracked 文件恢复原值，目标 commit 删除的文件移除。不运行 checkout hook 或 smudge filter。
+5. 按目标 commit 的 ignore 规则清理非忽略的 untracked 文件。私有 checkout 的 `info/exclude` 额外保留 `.gradle/`、`build/`、`target/`，构建系统负责验证其任务输入与输出。在独立工作目录构建与分析；用 JGit 读取 commit tree 与 diff。
+6. 完成分析后释放 slot 租约，保留工作目录与构建状态，后续分析继续使用相同路径。checkout 准备失败时删除该 slot 的不完整目录并释放租约；本次导出的分析快照仍独立管理。
 
 并发与恢复：
 
 - 对影响共享仓库状态的 fetch 和 checkout 准备使用按仓库锁；不同 run 的构建不持有此锁。
-- 记录 run 对 checkout 的所有权；清理不得触及用户 checkout 或仍在使用的其他 run。
-- 共享缓存的回收必须考虑仍引用它的 checkout。强杀后的孤儿目录识别、租约恢复与自动维护仍是待实现能力。
+- JVM 内 reservation 与操作系统 file lock 共同保证一个 slot 同时只有一个使用者；base/head 始终是独立目录。释放租约可在不同线程执行，清理不触及用户 checkout 或仍在使用的其他 slot。
+- 进程退出后操作系统释放 file lock，后续分析可重新租用并恢复 tracked 源码；这不等于验证过任意崩溃点的事务恢复。JGit index 锁残留等恢复异常必须阻断，不能使用未确认的源码。持久 slot 数量随并发峰值增长，目前没有自动淘汰策略；共享 objects 回收必须同时考虑所有保留的 checkout。
 - submodule 和 Git LFS 尚未完整支持，检测到时阻断，不分析占位文件。
 - GraphFold 的 Git 操作不使用原生命令或 CLI fallback，不要求 `git` 出现在 `PATH`。这不等于承诺 JGit 内部永远不启动进程：库的可选用户/系统配置发现行为与“Git 可执行文件必需”是不同的边界。
 - HTTP/SSH 认证的实际集成尚未验证，不承诺自动沿用原生 credential helper 或 SSH agent；认证失败必须作为阻断 diagnostic 返回。
@@ -510,7 +511,13 @@ headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token �
   → typed 字节码/metadata 归一化 → Graphite 折叠与比较
 ```
 
-**编译记录。** javac 在 attribution 后读取 `Elements.getBinaryName`，并用生成事件确认输出；Kotlin 插件从实际 JVM class generation 读取 emitted owner 与 IR 源码范围。inline 复制通过本轮 runId 绑定的临时不可见 annotation 传播定义来源。编译完成后写入 sidecar；直接编译、Gradle 和 Maven 适配器都接入该插件。Gradle 本次编译禁用增量/缓存复用，Maven 使用临时配置覆盖并在 finally 恢复 POM；这是完整 provenance 的构建成本，尚无增量来源缓存验收。
+**编译记录。** javac 在 attribution 后读取 `Elements.getBinaryName`，并用生成事件确认输出；Kotlin 插件从实际 JVM class generation 读取 emitted owner 与 IR 源码范围。inline 复制通过 provenance 身份绑定的临时不可见 annotation 传播定义来源。编译完成后写入 sidecar；直接编译、Gradle 和 Maven 适配器都接入该插件。Gradle 保留项目的增量编译与 build cache 配置，不设置 `incremental=false`、强制执行或禁止缓存。编译插件的内容摘要作为稳定 provenance 身份，插件路径位于 checkout 的 `.gradle/graphfold/`；每个编译 task 在自己的 `build/graphfold/origins/<task>/` 中保存声明的输出。增量编译产生的 owner 覆盖旧记录，未重编译的 owner 必须同时通过源码 hash 与 class hash 校验；已删除 class 的记录被移除。编译成功后再发布完整 manifest；失败或缺失的记录不能通过旧 manifest 放行。`UP-TO-DATE` 和 `FROM-CACHE` 的 classes 与 provenance 一起接受校验，再导出到本次分析的独立目录。Maven 使用临时配置覆盖并在 finally 恢复 POM。
+
+Kotlin inline 副本还依赖定义的物理源码身份：只在定义前增加空行时，KGP 可能认为 inline 语义未变，不重编译调用方，但旧副本的来源 hash／offset 已过期。因此为每个 Kotlin 编译 task 增加 `inlineSources` 插件参数，覆盖本 task，以及逐层遍历各项目自身 compile classpath 得到的项目依赖闭包中的 inline 来源文件；这包括调用方 classpath 不直接暴露的 `implementation` 依赖。这些文件的路径／内容摘要变化时，由 Gradle/KGP 的正常输入失效机制重编译受影响的 task；其它普通源码编辑保持增量编译，无关项目继续 UP-TO-DATE。识别采用保守的 `inline` token 筛选、文件粒度 hash，包含该 token 的注释／字符串或同文件其它声明的编辑也可能多触发一次受影响 task 的重编译；不会靠猜测偏移修补旧来源记录。
+
+当前 Gradle compiler arguments 含 checkout 内的绝对路径，build cache 按 checkout 路径隔离；支持同一路径的增量、up-to-date 与缓存恢复，不承诺跨目录或跨机器缓存命中。Kotlin marker 中仍保存物理源码路径，不能直接把其它 checkout 的 sidecar 当作本地来源。编译输出正确性与大仓库性能是不同的验收项目；后者仍需代表性的多图负载测量。
+
+Maven 同样保留项目配置的增量编译，不强制 `useIncrementalCompilation=false` 或执行 `clean`。checkout 的 `target/graphfold/maven/` 保存稳定 provider、来源快照与编译器输出清单。javac 的 GENERATE 事件以及 Kotlin 实际输出消息记录 class 的 owner 与物理输入文件，独立于匿名对象的源码范围；不能从 `SourceFile` 或生成类名反推删除归属。增量结果合并后校验源码与 class hash，删除源码或重编译后消失的 owner 只清理先前编译器明确记录且 hash 未变化的输出；Kotlin 对应的增量 class 缓存也必须核对。未归属的 class、混合来源的部分删除、来源或字节码过期均阻断。Maven 的 effective POM／provider 身份改变时，当前明确拒绝复用旧状态，尚未实现自动迁移；Kotlin Maven 2.1.20 的跨文件 inline 物理位置变化已验证由原生增量编译刷新副本的 hash 与 offset；没有照搬 Gradle 的参数失效策略，其它编译器／依赖组合仍需单独验证，未刷新的副本由 hash 校验阻断。
 
 **校验。** 引擎检查成功构建的 runId、schema、完成标记、源码 hash、文件归属、范围、实际 class 和 Kotlin marker，并将编译范围与 AST 表达式精确匹配。找不到、重复或过期的记录产生 `UNVERIFIED_ORIGIN`，不能变成 PASS。Kotlin 编译器会折叠 CRLF 并去掉开头 BOM，provider 先将 IR 偏移转换回原始 UTF16 边界；inline marker 中的物理坐标不再转换。headless PSI 使用保持文本长度的输入预处理，token 与报告坐标仍取原文。sidecar 范围使用从零开始、末端不包含的 UTF16 offset；报告仍保留 diff 的文件与一基起止行列。来源绑定不依赖 SourceFile/LineNumberTable；普通 Kotlin 方法的现有索引仍有自己的调试信息限制。
 
@@ -518,7 +525,7 @@ headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token �
 
 **归一化边界。** 仅在隔离的分析产物中通过 ASM typed remapping 改写 owner、descriptor、类型和引用，并通过 Kotlin metadata 的结构化读写改写类型身份。临时 annotation 被移除，用户字符串常量及普通 annotation 字符串保持原值。保留声明自身的访问标志、enclosing method 和代码；外层类型的匿名类索引项不作为执行行为差异。Cypher 在原始编译身份的图上求值，然后将选中的实际调用 key 映射至比较身份，不能让内部比较名称改变用户的选点范围。
 
-默认 `Object.toString()`、对象字符串化、序列化及显式栈捕获（Throwable、Thread、StackWalker）等操作可能观察到真实类名；存在相关路径时不能把重编号当作等价。守卫同时检查直接调用和 invokedynamic 中的方法引用；通过实际继承关系识别 Throwable 构造，包含返回给外部调用方、稍后读取栈的异常对象，未知继承关系也会阻断。当前采用保守的阻断模型，尚未对这些观测路径建立对象级流分析，因此可能过度阻断。既有反射、动态加载和外部对象逃逸限制也继续生效。此处证明的是受声明模型约束的程序表示等价，不是任意 JVM 可观察行为的完全等价。
+默认 `Object.toString()`、对象字符串化、序列化及显式栈捕获（Throwable、Thread、StackWalker）等操作可能观察到真实类名；存在相关路径时不能把重编号当作等价。守卫同时检查直接调用和 invokedynamic 中的方法引用；通过实际继承关系识别 Throwable 构造，包含返回给外部调用方、稍后读取栈的异常对象，未知继承关系也会阻断。对象字符串化现在使用方法内 ASM 数据流分析：跟踪具体分配、局部变量别名、栈、强制转换和分支合流；只有所有可能值均可证明安全时才收窄守卫。未改名且没有自定义 `toString`/`hashCode` 或接口行为的具体分配、最终标量类型，以及支持 null 的静态转换调用中的 null 可以通过。实例接收者还必须可证明非 null，避免忽略异常栈中的 owner；类型声明不是具体分配，cast 不会把未知引用变成已知。绑定方法引用须有已知 bootstrap、唯一实例目标和安全接收者；字符串拼接还检查 bootstrap 常量。字段读取、一般跨方法返回值、引用数组及集合元素保持未知。可变字符串构造器、格式化及控制台输出保留守卫：局部对象身份不能证明其堆状态、参数前提及虚调用覆盖行为。分析失败或不可达指令缺少 frame 时保持阻断。栈捕获不取决于被打印对象，序列化也有独立合同，因此这两类守卫继续保守执行；尚未实现跨过程 points-to 或通用堆/容器模型，仍可能过度阻断。既有反射、动态加载和外部对象逃逸限制也继续生效。此处证明的是受声明模型约束的程序表示等价，不是任意 JVM 可观察行为的完全等价。
 
 **Kotlin 兼容性必须分层声明。** 相同 provider binary 已实测 1.9.20/K1、2.0.21/K2、2.1.20/K2、2.2.10/K2，以及 2.1.20 使用 language 1.9/K1；覆盖同一行多个 object、嵌套、初始化器、companion、inline 复制与 suspend callback。每个组合都验证 LF、CRLF、CR、BOM+CRLF 四种输入，共 20 次成功编译，每次产生 15 条已核对的物理来源记录且无 unresolved；未支持版本（测试 1.9.0）明确拒绝。可复现脚本与日志见 [编译器验证](experiments/kotlin-origin/README.md)。这只证明来源捕获，不证明不同编译器的 lowering 产物行为等价。当前 metadata 归一化最高验证至 2.1 schema；2.2 来源捕获成功不代表 2.2 的完整检测已支持。contracts、type aliases、类型 annotation 的额外 metadata 模型尚未实现，遇到时明确阻断。
 
@@ -566,7 +573,7 @@ graphfold --repository <url> --base <sha> --head <sha> --fold <rules.yml> --form
 
 ## 13. 大仓库的资源与缓存策略
 
-- Git objects、依赖下载缓存共享，checkout 与构建输出隔离。
+- Git objects、依赖下载缓存共享；每个仓库复用持久 slot，base/head 与并发分析的 checkout 和构建输出隔离。slot 保留增量状态，不做无条件全目录清理；尚无磁盘配额或自动淘汰。
 - 原始选点图按输入身份复用，场景折叠结果分别标识。
 - 首版完整建图，diff 驱动深入比较；不实现仅重建变更类的增量建图。收益首先来自减少不必要的比较与源码展开，不预支建图成本下降。
 - 方法 IR 流式消费与落盘，不能因做比较而重新长期驻留整个程序。
@@ -731,7 +738,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 以下描述当前实现及其限制。已执行的回归与门禁结果见 [validation.md](validation.md)，不代表对任意生产仓库的能力保证。
 
 - 三个模块共享同一 SDK 判定逻辑；CLI 使用 Clikt，Gradle task 使用隔离 Worker，避免宿主 Gradle 的依赖版本污染分析器。
-- Git 使用 JGit 7.8、共享 bare object cache 与 alternates checkout，原始 blob materialization 不调用 checkout hook 或 smudge filter。Git 可执行文件不是运行前提；无 Git 的测试及清理验证结果以 validation.md 为准。强杀后的孤儿目录回收尚未实现，不提供未经测量的大仓库内存或吞吐 SLA。
+- Git 使用 JGit 7.8、共享 bare object cache 与 alternates checkout，原始 blob materialization 不调用 checkout hook 或 smudge filter。Git 可执行文件不是运行前提；无 Git 的测试及清理验证结果以 validation.md 为准。checkout 使用持久排他租约，关闭后保留增量状态；进程退出释放文件锁，但任意崩溃点恢复、磁盘配额和自动淘汰尚未完整验收，不提供未经测量的大仓库内存或吞吐 SLA。
 - Java 使用 JavaParser；Kotlin 使用固定 2.1.20 的 headless PSI，并从 ASM 清单获取实际 JVM 身份。不采用 UAST。统一使用 UTF-16、一基、结束位置不包含的坐标；Kotlin 歧义映射可回退 CLASS obligation，缺失 ownership 则阻断。
 - 构建适配包含约定布局的 Java/Kotlin/混合源码、Gradle wrapper 与 Maven。任意 compiler plugin、生成器、Multiplatform、自定义 source set、依赖锁定及环境 provenance 不属于已验证的通用保证。
 - Graphite 固定 2.12.0。两次建图完成 Cypher 选点与折叠，通过公开 SPI 捕获折叠后 Jimple，以 ASM 清单交叉检查缺类、缺方法及声明信息，无需修改 Graphite 上游。

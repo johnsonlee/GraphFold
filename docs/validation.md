@@ -1,7 +1,44 @@
 # Validation record
 
-Date: 2026-10-30. Local environment: macOS, JDK 17. Graphite: 2.12.0.
+Date: 2026-10-31. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
+
+## Incremental builds and object flow: final quality verification (2026-10-31)
+
+The standard, unfiltered command passed in 19m 17s:
+
+```sh
+./gradlew check :engine:detektTest :cli:installDist --console=plain
+```
+
+All **581 JUnit tests passed**, with zero failures, errors or skipped tests. Each module
+passed the unchanged **95% branch / 90% line** hard gate, with no production-class
+exclusions. Counters are from this single unfiltered run, not merged development runs.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| engine | 559 | 99.1664% | 95.3504% (2871/3011) |
+| cli | 9 | 97.4359% | 100.0000% (14/14) |
+| gradle-plugin | 13 | 100.0000% | 100.0000% (4/4) |
+
+Both corpora were unfiltered: **130 Java + 186 Kotlin cases**, with no false positives or
+false negatives. Existing anonymous-origin and physical-encoding regressions also passed.
+The added object-rendering fixtures cover 36 Java and 28 Kotlin methods (21 safe and 43
+blocked); blocked diagnostics include analysis gaps and are not counted as confirmed
+uncontrolled violations. The suite includes real Gradle/Maven repeated-build, edit,
+source-deletion, inline-source-position and cache-restoration checks described below,
+plus 36 Git-adapter tests covering persistent leases and checkout correctness.
+
+The current provider passed the [20-run Kotlin matrix](experiments/kotlin-origin/README.md)
+with 15 origin records and 16 verified compiler-owned outputs per compilation. Installed
+CLI help confirms `--repository`; all six Python release-helper tests passed. Provider SPI
+packaging and `git diff --check` passed. No production or test source changed after the
+full run; only validation records and PR documentation were updated.
+
+These are correctness gates, not representative multi-graph performance acceptance.
+The current [machine-readable summary](experiments/main-validation.json) records the exact
+counters; the earlier [anonymous-origin result](experiments/anonymous-origin-validation-2026-10-30.json)
+is preserved separately.
 
 ## JGit migration verification
 
@@ -31,7 +68,33 @@ Error propagation, including an Error raised while the thread is interrupted.
 A JDK loopback HTTP server verifies unauthenticated dumb HTTP fetch, exact revisions,
 diff and cache refresh. Smart HTTP and HTTP/SSH authentication remain unverified.
 
-## Anonymous-origin integration and final quality verification
+## Persistent checkout lease correctness (2026-10-31)
+
+The initial focused command passed with 32 tests and no failures:
+
+```sh
+./gradlew :engine:test --tests 'io.johnsonlee.graphfold.engine.git.*' --console=plain
+```
+
+Six new persistent-workspace tests verify stable base/head paths across changed revisions,
+unchanged source timestamps, retained `.gradle/` and `build/` contents, restoration of
+modified tracked sources, removal of deleted tracked and nonignored untracked files,
+changes to ignore rules, symlink/directory and executable-mode transitions, and protection
+against a replaced parent symlink redirecting deletion outside the private checkout.
+Lease tests cover simultaneous JVM reservations, closing from another thread, skipping an
+actual child-process file lock, and reuse after release. Existing failure tests also reopen
+a slot after LFS/submodule rejection. HTTP, Git protocol and empty-`PATH` tests now assert
+that close retains the private checkouts instead of deleting them.
+
+The final unfiltered run includes 36 Git tests, adding symlink timestamp/target restoration,
+damaged lock-path recovery, overlapping-lock recovery, and malformed tree traversal rejection.
+
+These checks validate persistent build-state availability, not a large-repository performance
+claim. Concurrent peak usage determines the number of retained slots; automatic eviction and
+disk quotas are not implemented. OS file locks are released on process termination, but this
+suite does not certify transaction recovery at every possible interrupted JGit write.
+
+## Previous anonymous-origin integration verification (2026-10-30)
 
 The standard, unfiltered command passed in 18m 22s:
 
@@ -54,8 +117,8 @@ all six release-helper tests and `git diff --check` also passed.
 Both detection corpora were unfiltered: Java 130 cases and Kotlin 186 cases, with
 zero false positives, false negatives or blocking diagnostics. Analysis gaps are
 not accepted as true-positive evidence. These are labelled regression fixtures,
-not a production-wide accuracy estimate. The current machine-readable
-[validation summary](experiments/main-validation.json) records the counters.
+not a production-wide accuracy estimate. The historical machine-readable
+[validation summary](experiments/anonymous-origin-validation-2026-10-30.json) records the counters.
 
 The run includes all 32 anonymous-origin pairs (14 FAIL / 18 PASS), four additional
 CRLF/BOM full-engine variants, and the previous 22 generated-source-location cases.
@@ -207,3 +270,79 @@ artifact verification and CLI exit-code smoke tests passed for `0.1.0-local.3` u
 `release.py smoke`. That rehearsal predates the Kotlin/fixture expansion. The current
 run rebuilt the installed CLI and verified help; it did not repeat publication staging
 or publish remotely.
+
+
+## Incremental Gradle compiler provenance
+
+The analysis adapter no longer disables Java/Kotlin incremental compilation or Gradle
+build caching. Compile tasks declare task-local provenance directories as outputs;
+a stable provider digest replaces per-analysis random IDs for these tasks. Successful
+incremental emission overlays fresh owner records, keeps unchanged source/class hashes,
+and drops removed class owners. The exported snapshot is validated against actual class
+bytes as well as source bytes. A compiler failure never publishes a successful snapshot.
+
+The mixed Java/Kotlin multi-module correctness fixture exercises unchanged `UP-TO-DATE`
+tasks, Java and Kotlin edits, retention of an unchanged Kotlin anonymous object, deletion
+of its source file, and `FROM-CACHE` restoration after deleting build outputs.
+Cross-file and cross-project inline object regressions insert a newline before each
+definition: the inline-source compiler input refreshes the affected compilation while
+an unrelated Kotlin module remains `UP-TO-DATE`. The inline-source digest is scoped to own sources
+and the transitive closure of each reached project’s own compile dependencies, using conservative
+file-level token matching. The regression includes `app → library → implementation dependency`: the
+last project is absent from app’s compile classpath but its inline source is present in app’s emitted
+origin records, and a whitespace-only edit there refreshes the copied provenance.
+The persisted provider JAR is also deliberately corrupted and repaired from the trusted
+embedded artifact without invalidating otherwise unchanged compile tasks. The Kotlin
+edit additionally asserts that the compiler reports incremental compilation and that
+an unchanged anonymous class retains its output timestamp, proving it was not re-emitted. A separate
+tampering test changes class bytes while preserving the cached manifest and requires a
+blocking class-hash diagnostic.
+
+These are correctness checks, not performance acceptance measurements. Absolute compiler
+argument paths currently partition caches by checkout location; cross-machine or relocated
+cache reuse is not claimed. Gradle configuration cache remains disabled for the injected
+export init script; this does not disable incremental compilation or the task build cache.
+
+
+## Incremental Maven compiler provenance
+
+Real Maven 3.9.11 fixtures exercise the compiler adapters without `clean` or a forced
+`useIncrementalCompilation=false`. The Java reactor retains unchanged class timestamps,
+then validates a source edit and removal of the final anonymous-object source. The Kotlin
+2.1.20 fixture explicitly enables incremental compilation, preserves an unchanged class
+across edits, and removes all Kotlin sources while retaining a Java class in the shared
+output directory. Compiler output ownership for a cross-file inline copy names the caller
+file, while its origin record names the definition file; the fixture requires an actual
+copied class rather than assuming every inline object is copied. A newline-only definition
+change must refresh that copied origin’s source hash and advance its physical offset by one.
+
+Successful builds retain and merge source/class-bound provenance. A separate compiler
+output inventory covers named, anonymous and synthetic classes; unowned outputs block.
+Removal is authorized only by verified prior ownership and unchanged class hashes,
+including the corresponding Kotlin incremental class cache. Unit cases cover malformed
+manifests, unknown and duplicate outputs, partial deletion of multi-source outputs, source
+and class tampering, invalid paths and symlink escapes. No basename or generated-number
+heuristic authorizes deletion.
+
+Maven effective compiler configuration or provider changes explicitly block reuse of the
+old state; automatic cache migration is not implemented. Kotlin Maven’s native incremental compiler refreshes the tested 2.1.20 cross-file inline
+case; this does not establish every compiler/dependency combination, and unrefreshed copies
+fail source/hash validation. These remain stated limits, not successful analysis results. Cross-machine cache reuse and large-repository performance are not claimed.
+
+
+## Object rendering flow regression scope
+
+`OriginObjectFlowTest` compiles the checked-in Java/Kotlin fixtures with real compilers
+and checks per-method observability diagnostics. The fixtures distinguish safe local
+allocations/aliases from renamed or unknown objects, including merges, loops, casts,
+nullable receivers, inherited rendering, overridden hashCode, method references,
+reference containers, builders and formatting. Runtime examples execute both revisions
+and observe changed anonymous names through direct rendering and escaped null-pointer
+exception stacks. Boundary tests cover incomplete frames and bootstrap constants.
+
+The analysis is intraprocedural and does not claim a general heap or interprocedural
+points-to model. Mutable builders, formatting and console dispatch retain conservative
+guards. Both tested compilers emit invokedynamic for the wide-concat fixture and its safe
+operands can be discharged. A separate explicit Kotlin builder-chain fixture remains
+blocking; the distinction follows emitted bytecode rather than source language. Blocking diagnostics are not counted as
+confirmed uncontrolled violations or successful detection evidence.

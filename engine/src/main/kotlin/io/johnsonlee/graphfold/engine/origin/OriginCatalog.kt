@@ -11,7 +11,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
-/** Provenance belongs to one successful compilation, not to a generated name or a line-table heuristic. */
+/** Provenance describes validated compiler artifacts, not a generated-name or line-table heuristic. */
 internal data class OriginCatalog(
     val origins: List<SourceOrigin>, val diagnostics: List<String>, val compiledOwners: Set<String> = emptySet(),
 )
@@ -79,6 +79,11 @@ private class OriginReader(private val project: CompiledProject, private val roo
     private fun record(record: JsonNode, compiler: String) {
         val owner = record.path("owner").asText()
         require(owner in classes) { "Compiler origin owner was not emitted: $owner" }
+        if (project.originRunId.orEmpty().let { it.startsWith("gradle-v1-") || it.startsWith("maven-v1-") }) {
+            val bytes = Files.readAllBytes(project.classes.resolve(owner.replace('.', '/') + ".class"))
+            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            require(record.path("classHash").asText() == hash) { "Compiler origin class hash differs: $owner" }
+        }
         if (compiler == "javac") require(anonymousObject(classes.getValue(owner))) {
             "Compiler origin owner is not an anonymous class: $owner"
         }

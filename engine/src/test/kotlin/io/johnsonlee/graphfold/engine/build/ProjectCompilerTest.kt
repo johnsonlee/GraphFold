@@ -120,28 +120,51 @@ class ProjectCompilerTest {
         listOf("gradle-wrapper.jar", "gradle-wrapper.properties").forEach {
             Files.copy(repo.resolve("gradle/wrapper/$it"), source.resolve("gradle/wrapper/$it"))
         }
-        Files.writeString(source.resolve("settings.gradle"), "rootProject.name='fixture'\ninclude 'library'\n")
+        Files.writeString(source.resolve("settings.gradle"), "rootProject.name='fixture'\ninclude 'library', 'deep', 'unrelated'\n")
         Files.writeString(source.resolve("build.gradle"), """
             plugins { id 'org.jetbrains.kotlin.jvm' version '2.1.20' }
             allprojects { apply plugin: 'java'; repositories { mavenCentral() } }
             dependencies { implementation project(':library'); implementation files('external') }
             tasks.register('graphFoldCheck') { doLast { throw new GradleException('must not invoke lint') } }
+            tasks.named('compileKotlin') {
+                doFirst {
+                    def deepBuild = project(':deep').layout.buildDirectory.get().asFile.toPath()
+                    assert !sourceSets.main.compileClasspath.files.any { it.toPath().startsWith(deepBuild) }
+                }
+            }
         """.trimIndent())
         val library = Files.createDirectories(source.resolve("library/src/main/java/example"))
         Files.writeString(library.resolve("Library.java"),
             "package example; public class Library { public Object callback() { return new Object() {}; } }")
+        Files.writeString(source.resolve("library/build.gradle"),
+            "plugins { id 'org.jetbrains.kotlin.jvm'; id 'java-library' }; dependencies { implementation project(':deep') }")
+        val deep = Files.createDirectories(source.resolve("deep/src/main/kotlin/example"))
+        Files.writeString(source.resolve("deep/build.gradle"), "plugins { id 'org.jetbrains.kotlin.jvm'; id 'java-library' }")
+        Files.writeString(deep.resolve("InlineDeep.kt"), "package example; inline fun deepCallback(): Any = object {}")
+        val libraryKotlin = Files.createDirectories(source.resolve("library/src/main/kotlin/example"))
+        Files.writeString(libraryKotlin.resolve("InlineLibrary.kt"),
+            "package example; inline fun libraryCallback(): Any = deepCallback()")
+        val unrelated = Files.createDirectories(source.resolve("unrelated/src/main/kotlin/isolated"))
+        Files.writeString(source.resolve("unrelated/build.gradle"), "plugins { id 'org.jetbrains.kotlin.jvm' }")
+        Files.writeString(unrelated.resolve("Independent.kt"), "package isolated; inline fun independent(): Any = object {}")
         val kotlin = Files.createDirectories(source.resolve("src/main/kotlin/example"))
         Files.writeString(kotlin.resolve("KotlinApp.kt"),
             "package example; class KotlinApp : Library() { fun callbackKt(): Any = object {} }")
+        Files.writeString(kotlin.resolve("Untouched.kt"), "package example; class Untouched { fun callback(): Any = object {} }")
+        val inlineSource = kotlin.resolve("InlineFactory.kt")
+        Files.writeString(inlineSource, "package example; inline fun inlineCallback(): Any = object {}")
+        Files.writeString(kotlin.resolve("InlineCaller.kt"),
+            "package example; fun inlineCaller(): Any = inlineCallback(); fun libraryCaller(): Any = libraryCallback()")
         val external = Files.createDirectories(source.resolve("external"))
         Files.writeString(source.resolve("src/main/java/example/App.java"), "package example; public class App extends Library {}")
+        Files.writeString(source.resolve("gradle.properties"), "org.gradle.caching=true\norg.gradle.logging.level=info\n")
         val result = compiler.compile(source, temporary.resolve("out"))
         assertTrue(Files.exists(result.classes.resolve("example/App.class")))
         assertTrue(Files.exists(result.classes.resolve("example/Library.class")))
         assertTrue(external.toRealPath() in result.dependencies.map { it.toRealPath() })
         assertTrue(Files.exists(result.classes.resolve("example/KotlinApp.class")))
         assertTrue(result.dependencies.any { it.fileName.toString().startsWith("kotlin-stdlib-") })
-        assertEquals(3, result.sourceRoots.size)
+        assertEquals(6, result.sourceRoots.size)
         val origins = Files.list(requireNotNull(result.originDirectory)).use { files ->
             files.filter { it.toString().endsWith(".json") }.map {
                 com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(it.toFile())
@@ -154,6 +177,64 @@ class ProjectCompilerTest {
         Files.list(temporary.resolve("out")).use { files ->
             assertFalse(files.anyMatch { it.fileName.toString().endsWith(".gradle") })
         }
+        verifyIncrementalBuilds(source, kotlin, inlineSource, result)
+    }
+
+    private fun verifyIncrementalBuilds(source: Path, kotlin: Path, inlineSource: Path, result: CompiledProject) {
+        val cachedPlugin = Files.walk(source.resolve(".gradle/graphfold")).use { files ->
+            files.filter { it.fileName.toString() == "compiler-origin-plugin.jar" }.findFirst().orElseThrow()
+        }
+        val trustedPlugin = Files.readAllBytes(cachedPlugin)
+        Files.write(cachedPlugin, byteArrayOf(0, 1, 2))
+        val unchanged = compiler.compile(source, temporary.resolve("unchanged"))
+        assertContentEquals(trustedPlugin, Files.readAllBytes(cachedPlugin))
+        assertTrue(Files.readString(temporary.resolve("unchanged/build.log")).contains(":compileKotlin UP-TO-DATE"))
+        assertTrue(Files.readString(temporary.resolve("unchanged/build.log")).contains(":library:compileJava UP-TO-DATE"))
+        assertEquals(result.originRunId, unchanged.originRunId)
+        assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(unchanged, source).diagnostics.isEmpty())
+        Files.writeString(source.resolve("src/main/java/example/App.java"),
+            "package example; public class App extends Library { public int value() { return 2; } }")
+        val changed = compiler.compile(source, temporary.resolve("changed"))
+        assertTrue(Files.readString(temporary.resolve("changed/build.log")).contains(":library:compileJava UP-TO-DATE"))
+        assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(changed, source).diagnostics.isEmpty())
+        val retainedClass = source.resolve("build/classes/kotlin/main/example/Untouched${'$'}callback${'$'}1.class")
+        val retainedTimestamp = Files.getLastModifiedTime(retainedClass)
+        Files.writeString(kotlin.resolve("KotlinApp.kt"),
+            "package example; class KotlinApp : Library() { fun callbackKt(): Any = object { fun value() = 2 } }")
+        val kotlinChanged = compiler.compile(source, temporary.resolve("kotlinChanged"))
+        assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(kotlinChanged, source).diagnostics.isEmpty())
+        val kotlinLog = Files.readString(temporary.resolve("kotlinChanged/build.log"))
+        assertTrue(kotlinLog.contains("Using Kotlin/JVM incremental compilation"), kotlinLog)
+        assertEquals(retainedTimestamp, Files.getLastModifiedTime(retainedClass), "Unchanged class must not be re-emitted")
+        assertContentEquals(Files.readAllBytes(changed.classes.resolve("example/Untouched${'$'}callback${'$'}1.class")),
+            Files.readAllBytes(kotlinChanged.classes.resolve("example/Untouched${'$'}callback${'$'}1.class")))
+        Files.delete(kotlin.resolve("Untouched.kt"))
+        val deleted = compiler.compile(source, temporary.resolve("deleted"))
+        val deletedOrigins = io.johnsonlee.graphfold.engine.origin.readOrigins(deleted, source)
+        assertTrue(deletedOrigins.diagnostics.isEmpty(), deletedOrigins.diagnostics.toString())
+        assertTrue(deletedOrigins.origins.none { it.owner.startsWith("example.Untouched") })
+        val inlineDefinitions = listOf(inlineSource, source.resolve("library/src/main/kotlin/example/InlineLibrary.kt"),
+            source.resolve("deep/src/main/kotlin/example/InlineDeep.kt"))
+        inlineDefinitions.forEachIndexed { index, file ->
+            Files.writeString(file, "\n" + Files.readString(file))
+            val build = temporary.resolve("inlineChanged$index")
+            val inlineChanged = runCatching { compiler.compile(source, build) }.getOrElse {
+                throw AssertionError(Files.readString(build.resolve("build.log")), it)
+            }
+            assertTrue(Files.readString(build.resolve("build.log")).contains(":unrelated:compileKotlin UP-TO-DATE"))
+            val inlineOrigins = io.johnsonlee.graphfold.engine.origin.readOrigins(inlineChanged, source)
+            assertTrue(inlineOrigins.diagnostics.isEmpty(), inlineOrigins.diagnostics.toString())
+            assertTrue(inlineOrigins.origins.any {
+                it.owner.startsWith("example.InlineCallerKt${'$'}") && it.path == "deep/src/main/kotlin/example/InlineDeep.kt"
+            }, "App inline copy must retain the hidden implementation dependency's physical source")
+        }
+        source.resolve("build").toFile().deleteRecursively()
+        source.resolve("library/build").toFile().deleteRecursively()
+        val cached = compiler.compile(source, temporary.resolve("cached"))
+        val cachedLog = Files.readString(temporary.resolve("cached/build.log"))
+        assertTrue(cachedLog.contains(":compileKotlin FROM-CACHE"), cachedLog)
+        assertTrue(cachedLog.contains(":library:compileJava FROM-CACHE"), cachedLog)
+        assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(cached, source).diagnostics.isEmpty())
     }
 
     @Test
@@ -184,7 +265,9 @@ class ProjectCompilerTest {
         Files.writeString(source.resolve("pom.xml"), "<project/>")
         Files.writeString(source.resolve("mvnw"), mavenEffectiveModel + """
             mkdir -p target/classes
-            javac -g -d target/classes src/main/java/example/App.java
+            plugin_arg=${'$'}(sed -n 's/.*<arg>\(-Xplugin:GraphFoldOrigins.*\)<\/arg>.*/\1/p' pom.xml | head -1)
+            javac -g -processorpath target/graphfold/maven/compiler-origin-plugin.jar "${'$'}plugin_arg" \
+              -d target/classes src/main/java/example/App.java
             mkdir -p external
             printf '%s' "${'$'}PWD/external" > target/graphfold-classpath.txt
         """.trimIndent())

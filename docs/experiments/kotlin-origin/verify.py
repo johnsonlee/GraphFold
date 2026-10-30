@@ -30,6 +30,14 @@ for version,language in [('1.9.20','1.9'),('2.0.21','2.0'),('2.1.20','2.1'),('2.
   data=json.loads(next(record.glob('*.json')).read_text());assert data['complete'];assert not data['unresolved'],data['unresolved']
   assert data['producer']['frontend']==('K1' if language=='1.9' else 'K2')
   actual={r['owner']:r for r in data['records']};assert len(actual)==len(data['records'])==15
+  emitted={r['owner']:r for r in data['outputs']}
+  class_owners={str(p.relative_to(out/'classes')).removesuffix('.class').replace(os.sep,'.') for p in (out/'classes').rglob('*.class')}
+  assert len(emitted)==len(data['outputs']) and emitted.keys()==class_owners,(version,language,label,emitted.keys(),class_owners)
+  for output in emitted.values():
+   assert output['sources'],output
+   for source in output['sources']:
+    assert Path(source['path']).resolve()==(d/'Example.kt').resolve(),source
+    assert source['hash']==hashlib.sha256(Path(source['path']).read_bytes()).hexdigest(),source
   if reference is None: reference=actual
   assert actual.keys()==reference.keys()
   copies=[r for r in data['records'] if r['provenance']=='INLINE_COPY'];assert len(copies)==1,copies
@@ -47,7 +55,7 @@ for version,language in [('1.9.20','1.9'),('2.0.21','2.0'),('2.1.20','2.1'),('2.
    if r['owner'].endswith('$first$1') or r['owner'].endswith('$second$1') or r['provenance']=='INLINE_COPY':assert substr.startswith('object : Callback'),substr
    assert r['sourceHash']==hashlib.sha256(raw).hexdigest()
    assert (out/'classes'/(r['owner'].replace('.','/')+'.class')).is_file()
-  print(version,language,label,data['producer'],'records',len(data['records']),'unresolved',len(data['unresolved']),'physical UTF16 ranges verified',flush=True)
+  print(version,language,label,data['producer'],'records',len(data['records']),'unresolved',len(data['unresolved']),'physical UTF16 ranges verified; emitted class/source ownership verified',len(emitted),flush=True)
 
 # Version rejection is a compiler invocation, using the same plugin binary.
 cp=classpath('1.9.0')

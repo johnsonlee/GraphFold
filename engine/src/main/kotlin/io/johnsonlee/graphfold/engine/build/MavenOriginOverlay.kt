@@ -42,7 +42,10 @@ internal class MavenOriginOverlay(
 
     private fun publishLocalArtifact(plugin: Path) {
         val directory = Files.createDirectories(repository.resolve("io/johnsonlee/graphfold/$ARTIFACT/$version"))
-        Files.copy(plugin, directory.resolve("$ARTIFACT-$version.jar"))
+        val artifact = directory.resolve("$ARTIFACT-$version.jar")
+        if (!Files.exists(artifact) || Files.mismatch(plugin, artifact) != -1L) {
+            Files.copy(plugin, artifact, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
         Files.writeString(directory.resolve("$ARTIFACT-$version.pom"), """
             <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
             <groupId>$GROUP</groupId><artifactId>$ARTIFACT</artifactId><version>$version</version></project>
@@ -85,7 +88,6 @@ internal class MavenOriginOverlay(
                 replacement.setAttribute("combine.self", "override")
                 coordinate(replacement.append("path"))
             }
-            target.child("useIncrementalCompilation").textContent = "false"
         }
     }
 

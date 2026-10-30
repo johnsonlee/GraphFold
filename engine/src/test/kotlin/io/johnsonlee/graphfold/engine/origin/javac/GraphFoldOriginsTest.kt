@@ -67,6 +67,10 @@ class GraphFoldOriginsTest {
         assertTrue(records.any { it["owner"].asText() == "sample.Example${'$'}7${'$'}1" })
         assertTrue(records.any { it["owner"].asText() == "sample.Example${'$'}Choice${'$'}1" })
         assertTrue(records.any { it["owner"].asText() == "sample.Example${'$'}Choice${'$'}2" })
+        verifyOutputInventory(compilation)
+        val outputOwners = manifest["outputs"].map { it["owner"].asText() }.toSet()
+        assertTrue(outputOwners.containsAll(setOf("sample.Example", "sample.Example${'$'}Nested", "sample.Example${'$'}Choice")))
+        assertTrue(outputOwners.containsAll(records.map { it["owner"].asText() }))
     }
 
     @Test
@@ -80,6 +84,7 @@ class GraphFoldOriginsTest {
         assertEquals(start + "{ int value = 1; }".length, record["declaration"]["end"].asInt())
         assertEquals(hash(source), record["sourceHash"].asText())
         assertTrue(record["source"].asText().contains("source with spaces"))
+        verifyOutputInventory(compilation)
     }
 
     @Test
@@ -150,6 +155,24 @@ class GraphFoldOriginsTest {
         val document = manifest(result.maps)
         assertEquals(runId, document["runId"].asText())
         assertEquals(result.source.toRealPath().toString(), document["records"].single()["source"].asText())
+        verifyOutputInventory(result)
+    }
+
+    private fun verifyOutputInventory(compilation: Compilation) {
+        val actualOwners = Files.walk(compilation.classes).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".class") }.map {
+                org.objectweb.asm.ClassReader(Files.readAllBytes(it)).className.replace('/', '.')
+            }.toList().toSet()
+        }
+        val outputs = manifest(compilation.maps)["outputs"].toList()
+        assertEquals(actualOwners.size, outputs.size, "Every emitted class must have exactly one ownership record")
+        assertEquals(actualOwners, outputs.map { it["owner"].asText() }.toSet())
+        val expectedHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(compilation.source)))
+        outputs.forEach { output ->
+            val source = output["sources"].single()
+            assertEquals(compilation.source.toRealPath().toString(), source["path"].asText())
+            assertEquals(expectedHash, source["hash"].asText())
+        }
     }
 
     private fun Throwable.causes(): String = generateSequence(this) { it.cause }.joinToString("\n") { it.toString() }

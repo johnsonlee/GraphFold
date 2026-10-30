@@ -4,10 +4,14 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.dircache.DirCacheEntry
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
+import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.ObjectLoader
+import org.eclipse.jgit.lib.ObjectInserter
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.TreeWalk
@@ -16,28 +20,47 @@ import org.eclipse.jgit.treewalk.TreeWalk
 internal fun checkout(cached: Repository, revision: String, directory: Path) {
     Files.createDirectories(directory)
     val gitDirectory = directory.resolve(".git")
-    JGitRepositories.open(gitDirectory, directory).use { checkout -> checkout.create(false) }
+    if (!Files.exists(gitDirectory.resolve("HEAD"))) {
+        JGitRepositories.open(gitDirectory, directory).use { checkout -> checkout.create(false) }
+    }
     val alternate = gitDirectory.resolve("objects/info/alternates")
     Files.createDirectories(alternate.parent)
     Files.writeString(alternate, cached.directory.toPath().resolve("objects").toAbsolutePath().toString() + "\n")
+    Files.createDirectories(gitDirectory.resolve("info"))
+    Files.writeString(gitDirectory.resolve("info/exclude"), ".gradle/\nbuild/\ntarget/\n")
     // Reopen after persisting alternates so both this process and later build tools see cached objects.
     JGitRepositories.open(gitDirectory, directory).use { checkout ->
         val commit = RevWalk(cached).use { it.parseCommit(cached.resolve(revision)) }
         TreeWalk(cached).use { tree ->
             tree.addTree(commit.tree)
             tree.isRecursive = true
-            checkoutTree(cached, checkout, tree, directory)
+            checkoutTree(cached, checkout, tree, commit.tree, directory)
         }
         checkout.updateRef(Constants.HEAD, true).apply {
             setNewObjectId(commit)
             isForceUpdate = true
         }.forceUpdate()
+        // Apply the target revision's ignore rules after restoring sources and its index.
+        Git(checkout).clean().setCleanDirectories(true).setForce(true).call()
     }
 }
 
-private fun checkoutTree(cached: Repository, checkout: Repository, tree: TreeWalk, directory: Path) {
+private fun checkoutTree(cached: Repository, checkout: Repository, tree: TreeWalk, targetTree: ObjectId, directory: Path) {
     val index = checkout.lockDirCache()
     try {
+        val paths = TreeWalk(cached).use { target ->
+            target.addTree(targetTree)
+            target.isRecursive = true
+            buildSet { while (target.next()) add(target.pathString) }
+        }
+        for (entryIndex in 0 until index.entryCount) {
+            val entry = index.getEntry(entryIndex)
+            if (entry.pathString !in paths) {
+                val destination = directory.resolve(entry.pathString)
+                ensureParents(directory, destination.parent)
+                deleteDirectory(destination)
+            }
+        }
         val builder = index.builder()
         while (tree.next()) {
             checkGitCancellation()
@@ -64,12 +87,36 @@ private fun materialize(repository: Repository, tree: TreeWalk, directory: Path,
     if (!destination.startsWith(directory) || tree.pathString.split('/').any { it.equals(".git", ignoreCase = true) }) {
         throw GitOperationException("Unsafe checkout path")
     }
-    Files.createDirectories(destination.parent)
+    ensureParents(directory, destination.parent)
     val loader = repository.open(tree.getObjectId(0), Constants.OBJ_BLOB)
+    if (matchesBlob(destination, mode, tree.getObjectId(0))) return
+    deleteDirectory(destination)
     if (mode == FileMode.SYMLINK) {
         Files.createSymbolicLink(destination, Path.of(String(loader.bytes, Charsets.UTF_8)))
     } else {
         writeBlob(loader, destination, mode)
+    }
+}
+
+private fun ensureParents(directory: Path, parent: Path) {
+    var cursor = directory
+    directory.relativize(parent).forEach { segment ->
+        cursor = cursor.resolve(segment)
+        if (!Files.isDirectory(cursor, NOFOLLOW_LINKS)) {
+            deleteDirectory(cursor)
+            Files.createDirectory(cursor)
+        }
+    }
+}
+
+private fun matchesBlob(destination: Path, mode: FileMode, id: ObjectId): Boolean = when {
+    mode == FileMode.SYMLINK -> Files.isSymbolicLink(destination) && ObjectInserter.Formatter().idFor(
+        Constants.OBJ_BLOB, Files.readSymbolicLink(destination).toString().toByteArray(Charsets.UTF_8),
+    ) == id
+    !Files.isRegularFile(destination, NOFOLLOW_LINKS) -> false
+    Files.isExecutable(destination) != (mode == FileMode.EXECUTABLE_FILE) -> false
+    else -> Files.newInputStream(destination).use {
+        ObjectInserter.Formatter().idFor(Constants.OBJ_BLOB, Files.size(destination), it) == id
     }
 }
 

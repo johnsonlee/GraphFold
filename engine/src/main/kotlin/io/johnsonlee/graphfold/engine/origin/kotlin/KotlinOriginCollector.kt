@@ -13,6 +13,16 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
     private val emitted = linkedMapOf<String, Emission>()
     private val failures = linkedMapOf<String, String>()
     private val sources = linkedMapOf<String, Source>()
+    private val outputs = linkedMapOf<String, String>()
+
+    fun output(owner: String, sourceFiles: List<Path>) {
+        val inputs = sourceFiles.distinct().map { file ->
+            val path = file.toRealPath().toString()
+            val source = requireNotNull(readSource(path)) { "Compiler output source is unreadable: $path" }
+            "{\"path\":${json(path)},\"hash\":${json(source.hash)}}"
+        }
+        outputs[owner] = "{\"owner\":${json(owner)},\"sources\":[${inputs.joinToString(",")}] }"
+    }
 
     fun start() {
         writeDocument(emptyList(), emptyList(), complete = false)
@@ -71,7 +81,8 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
     private fun writeDocument(records: List<String>, unresolved: List<String>, complete: Boolean) {
         val document = "{\"schema\":1,\"runId\":${json(runId)},\"producer\":{\"compiler\":\"kotlinc\",\"version\":${json(version)}," +
             "\"frontend\":${json(frontend)},\"backend\":\"JVM\"},\"complete\":$complete," +
-            "\"records\":[${records.joinToString(",")}],\"unresolved\":[${unresolved.joinToString(",")}]}"
+            "\"records\":[${records.joinToString(",")}],\"unresolved\":[${unresolved.joinToString(",")}]," +
+            "\"outputs\":[${outputs.values.joinToString(",")}] }"
         val target = output.toAbsolutePath().normalize()
         Files.createDirectories(target.parent)
         val temporary = Files.createTempFile(target.parent, "graphfold-origin-", ".json")
@@ -127,7 +138,7 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
     private fun readSource(path: String): Source? = sources[path] ?: try {
         val bytes = Files.readAllBytes(Path.of(path))
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val text = bytes.toString(Charsets.UTF_8)
+        val text = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
         Source(text, hash, compilerOffsets(text)).also { sources[path] = it }
     } catch (_: IOException) {
         null // The final sidecar retains an explicit unresolved record for unreadable compiler source.

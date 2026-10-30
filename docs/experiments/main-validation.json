@@ -1,26 +1,26 @@
 {
-  "date": "2026-10-30",
+  "date": "2026-10-31",
   "command": "./gradlew check :engine:detektTest :cli:installDist --console=plain",
   "exit": 0,
-  "duration": "18m 22s",
+  "duration": "19m 17s",
   "modules": {
     "engine": {
       "junit": {
-        "tests": 497,
+        "tests": 559,
         "failures": 0,
         "errors": 0,
         "skipped": 0
       },
       "coverage": {
         "branch": {
-          "covered": 2575,
-          "missed": 129,
-          "percent": 95.22928994082841
+          "covered": 2871,
+          "missed": 140,
+          "percent": 95.35038193291265
         },
         "line": {
-          "covered": 3009,
-          "missed": 27,
-          "percent": 99.11067193675889
+          "covered": 3331,
+          "missed": 28,
+          "percent": 99.16641857695743
         }
       }
     },
@@ -102,14 +102,50 @@
     "successfulCompilations": 20,
     "recordsPerCompilation": 15,
     "unresolvedRecords": 0,
-    "probeProviderSha256": "e8bc4749cbe3960847dfd43e42c6299c0825a0dfc353c120767e8df560303929",
+    "probeProviderSha256": "4069a38e791c5fcd9d061bb2032d5b564237376c5472b3b2bfc3fc37a8dc04c9",
     "rejectedCompilerVersion": "1.9.0",
-    "maximumNormalizationMetadataSchema": "2.1"
+    "maximumNormalizationMetadataSchema": "2.1",
+    "verifiedOutputOwnersPerCompilation": 16
   },
   "additionalChecks": {
     "installedCliHelp": true,
     "releaseHelperTests": 6,
     "compilerSpiPackaging": "isolated nested provider",
     "gitDiffCheck": true
+  },
+  "incrementalCompilation": {
+    "gradle": [
+      "unchanged UP-TO-DATE",
+      "Java/Kotlin source edits",
+      "retained unchanged class timestamp",
+      "source deletion",
+      "own/direct/transitive implementation-hidden inline source shifts",
+      "unrelated module UP-TO-DATE",
+      "FROM-CACHE restoration",
+      "provider artifact repair"
+    ],
+    "maven": [
+      "unchanged Java reactor",
+      "configured Kotlin incremental compilation",
+      "retained unchanged class timestamp",
+      "Java/Kotlin source edits",
+      "last-source deletion",
+      "cross-file inline caller output ownership",
+      "inline source hash and offset refresh",
+      "compiler-configuration change blocks old-state reuse"
+    ],
+    "persistentCheckouts": true,
+    "performanceAcceptance": "Not performed; representative multi-graph load required"
+  },
+  "objectRenderingFlow": {
+    "scope": "method-local bytecode must-proof",
+    "java": {
+      "safeMethods": 11,
+      "blockedMethods": 25
+    },
+    "kotlin": {
+      "safeMethods": 10,
+      "blockedMethods": 18
+    }
   }
 }

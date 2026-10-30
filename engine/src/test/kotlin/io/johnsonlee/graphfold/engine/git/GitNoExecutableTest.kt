@@ -77,7 +77,7 @@ object GitWithoutExecutableProbe {
             check(change.baseLines == listOf(ChangedLineRange(1, 1)))
             check(change.headLines == listOf(ChangedLineRange(1, 1)))
         }
-        check(!Files.exists(workspace.baseDirectory) && !Files.exists(workspace.headDirectory))
+        check(Files.exists(workspace.baseDirectory) && Files.exists(workspace.headDirectory))
         analyzeJavaFixture(root, fixtures)
         println("JGIT_WITHOUT_EXECUTABLE_OK")
     }

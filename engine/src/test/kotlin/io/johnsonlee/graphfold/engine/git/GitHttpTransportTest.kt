@@ -48,7 +48,7 @@ class GitHttpTransportTest {
             } finally {
                 server.stop(0)
             }
-            Files.list(temporary.resolve("cache/runs")).use { assertEquals(0L, it.count()) }
+            Files.list(temporary.resolve("cache/workspaces")).use { assertEquals(1L, it.count()) }
         }
     }
 
@@ -85,8 +85,8 @@ class GitHttpTransportTest {
             assertEquals(listOf(ChangedLineRange(1, 1)), change.headLines)
             assertFalse(change.binary)
         }
-        assertFalse(Files.exists(workspace.baseDirectory))
-        assertFalse(Files.exists(workspace.headDirectory))
+        assertTrue(Files.exists(workspace.baseDirectory))
+        assertTrue(Files.exists(workspace.headDirectory))
     }
 
     private fun commit(git: Git, source: Path, contents: String): String {

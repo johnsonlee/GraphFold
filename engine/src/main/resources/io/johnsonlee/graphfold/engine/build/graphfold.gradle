@@ -1,35 +1,147 @@
 import org.gradle.api.tasks.compile.JavaCompile
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+import java.security.MessageDigest
 
 def originPlugin = new File(System.getProperty('graphfold.origin.plugin'))
 def originOutput = new File(System.getProperty('graphfold.origin.output'))
 def originRunId = System.getProperty('graphfold.origin.runId')
 def encodePath = { file -> java.util.Base64.urlEncoder.withoutPadding().encodeToString(file.absolutePath.getBytes('UTF-8')) }
+def digest = { file -> MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
+def originTasks = []
+
+// Each compile task owns its provenance output just as it owns its class output. A successful
+// incremental invocation overlays only newly emitted owners; unchanged owners retain their records.
+def provenance = { project, compile, classes ->
+    def directory = new File(project.layout.buildDirectory.get().asFile, 'graphfold/origins/' + compile.name)
+    def delta = new File(directory, 'pending')
+    def manifest = new File(directory, 'manifest.json')
+    compile.outputs.dir(directory).withPropertyName('graphfoldOrigins')
+    compile.inputs.file(originPlugin).withPropertyName('graphfoldOriginPlugin').withPathSensitivity(org.gradle.api.tasks.PathSensitivity.NONE)
+    compile.inputs.property('graphfoldOriginSchema', originRunId)
+    compile.doFirst { project.delete(delta); delta.mkdirs() }
+    compile.doLast {
+        def retained = [:]
+        def unresolved = [:]
+        if (manifest.isFile()) {
+            def previous = new JsonSlurper().parse(manifest)
+            if (previous.runId == originRunId) {
+                previous.records.each { retained[it.owner] = it }
+                previous.unresolved.each { unresolved[it.owner] = it }
+            }
+        }
+        def fresh = [] as Set
+        def producer = null
+        delta.listFiles()?.findAll { it.name.endsWith('.json') }?.sort { it.name }?.each { file ->
+            def document = new JsonSlurper().parse(file)
+            if (document.schema != 1 || !document.complete || document.runId != originRunId) {
+                throw new GradleException('Incomplete compiler provenance: ' + file)
+            }
+            producer = document.producer
+            document.records.each { record ->
+                if (!fresh.add(record.owner)) throw new GradleException('Duplicate emitted provenance: ' + record.owner)
+                retained[record.owner] = record
+                unresolved.remove(record.owner)
+            }
+            document.unresolved?.each { record -> unresolved[record.owner] = record; retained.remove(record.owner) }
+        }
+        def classFile = { owner -> new File(classes(), owner.replace('.', '/') + '.class') }
+        retained = retained.findAll { owner, record ->
+            def binary = classFile(owner)
+            if (!binary.isFile()) return false
+            def source = new File(record.source)
+            if (!source.isFile() || digest(source) != record.sourceHash) {
+                throw new GradleException('Stale compiler provenance source: ' + record.source)
+            }
+            def classHash = digest(binary)
+            if (!fresh.contains(owner) && record.classHash != classHash) {
+                throw new GradleException('Changed class has no refreshed compiler provenance: ' + owner)
+            }
+            record.classHash = classHash
+            true
+        }
+        unresolved = unresolved.findAll { owner, record -> classFile(owner).isFile() }
+        if (producer == null && manifest.isFile()) producer = new JsonSlurper().parse(manifest).producer
+        if (producer == null) throw new GradleException('Compiler emitted no provenance manifest: ' + compile.path)
+        directory.mkdirs()
+        def complete = [schema: 1, runId: originRunId, producer: producer, complete: true,
+            records: retained.values().sort { it.owner }, unresolved: unresolved.values().sort { it.owner }]
+        def temporary = new File(directory, 'manifest.tmp')
+        temporary.setText(JsonOutput.toJson(complete), 'UTF-8')
+        java.nio.file.Files.move(temporary.toPath(), manifest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        project.delete(delta)
+    }
+    originTasks.add([task: compile, manifest: manifest, classes: classes])
+    delta
+}
 
 gradle.beforeProject { project ->
     project.tasks.withType(JavaCompile).configureEach { compile ->
+        def delta = provenance(project, compile, { compile.destinationDirectory.get().asFile })
         options.annotationProcessorPath = project.files(options.annotationProcessorPath, originPlugin)
-        options.compilerArgs.add('-Xplugin:GraphFoldOrigins ' + encodePath(originOutput) + ' ' + encodePath(project.rootDir) + ' ' + java.util.Base64.urlEncoder.withoutPadding().encodeToString(originRunId.getBytes('UTF-8')))
-        options.incremental = false
-        outputs.upToDateWhen { false }
-        outputs.doNotCacheIf('Fresh compiler provenance is required') { true }
+        options.compilerArgs.add('-Xplugin:GraphFoldOrigins ' + encodePath(delta) + ' ' + encodePath(project.rootDir) + ' ' + java.util.Base64.urlEncoder.withoutPadding().encodeToString(originRunId.getBytes('UTF-8')))
     }
     project.tasks.configureEach { compile ->
         if (compile.name == 'compileKotlin' && compile.hasProperty('kotlinOptions')) {
+            def delta = provenance(project, compile, { compile.destinationDirectory.get().asFile })
             compile.kotlinOptions.freeCompilerArgs += ['-Xplugin=' + originPlugin.absolutePath,
-                '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:output=' + originOutput.absolutePath,
+                '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:output=' + delta.absolutePath,
                 '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:runId=' + originRunId]
-            if (compile.hasProperty('incremental')) compile.incremental = false
-            outputs.upToDateWhen { false }
-            outputs.doNotCacheIf('Fresh compiler provenance is required') { true }
         }
     }
 }
 
 gradle.projectsEvaluated {
     def projects = gradle.rootProject.allprojects.findAll { it.extensions.findByName('sourceSets') != null }
+    projects.each { project ->
+        def compile = project.tasks.findByName('compileKotlin')
+        if (compile != null && compile.hasProperty('compilerOptions')) {
+            // KGP does not invalidate an inline caller when only definition whitespace changes.
+            // Such edits still change physical provenance. Refresh only this compilation and
+            // consumers of its project outputs; unrelated projects retain their task cache keys.
+            def inlineIdentity = project.providers.provider {
+                // An inline body can already contain a copy from an implementation-only
+                // dependency absent from the consumer's classpath. Follow each reached
+                // project's own classpath, not only the original consumer's visible files.
+                def sourceProjects = [project] as Set
+                def pending = [project]
+                for (int index = 0; index < pending.size(); index++) {
+                    def current = pending[index]
+                    def classpath = current.sourceSets.main.compileClasspath.files.collect { it.canonicalFile }.toSet()
+                    projects.findAll { candidate ->
+                        candidate.sourceSets.main.output.classesDirs.files.any {
+                            classpath.contains(it.canonicalFile)
+                        } || (candidate.tasks.findByName('jar')?.archiveFile?.getOrNull()?.asFile?.canonicalFile in classpath)
+                    }.each { candidate ->
+                        if (sourceProjects.add(candidate)) pending.add(candidate)
+                    }
+                }
+                def identities = sourceProjects.collectMany { candidate ->
+                    def kotlinTask = candidate.tasks.findByName('compileKotlin')
+                    kotlinTask == null ? [] : kotlinTask.sources.files.findAll { file ->
+                        file.isFile() && file.name.endsWith('.kt') && (file.getText('UTF-8') =~ /\binline\b/).find()
+                    }.collect { file -> file.canonicalPath + ':' + digest(file) }
+                }.unique().sort()
+                MessageDigest.getInstance('SHA-256').digest(identities.join('\n').getBytes('UTF-8')).encodeHex().toString()
+            }
+            compile.compilerOptions.freeCompilerArgs.addAll(inlineIdentity.map { identity ->
+                ['-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:inlineSources=' + identity]
+            })
+        }
+    }
     def task = gradle.rootProject.tasks.register('graphfoldExportCompiledInputs') {
         dependsOn projects.collect { it.tasks.named(it.sourceSets.main.classesTaskName) }
         doLast {
+            originOutput.mkdirs()
+            def mainOutputs = projects.collectMany { it.sourceSets.main.output.classesDirs.files as List }
+                .collect { it.canonicalFile }.toSet()
+            originTasks.each { entry ->
+                if (mainOutputs.contains(entry.classes().canonicalFile) && entry.manifest.isFile()) {
+                    def name = entry.task.path.getBytes('UTF-8').encodeHex().toString() + '.json'
+                    java.nio.file.Files.copy(entry.manifest.toPath(), new File(originOutput, name).toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
             def lines = []
             def record = { kind, file ->
                 lines.add(kind + '|' + file.absolutePath.getBytes('UTF-8').encodeBase64().toString())

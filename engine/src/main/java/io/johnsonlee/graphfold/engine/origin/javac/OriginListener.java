@@ -35,6 +35,7 @@ final class OriginListener implements TaskListener {
     private final String runId;
     private final Map<String, Origin> origins = new LinkedHashMap<>();
     private final Set<String> generated = new HashSet<>();
+    private final Map<String, String> outputs = new LinkedHashMap<>();
     private boolean failed;
 
     OriginListener(JavacTask task, Path output, Path root, String runId) {
@@ -54,7 +55,7 @@ final class OriginListener implements TaskListener {
         try {
             switch (event.getKind()) {
                 case ANALYZE -> capture(event.getCompilationUnit());
-                case GENERATE -> generated.add(task.getElements().getBinaryName(event.getTypeElement()).toString());
+                case GENERATE -> captureOutput(event);
                 case COMPILATION -> write();
                 default -> { }
             }
@@ -62,6 +63,15 @@ final class OriginListener implements TaskListener {
             failed = true;
             throw new IllegalStateException("GraphFold javac source provenance failed", failure);
         }
+    }
+
+    private void captureOutput(TaskEvent event) throws IOException {
+        String owner = task.getElements().getBinaryName(event.getTypeElement()).toString();
+        Path source = Path.of(event.getCompilationUnit().getSourceFile().toUri()).toRealPath();
+        if (!source.startsWith(root)) throw new IllegalStateException("Generated source is outside checkout: " + source);
+        generated.add(owner);
+        outputs.put(owner, "{\"owner\":" + quote(owner) + ",\"sources\":[{\"path\":" + quote(source.toString())
+            + ",\"hash\":" + quote(sha256(Files.readAllBytes(source))) + "}]}");
     }
 
     private void capture(CompilationUnitTree unit) throws IOException {
@@ -109,7 +119,7 @@ final class OriginListener implements TaskListener {
         origins.values().stream().sorted(java.util.Comparator.comparing(Origin::owner)).forEach(origin -> records.add(origin.json()));
         String json = "{\"schema\":1,\"runId\":" + quote(runId) + ",\"producer\":{\"compiler\":\"javac\",\"version\":"
             + quote(System.getProperty("java.version")) + ",\"backend\":\"JVM\"},\"complete\":true,\"records\":["
-            + String.join(",", records) + "]}\n";
+            + String.join(",", records) + "],\"outputs\":[" + String.join(",", outputs.values()) + "]}\n";
         Files.createDirectories(output);
         Path destination = output.resolve(UUID.randomUUID() + ".json");
         Path temporary = Files.createTempFile(output, "origins-", ".tmp");

@@ -23,6 +23,9 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    inputs.dir(rootProject.layout.projectDirectory.dir("fixtures"))
+        .withPropertyName("analysisFixtures")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     // Gradle isolates test classloaders; java.class.path need not contain the test runtime.
     systemProperty("graphfold.test.runtimeClasspath", sourceSets.test.get().runtimeClasspath.asPath)
 }

@@ -23,7 +23,7 @@ class GitWorkspaceManager(private val cacheDirectory: Path) {
                 .joinToString("") { "%02x".format(it) }
             val cache = cacheDirectory.toAbsolutePath().normalize()
             Files.createDirectories(cache.resolve("repositories"))
-            Files.createDirectories(cache.resolve("runs"))
+            Files.createDirectories(cache.resolve("workspaces"))
             val bare = cache.resolve("repositories/$key.git")
             val lock = cache.resolve("repositories/$key.lock")
             locked(lock) {
@@ -31,7 +31,7 @@ class GitWorkspaceManager(private val cacheDirectory: Path) {
                 JGitRepositories.open(bare).use { cached ->
                     val baseSha = resolve(cached, source, base)
                     val headSha = resolve(cached, source, head)
-                    createWorkspace(cached, bare, cache.resolve("runs"), key, baseSha, headSha)
+                    createWorkspace(cached, bare, cache.resolve("workspaces"), key, baseSha, headSha)
                 }
             }
         }
@@ -40,30 +40,22 @@ class GitWorkspaceManager(private val cacheDirectory: Path) {
     private fun createWorkspace(
         cached: Repository, bare: Path, runs: Path, key: String, base: String, head: String,
     ): GitWorkspace {
-        val run = Files.createTempDirectory(runs, "$key-")
+        val lease = leaseWorkspace(runs.resolve(key))
         return runCatching {
-            checkout(cached, base, run.resolve("base"))
-            checkout(cached, head, run.resolve("head"))
-            GitWorkspace(run.resolve("base"), run.resolve("head"), base, head, bare) {
-                cleanup(run)
+            checkout(cached, base, lease.directory.resolve("base"))
+            checkout(cached, head, lease.directory.resolve("head"))
+            GitWorkspace(lease.directory.resolve("base"), lease.directory.resolve("head"), base, head, bare) {
+                lease.close()
             }
         }.onFailure {
             val interrupted = Thread.interrupted()
             try {
-                runCatching { deleteDirectory(run) }
+                runCatching { deleteDirectory(lease.directory) }
             } finally {
+                lease.close()
                 if (interrupted) Thread.currentThread().interrupt()
             }
         }.getOrThrow()
-    }
-
-    private fun cleanup(run: Path) {
-        val interrupted = Thread.interrupted()
-        try {
-            gitOperation { deleteDirectory(run) }
-        } finally {
-            if (interrupted) Thread.currentThread().interrupt()
-        }
     }
 
     private fun initialize(bare: Path) {
