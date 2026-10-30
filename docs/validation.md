@@ -127,7 +127,7 @@ remains **95%**, line minimum 90%, with no production class exclusions. The gate
 wired into `check` and the CI build/publish workflows; it is not merely a reported metric.
 
 The isolated headless UAST candidate and its separate results are described in
-[the UAST evaluation](uast-integration-evaluation.md). Main has not migrated to UAST.
+[the UAST evaluation](uast-integration-evaluation.md). UAST is not adopted; these results are historical research, not an outstanding migration gate.
 
 ## Earlier executed gates (before JGit migration)
 

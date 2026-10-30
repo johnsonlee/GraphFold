@@ -431,7 +431,7 @@ SSA、内存依赖和别名分析是提高精度的候选手段，不是声称�
 
 ## 10. 源码映射与 findings 生成
 
-精确范围需要源码层与字节码/IR 层共同工作，不能仅凭字节码 LineNumberTable 推导列号。UAST/PSI 是源码定位层的重点候选，和 Graphite/Jimple 承担不同职责。
+精确范围需要源码层与字节码/IR 层共同工作，不能仅凭字节码 LineNumberTable 推导列号。源码定位采用 JavaParser 与 headless Kotlin PSI，和 Graphite/Jimple 承担不同职责。
 
 1. 从 diff 和源码索引建立 change ID、声明及表达式的准确范围，作为证明义务的起点。
 2. 使用类/方法 descriptor、调试信息、生成代码来源等，将义务绑定到两侧 IR；字段与类声明另行绑定声明清单。
@@ -444,9 +444,9 @@ Java 源码定位为首版重点。其他 JVM 语言、注解生成代码、无�
 
 对于外部依赖变更，只有能建立可靠来源关系时才将 finding 归因到依赖声明的 diff；否则用全局阻断诊断说明不能完成证明。
 
-### 10.1 UAST/PSI 的角色
+### 10.1 JavaParser / Kotlin PSI 的角色
 
-当前通过 `JavaSourceIndex` 与 `KotlinSourceIndex` 提供统一的 `IndexedSource`/`SourceSymbol` 输出：Java 使用 JavaParser，Kotlin 使用 headless Kotlin PSI；尚未集成 UAST。源码适配属于 engine 内部能力，不新增交付模块。UAST 仍是将来统一语言访问的候选，不是当前运行的前置依赖。
+当前通过 `JavaSourceIndex` 与 `KotlinSourceIndex` 提供统一的 `IndexedSource`/`SourceSymbol` 输出：Java 使用 JavaParser，Kotlin 使用 headless Kotlin PSI。源码适配属于 engine 内部能力，不新增交付模块。2026-10-31 决定不采用 UAST，相关实验仅保留为历史调研，不作为后续迁移计划。
 
 ```text
 源码 → JavaParser / Kotlin PSI → 声明与表达式索引、文本范围
@@ -456,11 +456,9 @@ Java 源码定位为首版重点。其他 JVM 语言、注解生成代码、无�
                  Git 变更清单
 ```
 
-UAST 用于找到源代码元素和建立关联，不用其 Java 风格的视图充当字节码行为等价判据。原始方案排除“仅靠 UAST 折叠比较”的理由，并不排除将其用于源码定位。
+源码适配器负责声明、表达式及物理文本范围；Graphite/Jimple 负责字节码行为分析。源码语法视图不作为行为等价判据。位置来自原始文件范围，不从合成声明或字节码行表猜测列号。UAST 的历史运行时和定位评估见 [调研记录](uast-integration-evaluation.md)。
 
-JetBrains 文档区分 `sourcePsi` 与 `javaPsi`：前者对应物理源码元素，可用于获取原文件范围；后者可能是模拟 Java API 的元素。因此位置取自 `sourcePsi.textRange` 和对应源码 Document，不从 `javaPsi` 或 UAST 父子结构猜测。元素缺少 sourcePsi 时需要明确回退映射或失败，不能伪造范围。参见 [UAST 官方文档](https://plugins.jetbrains.com/docs/intellij/uast.html)。
-
-UAST 本身不会自动给出“某条字节码来自哪个表达式”的完整映射。以下仍需建设和验证：
+现有源码适配器仍须结合实际编译产物，持续建设和验证以下来源关联：
 
 - 完整 JVM descriptor 与源码声明的匹配，包括泛型擦除、bridge、构造器及嵌套类。
 - 同一行多个调用或表达式的区分，不能仅靠行号和调用目标配对。
@@ -475,12 +473,12 @@ UAST 本身不会自动给出“某条字节码来自哪个表达式”的完整
 
 | 方案 | 获益 | 代价或边界 | 当前选择 |
 | --- | --- | --- | --- |
-| UAST + Java/Kotlin PSI | 统一两种语言的源码访问，获得物理源码范围 | 需组装和验证 headless 环境、版本组合及解析依赖；仍需 IR 来源映射 | 未集成，保留为候选 |
+| UAST + Java/Kotlin PSI | 统一两种语言的源码访问，获得物理源码范围 | 需组装和验证 headless 环境、版本组合及解析依赖；仍需 IR 来源映射 | 不采用，保留历史调研 |
 | JavaParser + Kotlin PSI | 直接获得两种语言的物理源码范围，分别解析声明与表达式 | 两套适配器需要一致的坐标与身份契约；生成成员仍需字节码对应 | 当前采用，Kotlin compiler/PSI 固定 2.1.20 |
 | 仅字节码行号 + diff | 接入简单 | 无法可靠定位列或同一行多个表达式 | 不满足输出契约，不作为正式方案 |
 | 编译阶段额外来源记录 | 从真实生成类取得匿名对象来源，不依赖生成名称和行表 | 接入构建并限制编译器版本；不等于逐条 IR 来源 | 匿名类采用编译插件 sidecar，其他生成成员保留现有适配 |
 
-headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token 遍历，避免依赖 IDE 的 PSI copy/replace 扩展点。headless UAST 的隔离整合验证见 [评估报告](uast-integration-evaluation.md)，主工程尚未切换。Kotlin 方法使用 PSI 声明范围、ASM 方法名和行表匹配实际 JVM descriptor，字段使用真实字节码清单；不猜测 suspend/default/extension 的生成签名。歧义声明回退至对应 owner 的 CLASS obligation，缺失 SourceFile 或 owner 会阻断；回退扩大了比较范围，可能增加误报。精确报告位置仍来自文本 diff 与源码范围，不来自行表推算列号。
+headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token 遍历，避免依赖 IDE 的 PSI copy/replace 扩展点。headless UAST 的隔离整合验证见 [评估报告](uast-integration-evaluation.md)，已决定不采用，实验不作为待完成的迁移任务。Kotlin 方法使用 PSI 声明范围、ASM 方法名和行表匹配实际 JVM descriptor，字段使用真实字节码清单；不猜测 suspend/default/extension 的生成签名。歧义声明回退至对应 owner 的 CLASS obligation，缺失 SourceFile 或 owner 会阻断；回退扩大了比较范围，可能增加误报。精确报告位置仍来自文本 diff 与源码范围，不来自行表推算列号。
 
 按变更文件及证明所需依赖延迟加载源码索引，不为所有依赖展开完整源码 AST。PSI 的文本和范围访问可能触发 AST 加载，必须控制生命周期；这是架构上的资源约束，不是尚未测量的性能承诺。参见 [PSI Performance](https://plugins.jetbrains.com/docs/intellij/psi-performance.html)。
 
@@ -635,7 +633,7 @@ graphfold --repository <url> --base <sha> --head <sha> --fold <rules.yml> --form
 | Git 实现 | JGit 7.8，共享 bare objects、独立元数据与 alternates checkout |
 | JVM select 编排 | 复用现有 Kotlin Cypher，补齐 Rust 流程中的选点与来源校验 |
 | IR 输出接口 | 已验证 Graphite 2.12.0 SPI 捕获；流式快照尚未实现 |
-| 精确源码映射 | 当前 JavaParser + Kotlin PSI/ASM；UAST 未接入，多对多 IR 来源映射仍需扩展 |
+| 精确源码映射 | 当前 JavaParser + Kotlin PSI/ASM；不采用 UAST，多对多 IR 来源映射仍需扩展 |
 | 框架入口 | 首版保守处理；由目标 backend 的实际框架决定适配顺序 |
 | 依赖发布 | 已固定 Graphite 2.12.0；升级须重新验证 SPI 与折叠语义 |
 
@@ -681,7 +679,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 | 选点到实际调用的对应 | CallSite key、origin、args、receiver_args、provenance | JVM 编排与 Rust 选点约束一致，避免部分目标扩大折叠 | 拒绝不可靠选点 | P0 |
 | 分析完整性 | 部分日志、FoldReport | 方法/类/控制流解析状态、跳过原因、严格模式 | 缺失证据阻断，不能只看图是否产出 | P0 |
 | 变换来源 | 调用点身份及折叠统计 | 折叠前后操作来源，多对多映射、删除依据 | 无法归因则阻断 | P0 |
-| 精确行列与 diff 归属 | Git diff、源码可得 | UAST/PSI 或源码适配器、descriptor/调试信息关联、范围校验 | 不猜位置，用阻断诊断 | P0 |
+| 精确行列与 diff 归属 | Git diff、源码可得 | JavaParser/Kotlin PSI 源码适配器、descriptor/调试信息关联、范围校验 | 不猜位置，用阻断诊断 | P0 |
 | 方法外变化 | 部分声明/注解/资源图 | class/field inventory、配置/依赖/构建变更处置 | 未支持的语义变化 FAIL | P0 |
 | 构建可比性 | 两侧可独立构建 | 工具链/依赖/生成器身份与非确定性检测 | 不可比则 FAIL | P0 |
 | 框架与反射入口 | 类型/调用关系、部分注解 | 目标 backend 的入口适配及未知调用边界 | 不据此证明方法死；受影响变化 FAIL | P0 保守策略，P1 扩展 |
@@ -706,7 +704,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 | 方法级流式接口 | 降低重复物化和全库常驻需求 | 需要上游明确接口与生命周期契约 | 全库保留可变 body，或未经验证依赖 SPI |
 | 保守可达性 | 未知入口的方法保留 | treatment helper 可能被误拦 | 所有已知调用点死就宣称方法死 |
 | 上下文分析 | 更精确处理共享 wrapper | 状态数量、内存和计算成本增加 | 为提升折叠率把所有 caller 混为同一假定 |
-| UAST/PSI | 统一 Java/Kotlin 源码访问与精确文本范围 | headless 集成、版本和依赖成本；仍有来源映射 gap | 把 UAST/字节码行号当现成精确列映射 |
+| JavaParser / Kotlin PSI | 通过统一源码索引提供精确文本范围 | 两套适配器的一致性、PSI 版本和依赖成本；仍有来源映射 gap | 把 AST 范围或字节码行号当作完整 IR 来源映射 |
 | 结构比较先行 | 可解释、易回归验证 | 对合法重构可能误拦 | 无限制归一化抹去可观察差异 |
 | 有界符号证明 | 减少部分误拦 | 求解时间、语义建模和维护成本 | 超时视作等价 |
 | 精确定位契约 | Findings 可直接用于 code review | 某些已发现差异因定位失败而仅能给阻断诊断 | 用方法首行或邻近表达式冒充准确范围 |
@@ -734,7 +732,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 
 - 三个模块共享同一 SDK 判定逻辑；CLI 使用 Clikt，Gradle task 使用隔离 Worker，避免宿主 Gradle 的依赖版本污染分析器。
 - Git 使用 JGit 7.8、共享 bare object cache 与 alternates checkout，原始 blob materialization 不调用 checkout hook 或 smudge filter。Git 可执行文件不是运行前提；无 Git 的测试及清理验证结果以 validation.md 为准。强杀后的孤儿目录回收尚未实现，不提供未经测量的大仓库内存或吞吐 SLA。
-- Java 使用 JavaParser；Kotlin 使用固定 2.1.20 的 headless PSI，并从 ASM 清单获取实际 JVM 身份。未集成 UAST。统一使用 UTF-16、一基、结束位置不包含的坐标；Kotlin 歧义映射可回退 CLASS obligation，缺失 ownership 则阻断。
+- Java 使用 JavaParser；Kotlin 使用固定 2.1.20 的 headless PSI，并从 ASM 清单获取实际 JVM 身份。不采用 UAST。统一使用 UTF-16、一基、结束位置不包含的坐标；Kotlin 歧义映射可回退 CLASS obligation，缺失 ownership 则阻断。
 - 构建适配包含约定布局的 Java/Kotlin/混合源码、Gradle wrapper 与 Maven。任意 compiler plugin、生成器、Multiplatform、自定义 source set、依赖锁定及环境 provenance 不属于已验证的通用保证。
 - Graphite 固定 2.12.0。两次建图完成 Cypher 选点与折叠，通过公开 SPI 捕获折叠后 Jimple，以 ASM 清单交叉检查缺类、缺方法及声明信息，无需修改 Graphite 上游。
 - 当前快照保存在内存。未实现流式落盘、增量图、跨过程常量专门化、一般符号等价证明或自动场景缩减。

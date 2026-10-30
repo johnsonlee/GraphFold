@@ -1,4 +1,6 @@
-# Isolated UAST integration candidate
+# Archived UAST integration experiment
+
+Decision (2026-10-31): do not adopt UAST. GraphFold retains JavaParser/headless Kotlin PSI. The instructions below preserve the historical experiment; they are not planned implementation work. The patch predates the latest anonymous-origin implementation and requires its matching baseline.
 
 `uast-integration.patch` preserves the source-only UAST experiment without replacing the main implementation. It adds the Lint/UAST runtime, shared Java/Kotlin classification, source adapters, and affected tests. Dependencies remain Maven coordinates; no downloaded binaries or build outputs are included.
 
