@@ -1,0 +1,46 @@
+import org.gradle.api.tasks.compile.JavaCompile
+
+def originPlugin = new File(System.getProperty('graphfold.origin.plugin'))
+def originOutput = new File(System.getProperty('graphfold.origin.output'))
+def originRunId = System.getProperty('graphfold.origin.runId')
+def encodePath = { file -> java.util.Base64.urlEncoder.withoutPadding().encodeToString(file.absolutePath.getBytes('UTF-8')) }
+
+gradle.beforeProject { project ->
+    project.tasks.withType(JavaCompile).configureEach { compile ->
+        options.annotationProcessorPath = project.files(options.annotationProcessorPath, originPlugin)
+        options.compilerArgs.add('-Xplugin:GraphFoldOrigins ' + encodePath(originOutput) + ' ' + encodePath(project.rootDir) + ' ' + java.util.Base64.urlEncoder.withoutPadding().encodeToString(originRunId.getBytes('UTF-8')))
+        options.incremental = false
+        outputs.upToDateWhen { false }
+        outputs.doNotCacheIf('Fresh compiler provenance is required') { true }
+    }
+    project.tasks.configureEach { compile ->
+        if (compile.name == 'compileKotlin' && compile.hasProperty('kotlinOptions')) {
+            compile.kotlinOptions.freeCompilerArgs += ['-Xplugin=' + originPlugin.absolutePath,
+                '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:output=' + originOutput.absolutePath,
+                '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:runId=' + originRunId]
+            if (compile.hasProperty('incremental')) compile.incremental = false
+            outputs.upToDateWhen { false }
+            outputs.doNotCacheIf('Fresh compiler provenance is required') { true }
+        }
+    }
+}
+
+gradle.projectsEvaluated {
+    def projects = gradle.rootProject.allprojects.findAll { it.extensions.findByName('sourceSets') != null }
+    def task = gradle.rootProject.tasks.register('graphfoldExportCompiledInputs') {
+        dependsOn projects.collect { it.tasks.named(it.sourceSets.main.classesTaskName) }
+        doLast {
+            def lines = []
+            def record = { kind, file ->
+                lines.add(kind + '|' + file.absolutePath.getBytes('UTF-8').encodeBase64().toString())
+            }
+            projects.each { project ->
+                def main = project.sourceSets.main
+                main.output.classesDirs.files.each { record('classes', it) }
+                main.allSource.srcDirs.each { record('source', it) }
+                main.compileClasspath.files.each { record('dependency', it) }
+            }
+            new File(System.getProperty('graphfold.export.path')).setText(lines.join('\n'), 'UTF-8')
+        }
+    }
+}

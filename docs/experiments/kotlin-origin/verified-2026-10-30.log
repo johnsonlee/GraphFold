@@ -1,0 +1,23 @@
+ARTIFACTS /var/folders/sy/_tdkyl2x0gx6z5kl2wbhd9tc0000gn/T/graphfold-kotlin-origin-z7avpctf
+SINGLE_PLUGIN_SHA256 e8bc4749cbe3960847dfd43e42c6299c0825a0dfc353c120767e8df560303929
+1.9.20 1.9 LF {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+1.9.20 1.9 CRLF {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+1.9.20 1.9 CR {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+1.9.20 1.9 BOM-CRLF {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.0.21 2.0 LF {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.0.21 2.0 CRLF {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.0.21 2.0 CR {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.0.21 2.0 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 2.1 LF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 2.1 CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 2.1 CR {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 2.1 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.2.10 2.2 LF {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.2.10 2.2 CRLF {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.2.10 2.2 CR {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.2.10 2.2 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 1.9 LF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 1.9 CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 1.9 CR {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+2.1.20 1.9 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified
+1.9.0 rejected explicitly; plugin SHA256 e8bc4749cbe3960847dfd43e42c6299c0825a0dfc353c120767e8df560303929

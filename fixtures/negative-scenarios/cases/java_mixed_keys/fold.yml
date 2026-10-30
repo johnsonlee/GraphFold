@@ -1,0 +1,11 @@
+folds:
+  - select: |
+      MATCH (cs:CallSite {callee_class: "sample.Keys", callee_name: "enabled"})
+      RETURN cs
+    args:
+      0: experiment
+    value: false
+  - select: |
+      MATCH (cs:CallSite {callee_class: "sample.Keys", callee_name: "version"})
+      RETURN cs
+    value: 1

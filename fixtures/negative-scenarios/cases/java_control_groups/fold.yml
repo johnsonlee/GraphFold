@@ -1,0 +1,17 @@
+scenarios:
+  - name: A
+    folds:
+      - select: |
+          MATCH (cs:CallSite {callee_class: "sample.Keys", callee_name: "group"})
+          RETURN cs
+        args:
+          0: experiment
+        value: 0
+  - name: NA
+    folds:
+      - select: |
+          MATCH (cs:CallSite {callee_class: "sample.Keys", callee_name: "group"})
+          RETURN cs
+        args:
+          0: experiment
+        value: -1

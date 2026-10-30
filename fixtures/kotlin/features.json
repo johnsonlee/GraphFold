@@ -1,0 +1,226 @@
+[
+  {
+    "id": "kotlin_when",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_when",
+    "violation": false
+  },
+  {
+    "id": "kotlin_safe_call_elvis",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_safe_call_elvis",
+    "violation": false
+  },
+  {
+    "id": "kotlin_smart_cast",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_smart_cast",
+    "violation": false
+  },
+  {
+    "id": "kotlin_nullable_comparison",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_nullable_comparison",
+    "violation": false
+  },
+  {
+    "id": "kotlin_let",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_let",
+    "violation": false
+  },
+  {
+    "id": "kotlin_run",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_run",
+    "violation": false
+  },
+  {
+    "id": "kotlin_apply",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_apply",
+    "violation": false
+  },
+  {
+    "id": "kotlin_also",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_also",
+    "violation": false
+  },
+  {
+    "id": "kotlin_with",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_with",
+    "violation": false
+  },
+  {
+    "id": "kotlin_extension_function",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_extension_function",
+    "violation": false
+  },
+  {
+    "id": "kotlin_extension_property",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_extension_property",
+    "violation": false
+  },
+  {
+    "id": "kotlin_property_getter",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_property_getter",
+    "violation": false
+  },
+  {
+    "id": "kotlin_property_delegation",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_property_delegation",
+    "violation": false
+  },
+  {
+    "id": "kotlin_data_copy",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_data_copy",
+    "violation": false
+  },
+  {
+    "id": "kotlin_data_destructure",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_data_destructure",
+    "violation": false
+  },
+  {
+    "id": "kotlin_default_named_arguments",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_default_named_arguments",
+    "violation": false
+  },
+  {
+    "id": "kotlin_object_expression",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_object_expression",
+    "violation": false
+  },
+  {
+    "id": "kotlin_companion",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_companion",
+    "violation": false
+  },
+  {
+    "id": "kotlin_range",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_range",
+    "violation": false
+  },
+  {
+    "id": "kotlin_sequence",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_sequence",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_inline",
+    "violation": false
+  },
+  {
+    "id": "kotlin_nonlocal_return",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_nonlocal_return",
+    "violation": false
+  },
+  {
+    "id": "kotlin_labeled_return",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_labeled_return",
+    "violation": false
+  },
+  {
+    "id": "kotlin_suspend_callback",
+    "violation": true
+  },
+  {
+    "id": "kotlin_gated_suspend_callback",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_custom_delegate",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_lazy_initializer",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_default_parameter",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_companion_initializer",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_object_callback",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_sequence_predicate",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_suspend_lambda",
+    "violation": false
+  },
+  {
+    "id": "kotlin_negative_extension_getter",
+    "violation": false
+  }
+]
