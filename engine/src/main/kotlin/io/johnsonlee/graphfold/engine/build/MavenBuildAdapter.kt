@@ -22,8 +22,8 @@ internal class MavenBuildAdapter(
         }
         val modules = effective.keys.map { it.parent }
         val roots = modules.flatMap(::productionRoots)
-        val extracted = CompilerOriginPlugin.extract(output)
-        val identity = digest(extracted)
+        val provider = CompilerOriginPlugin.artifact()
+        val identity = digest(provider)
         val state = checkout.resolve("target/graphfold/maven")
         val identityFile = state.resolve("identity.txt")
         val configurationIdentity = "maven-v2-$identity" + effective.values.joinToString("") { digest(it) }
@@ -33,10 +33,6 @@ internal class MavenBuildAdapter(
             modules.map { it.resolve("target") }.forEach { io.johnsonlee.graphfold.engine.git.deleteDirectory(it) }
         }
         Files.createDirectories(state)
-        val provider = state.resolve("compiler-origin-plugin.jar")
-        if (!Files.exists(provider) || Files.mismatch(extracted, provider) != -1L) {
-            Files.copy(extracted, provider, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        }
         val runId = "maven-v2-$identity"
         val provenance = MavenProvenance(state, runId)
         val outputs = modules.map { it.resolve("target/classes") }

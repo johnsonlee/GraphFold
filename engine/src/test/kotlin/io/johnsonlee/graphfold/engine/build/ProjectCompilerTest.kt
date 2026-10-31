@@ -186,13 +186,11 @@ class ProjectCompilerTest {
     }
 
     private fun verifyIncrementalBuilds(source: Path, kotlin: Path, inlineSource: Path, result: CompiledProject) {
-        val cachedPlugin = Files.walk(source.resolve(".gradle/graphfold")).use { files ->
-            files.filter { it.fileName.toString() == "compiler-origin-plugin.jar" }.findFirst().orElseThrow()
-        }
-        val trustedPlugin = Files.readAllBytes(cachedPlugin)
-        Files.write(cachedPlugin, byteArrayOf(0, 1, 2))
+        val plugin = CompilerOriginPlugin.artifact()
+        val trustedPlugin = Files.readAllBytes(plugin)
         val unchanged = compiler.compile(source, temporary.resolve("unchanged"))
-        assertContentEquals(trustedPlugin, Files.readAllBytes(cachedPlugin))
+        assertContentEquals(trustedPlugin, Files.readAllBytes(plugin))
+        assertFalse(Files.exists(source.resolve(".gradle/graphfold")))
         assertTrue(Files.readString(temporary.resolve("unchanged/build.log")).contains(":compileKotlin UP-TO-DATE"))
         assertTrue(Files.readString(temporary.resolve("unchanged/build.log")).contains(":library:compileJava UP-TO-DATE"))
         assertEquals(result.originRunId, unchanged.originRunId)
@@ -271,7 +269,8 @@ class ProjectCompilerTest {
         Files.writeString(source.resolve("mvnw"), mavenEffectiveModel + """
             mkdir -p target/classes
             plugin_arg=${'$'}(sed -n 's/.*<arg>\(-Xplugin:GraphFoldOrigins.*\)<\/arg>.*/\1/p' pom.xml | head -1)
-            javac -g -processorpath target/graphfold/maven/compiler-origin-plugin.jar "${'$'}plugin_arg" \
+            provider=${'$'}(find target/graphfold/maven/origin-maven-repository -name '*.jar' -print -quit)
+            javac -g -processorpath "${'$'}provider" "${'$'}plugin_arg" \
               -d target/classes src/main/java/example/App.java
             mkdir -p external
             printf '%s' "${'$'}PWD/external" > target/graphfold-classpath.txt

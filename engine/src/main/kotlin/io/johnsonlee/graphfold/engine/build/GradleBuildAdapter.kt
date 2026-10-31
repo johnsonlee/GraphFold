@@ -9,16 +9,11 @@ internal class GradleBuildAdapter(
     private val timeout: Duration, private val environmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
 ) {
     fun compile(checkout: Path, output: Path): CompiledProject {
-        val extracted = CompilerOriginPlugin.extract(output)
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(extracted))
+        val plugin = CompilerOriginPlugin.artifact()
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(plugin))
             .joinToString("") { "%02x".format(it) }
         // Stable task inputs permit incremental compilation, UP-TO-DATE and local build-cache restoration.
         val runId = "gradle-v1-$digest"
-        val state = Files.createDirectories(checkout.resolve(".gradle/graphfold/$digest"))
-        val plugin = state.resolve("compiler-origin-plugin.jar").toAbsolutePath()
-        if (!Files.exists(plugin) || Files.mismatch(extracted, plugin) != -1L) {
-            Files.copy(extracted, plugin, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        }
         val origins = output.resolve("origins").toAbsolutePath()
         val manifest = output.resolve("gradle-inputs.txt").toAbsolutePath()
         val init = Files.createTempFile(output, "graphfold-", ".gradle")

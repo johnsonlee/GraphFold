@@ -1,2 +1,2 @@
 rootProject.name = "graphfold"
-include("engine", "cli", "gradle-plugin")
+include("gfc", "engine", "cli", "gradle-plugin")

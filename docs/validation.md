@@ -4,6 +4,35 @@ Date: 2026-10-31. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
 
+## Standalone gfc module and generated SPI (2026-10-31)
+
+The full root check, type-aware detekt checks, CLI distributions and local publication
+completed in 21m 42s. The final gfc ServiceLoader and mixed-source Gradle Worker tests were then verified
+with their complete module checks. All **671 JUnit tests passed**, with zero failures,
+errors or skips. Each of the four modules passed the unchanged **95% branch / 90% line**
+hard gates, without production exclusions.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| gfc | 62 | 98.4940% | 95.4082% (187/196) |
+| engine | 556 | 99.2024% | 95.5474% (2854/2987) |
+| cli | 24 | 98.5915% | 96.6667% (29/30) |
+| gradle-plugin | 29 | 100.0000% | 100.0000% (16/16) |
+
+The published engine POM requires the same-version gfc artifact. Local publication
+validation checks all three generated compiler SPI registrations; ZIP/TAR smoke checks
+verify the matching gfc JAR and CLI version. Seventeen Python release tests passed.
+The javac provider and protocol load through an isolated JDK-only ServiceLoader.
+
+Java 130 and Kotlin 186 corpus cases remain correct, and all 316 actual reports pass
+the JSON Schema. Existing real mixed-language Gradle/Maven compilation and incremental
+reuse tests run against the independent provider JAR. The actual gfc artifact also
+passed the [20-run Kotlin compiler matrix](research/compiler/verified-gfc-2026-10-31.log),
+including explicit rejection of Kotlin 1.9.0. These are correctness/compatibility checks,
+not representative multi-graph performance acceptance. No remote release was performed.
+The [previous enum validation](research/validation/enum-validation-before-gfc-2026-10-31.json)
+remains available as historical evidence.
+
 ## Typed statuses and codes: full quality gate (2026-10-31)
 
 The unfiltered command `./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :cli:installDist --continue --console=plain` passed in 19m 55s.
@@ -23,11 +52,11 @@ report enum/schema contracts, and compiler-origin protocol validation. The provi
 shared enums load in a JDK-only isolated classloader. Java 130 and Kotlin 186 corpus
 cases remain correct, and all 316 actual reports pass the JSON Schema.
 
-The current provider passed the [20-run Kotlin compiler matrix](experiments/kotlin-origin/verified-enums-2026-10-31.log),
+The current provider passed the [20-run Kotlin compiler matrix](research/compiler/verified-enums-2026-10-31.log),
 including K1/K2 and four physical encodings; unsupported 1.9.0 was rejected.
 This is correctness and compiler-hook compatibility evidence, not representative
 multi-graph performance acceptance. The previous 657-test result is preserved in
-[its historical record](experiments/fold-audit-validation-before-enums-2026-10-31.json).
+[its historical record](research/validation/fold-audit-validation-before-enums-2026-10-31.json).
 
 ## PR review: capacity, version and fold audit quality gate (2026-10-31)
 
@@ -49,7 +78,7 @@ not merged filtered runs.
 | gradle-plugin | 28 | 100.0000% | 100.0000% (14/14) |
 
 The prior 603-test review baseline is preserved in
-[its historical record](experiments/review-validation-before-capacity-2026-10-31.json).
+[its historical record](research/validation/review-validation-before-capacity-2026-10-31.json).
 New regressions cover strict YAML document/structure validation, raw selection audits,
 separate selected/matched counts, zero-match blocking, query failures, skipped selection,
 CLI and Gradle log/report agreement, and valid/invalid JSON Schema payloads.
@@ -62,7 +91,7 @@ The lease timeout measures slot acquisition only. It does not bound checkout,
 inactivity, or the total analysis duration. Nine Python release-helper tests passed,
 including rejection of a missing or mismatched packaged CLI version. Release ZIP/TAR
 version smoke checks and development SHA version checks also passed; their snapshot
-and source-archive limitation are recorded in [version validation](experiments/cli-version-validation-2026-10-31.json). The earlier publication reproducibility and compiler compatibility
+and source-archive limitation are recorded in [version validation](research/release/cli-version-validation-2026-10-31.json). The earlier publication reproducibility and compiler compatibility
 matrices below were not rerun for these changes.
 
 ## PR review regressions (2026-10-31)
@@ -99,7 +128,7 @@ preparation and never publishes remotely.
 Two clean, build-cache-disabled publication builds of the same review working-tree snapshot
 at `0.1.0-review.20261031.1` produced 18 byte-identical JAR/POM/module payloads. Both passed
 `release.py verify`; no test-fixtures artifacts or variants were published. Checksums are
-recorded in [the rehearsal record](experiments/review-release-rebuild-2026-10-31.json).
+recorded in [the rehearsal record](research/release/review-release-rebuild-2026-10-31.json).
 This is local release verification, not evidence of remote publication or production
 performance. No single-graph timing is used as performance acceptance.
 
@@ -130,15 +159,15 @@ uncontrolled violations. The suite includes real Gradle/Maven repeated-build, ed
 source-deletion, inline-source-position and cache-restoration checks described below,
 plus 36 Git-adapter tests covering persistent leases and checkout correctness.
 
-The current provider passed the [20-run Kotlin matrix](experiments/kotlin-origin/README.md)
+The current provider passed the [20-run Kotlin matrix](research/compiler/README.md)
 with 15 origin records and 16 verified compiler-owned outputs per compilation. Installed
 CLI help confirms `--repository`; all six Python release-helper tests passed. Provider SPI
 packaging and `git diff --check` passed. No production or test source changed after the
 full run; only validation records and PR documentation were updated.
 
 These are correctness gates, not representative multi-graph performance acceptance.
-The current [machine-readable summary](experiments/main-validation.json) records the exact
-counters; the earlier [anonymous-origin result](experiments/anonymous-origin-validation-2026-10-30.json)
+The current [machine-readable summary](research/validation/main-validation.json) records the exact
+counters; the earlier [anonymous-origin result](research/validation/anonymous-origin-validation-2026-10-30.json)
 is preserved separately.
 
 ## JGit migration verification
@@ -219,7 +248,7 @@ Both detection corpora were unfiltered: Java 130 cases and Kotlin 186 cases, wit
 zero false positives, false negatives or blocking diagnostics. Analysis gaps are
 not accepted as true-positive evidence. These are labelled regression fixtures,
 not a production-wide accuracy estimate. The historical machine-readable
-[validation summary](experiments/anonymous-origin-validation-2026-10-30.json) records the counters.
+[validation summary](research/validation/anonymous-origin-validation-2026-10-30.json) records the counters.
 
 The run includes all 32 anonymous-origin pairs (14 FAIL / 18 PASS), four additional
 CRLF/BOM full-engine variants, and the previous 22 generated-source-location cases.
@@ -231,7 +260,7 @@ reads and escaped standard/custom exceptions, then require normalization to bloc
 Method-reference rendering, scalar negative cases, sidecar corruption, inline
 copies, missing debug information and actual Gradle/Maven compilation are covered.
 
-The same-binary [Kotlin provenance matrix](experiments/kotlin-origin/README.md)
+The same-binary [Kotlin provenance matrix](research/compiler/README.md)
 passed 20 real compilations: five compiler/frontend combinations times LF, CRLF,
 CR and BOM+CRLF. Every run verified 15 physical source records and zero unresolved
 records, including astral Unicode, tabs and inline copies. Validation found and
@@ -267,7 +296,7 @@ skipped JUnit tests. The installed CLI help was also verified, including
 The 316 detection scenarios run inside two engine JUnit tests: Java 130
 (60 positive, 70 negative), Kotlin 186 (84 positive, 102 negative). Both corpora
 were unfiltered, with zero false positives, false negatives or blocking diagnostics.
-The machine-readable [previous validation summary](experiments/main-validation-before-anonymous-origins.json)
+The machine-readable [previous validation summary](research/validation/main-validation-before-anonymous-origins.json)
 records the actual test counts, coverage counters and corpus metrics.
 
 An earlier full command exposed an issue in a newly added plugin test harness
@@ -291,7 +320,7 @@ remains **95%**, line minimum 90%, with no production class exclusions. The gate
 wired into `check` and the CI build/publish workflows; it is not merely a reported metric.
 
 The isolated headless UAST candidate and its separate results are described in
-[the UAST evaluation](uast-integration-evaluation.md). UAST is not adopted; these results are historical research, not an outstanding migration gate.
+[the UAST evaluation](research/uast/evaluation.md). UAST is not adopted; these results are historical research, not an outstanding migration gate.
 
 ## Earlier executed gates (before JGit migration)
 

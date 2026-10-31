@@ -3,11 +3,11 @@ package io.johnsonlee.graphfold.engine.origin
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.johnsonlee.graphfold.engine.build.CompiledProject
-import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Backend
-import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Compiler
-import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Kind
-import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.KotlinFrontend
-import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Provenance
+import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Backend
+import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Compiler
+import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Kind
+import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.KotlinFrontend
+import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Provenance
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.ClassNode

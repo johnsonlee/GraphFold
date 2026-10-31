@@ -12,7 +12,7 @@ internal class KotlinBuildAdapter(
     fun compile(checkout: Path, output: Path, classes: Path, sources: List<Path>): List<Path> {
         val dependencies = listOf(classLocation("kotlin.Unit"), classLocation("org.jetbrains.annotations.NotNull"))
         val compilerClasspath = (COMPILER_CLASSES.map(::classLocation) + dependencies).distinct()
-        val plugin = CompilerOriginPlugin.extract(output)
+        val plugin = CompilerOriginPlugin.artifact()
         val arguments = listOf(
             Path.of(System.getProperty("java.home"), "bin", "java").toString(),
             "-cp", compilerClasspath.joinToString(File.pathSeparator), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",

@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.sonatype)
 }
 dependencies {
+    implementation(project(":gfc")) {
+        attributes { attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR)) }
+    }
     implementation(libs.auto.service.annotations)
     ksp(libs.auto.service.ksp)
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
@@ -35,34 +38,6 @@ tasks.withType<Test>().configureEach {
         .withPathSensitivity(PathSensitivity.RELATIVE)
     // Gradle isolates test classloaders; java.class.path need not contain the test runtime.
     systemProperty("graphfold.test.runtimeClasspath", sourceSets.test.get().runtimeClasspath.asPath)
-}
-
-val compilerOriginServices = tasks.register("compilerOriginServices") {
-    val destination = layout.buildDirectory.dir("generated/compiler-origin-services")
-    outputs.dir(destination)
-    doLast {
-        val services = destination.get().dir("META-INF/services").asFile.apply { mkdirs() }
-        mapOf(
-            "com.sun.source.util.Plugin" to "io.johnsonlee.graphfold.engine.origin.javac.GraphFoldOrigins",
-            "org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar" to
-                "io.johnsonlee.graphfold.engine.origin.kotlin.KotlinOriginRegistrar",
-            "org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor" to
-                "io.johnsonlee.graphfold.engine.origin.kotlin.KotlinOriginCommandLineProcessor",
-        ).forEach { (service, provider) -> services.resolve(service).writeText("$provider\n") }
-    }
-}
-val compilerOriginJar = tasks.register<Jar>("compilerOriginJar") {
-    archiveFileName.set("compiler-plugin.jar")
-    destinationDirectory.set(layout.buildDirectory.dir("compiler-origin"))
-    dependsOn(tasks.named("compileJava"), tasks.named("compileKotlin"))
-    from(sourceSets.main.get().output.classesDirs) {
-        include("io/johnsonlee/graphfold/engine/origin/javac/**", "io/johnsonlee/graphfold/engine/origin/kotlin/**",
-            "io/johnsonlee/graphfold/engine/origin/protocol/**")
-    }
-    from(compilerOriginServices)
-}
-tasks.named<ProcessResources>("processResources") {
-    from(compilerOriginJar) { into("engine/origin") }
 }
 
 // Shared regression helpers are local build variants, not part of the public engine SDK.

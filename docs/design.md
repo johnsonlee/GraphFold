@@ -62,6 +62,7 @@ AB 是一个外部适配场景：PR title 中的 JIRA ticket 可以用于查询�
 
 ```text
 GraphFold/
+├── gfc/
 ├── engine/
 ├── cli/
 ├── gradle-plugin/
@@ -72,16 +73,24 @@ GraphFold/
 flowchart LR
     CLI[CLI] --> E[Engine]
     GP[Gradle Plugin] --> E
+    E --> CP[Compiler Plugin]
     E --> G[Graphite JVM modules]
 ```
 
 | 模块 | 职责 |
 | --- | --- |
+| `gfc` | javac/Kotlin 编译来源采集、共享来源协议；包名 `io.johnsonlee.graphfold.compiler` |
 | `engine` | Git/隔离 checkout、diff、构建适配、折叠编排、比较、源码归因、结果模型 |
 | `cli` | 命令行解析、输入校验、报告输出、退出码；直接调用引擎 |
 | `gradle-plugin` | 配置 DSL、task、Gradle 生命周期集成；直接调用引擎 |
 
 CLI 和 Gradle plugin 不互相调用，不复制分析逻辑。引擎不依赖 Gradle API，也不在核心规则中硬编码 AB SDK。
+
+四个模块共享同一个版本号、同一次发布。engine 声明同版本 `gfc` 依赖，并直接定位解析出的 JAR；CLI 分发包携带该独立 JAR，Gradle plugin 通过传递依赖取得它。不再从 engine 编译结果筛选插件类或内嵌插件 JAR。发布门禁验证插件 SPI、engine POM 的同版本依赖及 CLI 分发包中的插件版本。javac 入口和共享协议只依赖 JDK，Kotlin compiler API 为 compile-only，由被分析项目的编译器提供。
+
+所有运行时 SPI 统一使用 `@AutoService` 注解，由 KSP 生成注册文件：engine 的 `SnapshotExtension`，以及 gfc 的 javac 入口、Kotlin registrar 和 command-line processor。不维护手写的 `META-INF/services` 配置。
+
+Gradle 和直接 Kotlin 编译使用解析出的插件 JAR；Maven 为保留既有 annotation processor 配置并支持本地构建，将相同 JAR 按内容摘要暂存到分析工作区的本地 Maven 仓库。该内部坐标只用于缓存隔离，不是独立发布的插件版本。来源 schema、runId 和源码/class hash 校验继续保留，用于识别陈旧或不完整的产物；同步发布不替代目标 JDK、Kotlin 编译器及第三方插件组合的兼容性验证。
 
 Git 采用 JGit 与共享对象的隔离 checkout；CLI 采用 Clikt。认证集成的验证边界见第 4 节；submodule 与 Git LFS 尚未建立完整产物模型，检测到时阻断。
 
@@ -503,7 +512,7 @@ Java 源码定位为首版重点。其他 JVM 语言、注解生成代码、无�
                  Git 变更清单
 ```
 
-源码适配器负责声明、表达式及物理文本范围；Graphite/Jimple 负责字节码行为分析。源码语法视图不作为行为等价判据。位置来自原始文件范围，不从合成声明或字节码行表猜测列号。UAST 的历史运行时和定位评估见 [调研记录](uast-integration-evaluation.md)。
+源码适配器负责声明、表达式及物理文本范围；Graphite/Jimple 负责字节码行为分析。源码语法视图不作为行为等价判据。位置来自原始文件范围，不从合成声明或字节码行表猜测列号。UAST 的历史运行时和定位评估见 [调研记录](research/uast/evaluation.md)。
 
 现有源码适配器仍须结合实际编译产物，持续建设和验证以下来源关联：
 
@@ -525,7 +534,7 @@ Java 源码定位为首版重点。其他 JVM 语言、注解生成代码、无�
 | 仅字节码行号 + diff | 接入简单 | 无法可靠定位列或同一行多个表达式 | 不满足输出契约，不作为正式方案 |
 | 编译阶段额外来源记录 | 从真实生成类取得匿名对象来源，不依赖生成名称和行表 | 接入构建并限制编译器版本；不等于逐条 IR 来源 | 匿名类采用编译插件 sidecar，其他生成成员保留现有适配 |
 
-headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token 遍历，避免依赖 IDE 的 PSI copy/replace 扩展点。headless UAST 的隔离整合验证见 [评估报告](uast-integration-evaluation.md)，已决定不采用，实验不作为待完成的迁移任务。Kotlin 方法使用 PSI 声明范围、ASM 方法名和行表匹配实际 JVM descriptor，字段使用真实字节码清单；不猜测 suspend/default/extension 的生成签名。歧义声明回退至对应 owner 的 CLASS obligation，缺失 SourceFile 或 owner 会阻断；回退扩大了比较范围，可能增加误报。精确报告位置仍来自文本 diff 与源码范围，不来自行表推算列号。
+headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token 遍历，避免依赖 IDE 的 PSI copy/replace 扩展点。headless UAST 的隔离整合验证见 [评估报告](research/uast/evaluation.md)，已决定不采用，实验不作为待完成的迁移任务。Kotlin 方法使用 PSI 声明范围、ASM 方法名和行表匹配实际 JVM descriptor，字段使用真实字节码清单；不猜测 suspend/default/extension 的生成签名。歧义声明回退至对应 owner 的 CLASS obligation，缺失 SourceFile 或 owner 会阻断；回退扩大了比较范围，可能增加误报。精确报告位置仍来自文本 diff 与源码范围，不来自行表推算列号。
 
 按变更文件及证明所需依赖延迟加载源码索引，不为所有依赖展开完整源码 AST。PSI 的文本和范围访问可能触发 AST 加载，必须控制生命周期；这是架构上的资源约束，不是尚未测量的性能承诺。参见 [PSI Performance](https://plugins.jetbrains.com/docs/intellij/psi-performance.html)。
 
@@ -557,7 +566,7 @@ headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token �
   → typed 字节码/metadata 归一化 → Graphite 折叠与比较
 ```
 
-**编译记录。** javac 在 attribution 后读取 `Elements.getBinaryName`，并用生成事件确认输出；Kotlin 插件从实际 JVM class generation 读取 emitted owner 与 IR 源码范围。inline 复制通过 provenance 身份绑定的临时不可见 annotation 传播定义来源。编译完成后写入 sidecar；直接编译、Gradle 和 Maven 适配器都接入该插件。Gradle 保留项目的增量编译与 build cache 配置，不设置 `incremental=false`、强制执行或禁止缓存。编译插件的内容摘要作为稳定 provenance 身份，插件路径位于 checkout 的 `.gradle/graphfold/`；每个编译 task 在自己的 `build/graphfold/origins/<task>/` 中保存声明的输出。增量编译产生的 owner 覆盖旧记录，未重编译的 owner 必须同时通过源码 hash 与 class hash 校验；已删除 class 的记录被移除。编译成功后再发布完整 manifest；失败或缺失的记录不能通过旧 manifest 放行。`UP-TO-DATE` 和 `FROM-CACHE` 的 classes 与 provenance 一起接受校验，再导出到本次分析的独立目录。Maven 使用临时配置覆盖并在 finally 恢复 POM。
+**编译记录。** javac 在 attribution 后读取 `Elements.getBinaryName`，并用生成事件确认输出；Kotlin 插件从实际 JVM class generation 读取 emitted owner 与 IR 源码范围。inline 复制通过 provenance 身份绑定的临时不可见 annotation 传播定义来源。编译完成后写入 sidecar；直接编译、Gradle 和 Maven 适配器都接入该插件。Gradle 保留项目的增量编译与 build cache 配置，不设置 `incremental=false`、强制执行或禁止缓存。编译插件的内容摘要作为稳定 provenance 身份，插件路径直接指向同版本依赖 JAR；每个编译 task 在自己的 `build/graphfold/origins/<task>/` 中保存声明的输出。增量编译产生的 owner 覆盖旧记录，未重编译的 owner 必须同时通过源码 hash 与 class hash 校验；已删除 class 的记录被移除。编译成功后再发布完整 manifest；失败或缺失的记录不能通过旧 manifest 放行。`UP-TO-DATE` 和 `FROM-CACHE` 的 classes 与 provenance 一起接受校验，再导出到本次分析的独立目录。Maven 使用临时配置覆盖并在 finally 恢复 POM。
 
 Kotlin inline 副本还依赖定义的物理源码身份：只在定义前增加空行时，KGP 可能认为 inline 语义未变，不重编译调用方，但旧副本的来源 hash／offset 已过期。因此为每个 Kotlin 编译 task 增加 `inlineSources` 插件参数，覆盖本 task，以及逐层遍历各项目自身 compile classpath 得到的项目依赖闭包中的 inline 来源文件；这包括调用方 classpath 不直接暴露的 `implementation` 依赖。这些文件的路径／内容摘要变化时，由 Gradle/KGP 的正常输入失效机制重编译受影响的 task；其它普通源码编辑保持增量编译，无关项目继续 UP-TO-DATE。识别采用保守的 `inline` token 筛选、文件粒度 hash，包含该 token 的注释／字符串或同文件其它声明的编辑也可能多触发一次受影响 task 的重编译；不会靠猜测偏移修补旧来源记录。
 
@@ -573,7 +582,7 @@ Maven 同样保留项目配置的增量编译；配置未变且上次构建完�
 
 默认 `Object.toString()`、对象字符串化、序列化及显式栈捕获（Throwable、Thread、StackWalker）等操作可能观察到真实类名；存在相关路径时不能把重编号当作等价。守卫同时检查直接调用和 invokedynamic 中的方法引用；通过实际继承关系识别 Throwable 构造，包含返回给外部调用方、稍后读取栈的异常对象，未知继承关系也会阻断。对象字符串化现在使用方法内 ASM 数据流分析：跟踪具体分配、局部变量别名、栈、强制转换和分支合流；只有所有可能值均可证明安全时才收窄守卫。未改名且没有自定义 `toString`/`hashCode` 或接口行为的具体分配、最终标量类型，以及支持 null 的静态转换调用中的 null 可以通过。实例接收者还必须可证明非 null，避免忽略异常栈中的 owner；类型声明不是具体分配，cast 不会把未知引用变成已知。绑定方法引用须有已知 bootstrap、唯一实例目标和安全接收者；字符串拼接还检查 bootstrap 常量。字段读取、一般跨方法返回值、引用数组及集合元素保持未知。可变字符串构造器、格式化及控制台输出保留守卫：局部对象身份不能证明其堆状态、参数前提及虚调用覆盖行为。分析失败或不可达指令缺少 frame 时保持阻断。栈捕获不取决于被打印对象，序列化也有独立合同，因此这两类守卫继续保守执行；尚未实现跨过程 points-to 或通用堆/容器模型，仍可能过度阻断。既有反射、动态加载和外部对象逃逸限制也继续生效。此处证明的是受声明模型约束的程序表示等价，不是任意 JVM 可观察行为的完全等价。
 
-**Kotlin 兼容性必须分层声明。** 相同 provider binary 已实测 1.9.20/K1、2.0.21/K2、2.1.20/K2、2.2.10/K2，以及 2.1.20 使用 language 1.9/K1；覆盖同一行多个 object、嵌套、初始化器、companion、inline 复制与 suspend callback。每个组合都验证 LF、CRLF、CR、BOM+CRLF 四种输入，共 20 次成功编译，每次产生 15 条已核对的物理来源记录且无 unresolved；未支持版本（测试 1.9.0）明确拒绝。可复现脚本与日志见 [编译器验证](experiments/kotlin-origin/README.md)。这只证明来源捕获，不证明不同编译器的 lowering 产物行为等价。当前 metadata 归一化最高验证至 2.1 schema；2.2 来源捕获成功不代表 2.2 的完整检测已支持。contracts、type aliases、类型 annotation 的额外 metadata 模型尚未实现，遇到时明确阻断。
+**Kotlin 兼容性必须分层声明。** 相同 provider binary 已实测 1.9.20/K1、2.0.21/K2、2.1.20/K2、2.2.10/K2，以及 2.1.20 使用 language 1.9/K1；覆盖同一行多个 object、嵌套、初始化器、companion、inline 复制与 suspend callback。每个组合都验证 LF、CRLF、CR、BOM+CRLF 四种输入，共 20 次成功编译，每次产生 15 条已核对的物理来源记录且无 unresolved；未支持版本（测试 1.9.0）明确拒绝。可复现脚本与日志见 [编译器验证](research/compiler/README.md)。这只证明来源捕获，不证明不同编译器的 lowering 产物行为等价。当前 metadata 归一化最高验证至 2.1 schema；2.2 来源捕获成功不代表 2.2 的完整检测已支持。contracts、type aliases、类型 annotation 的额外 metadata 模型尚未实现，遇到时明确阻断。
 
 验收同时覆盖正例与反例：新增 32 组 Java/Kotlin 配对 fixture，包含重编号、同一行多个对象、重复对象、嵌套、字段/实例/静态初始化、super 构造参数、受 gate 控制和未调用代码；另有真实编译的缺失调试信息、损坏 sidecar、inline 副本及原始 Cypher 选点测试。22 组历史生成符号定位 fixture 仍保留。最新全量测试与各模块 95% 分支硬门禁状态以 [validation.md](validation.md) 为准，不能以单独的编译器探针替代全链路验收。
 
@@ -790,7 +799,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 
 以下描述当前实现及其限制。已执行的回归与门禁结果见 [validation.md](validation.md)，不代表对任意生产仓库的能力保证。
 
-- 三个模块共享同一 SDK 判定逻辑；CLI 使用 Clikt，Gradle task 使用隔离 Worker，避免宿主 Gradle 的依赖版本污染分析器。
+- CLI 和 Gradle plugin 共享 engine 的同一 SDK 判定逻辑；gfc 只负责来源采集；CLI 使用 Clikt，Gradle task 使用隔离 Worker，避免宿主 Gradle 的依赖版本污染分析器。
 - Git 使用 JGit 7.8、共享 bare object cache 与 alternates checkout，原始 blob materialization 不调用 checkout hook 或 smudge filter。Git 可执行文件不是运行前提；无 Git 的测试及清理验证结果以 validation.md 为准。checkout 使用持久排他租约，关闭后保留增量状态；进程退出释放文件锁，但任意崩溃点恢复、磁盘配额和自动淘汰尚未完整验收，不提供未经测量的大仓库内存或吞吐 SLA。
 - Java 使用 JavaParser；Kotlin 使用固定 2.1.20 的 headless PSI，并从 ASM 清单获取实际 JVM 身份。不采用 UAST。统一使用 UTF-16、一基、结束位置不包含的坐标；Kotlin 歧义映射可回退 CLASS obligation，缺失 ownership 则阻断。
 - 构建适配包含约定布局的 Java/Kotlin/混合源码、Gradle wrapper 与 Maven。任意 compiler plugin、生成器、Multiplatform、自定义 source set、依赖锁定及环境 provenance 不属于已验证的通用保证。

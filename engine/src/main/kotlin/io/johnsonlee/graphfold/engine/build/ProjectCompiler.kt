@@ -1,7 +1,7 @@
 package io.johnsonlee.graphfold.engine.build
 
 import com.sun.source.util.JavacTask
-import io.johnsonlee.graphfold.engine.origin.javac.GraphFoldOrigins
+import io.johnsonlee.graphfold.compiler.javac.GraphFoldOrigins
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration

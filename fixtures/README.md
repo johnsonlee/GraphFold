@@ -114,7 +114,7 @@ separate named callers and requires diagnostics for indistinguishable copies ins
 one caller. These tests are not additional detection-corpus accuracy samples.
 
 The compiler-version source-mapping matrix lives in
-[the reproducible Kotlin probe](../docs/experiments/kotlin-origin/README.md).
+[the reproducible Kotlin probe](../docs/research/compiler/README.md).
 It does not claim cross-compiler behavioral equivalence. Final execution and coverage
 evidence belongs in [the validation record](../docs/validation.md).
 

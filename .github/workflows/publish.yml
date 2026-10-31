@@ -41,7 +41,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Exercise signed publication upload gate
         run: python3 .github/scripts/verify-publication-gate.py
-      - name: Verify and stage all publications
+      - name: Verify and stage synchronized engine and compiler plugin publications
         run: |
           ./gradlew clean check :cli:installDist :cli:distZip :cli:distTar publishAllPublicationsToReleaseVerificationRepository --no-daemon --stacktrace -Pversion="$RELEASE_VERSION"
           python3 .github/scripts/release.py verify build/repository "$RELEASE_VERSION"
@@ -79,7 +79,7 @@ jobs:
           (cd release-assets && sha256sum -c SHA256SUMS)
           mkdir verified
           tar -xzf "release-assets/graphfold-maven-$RELEASE_VERSION.tar.gz" -C verified
-      - name: Publish signed modules and plugin marker to Central
+      - name: Publish signed modules and plugin marker together to Central
         env:
           GPG_KEY_ARMOR: ${{ secrets.GPG_KEY_ARMOR }}
           ORG_GRADLE_PROJECT_signingKeyId: ${{ secrets.GPG_KEY_ID }}
