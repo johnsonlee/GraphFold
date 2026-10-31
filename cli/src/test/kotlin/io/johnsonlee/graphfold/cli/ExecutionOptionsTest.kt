@@ -1,6 +1,7 @@
 package io.johnsonlee.graphfold.cli
 
 import com.github.ajalt.clikt.testing.test
+import io.johnsonlee.graphfold.engine.DiagnosticCode
 import io.johnsonlee.graphfold.engine.AnalysisMetadata
 import io.johnsonlee.graphfold.engine.AnalysisResult
 import io.johnsonlee.graphfold.engine.AnalysisStage
@@ -88,12 +89,12 @@ class ExecutionOptionsTest {
 
     @Test
     fun `capacity timeout is retryable while other operational errors take precedence`() {
-        val capacity = Diagnostic(AnalysisStage.GIT, "WORKSPACE_CAPACITY_TIMEOUT", "No checkout available")
+        val capacity = Diagnostic(AnalysisStage.GIT, DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT, "No checkout available")
         assertStatus(3, listOf(capacity))
-        assertStatus(3, listOf(capacity, Diagnostic(AnalysisStage.GRAPH, "gap", "Analysis incomplete")))
-        assertStatus(2, listOf(capacity, Diagnostic(AnalysisStage.BUILD, "failed", "Compilation failed")))
-        assertStatus(2, listOf(capacity, Diagnostic(AnalysisStage.GIT, "invalid", "Invalid revision")))
-        assertStatus(3, listOf(capacity, Diagnostic(AnalysisStage.BUILD, "note", "Build note", false)))
+        assertStatus(3, listOf(capacity, Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, "Analysis incomplete")))
+        assertStatus(2, listOf(capacity, Diagnostic(AnalysisStage.BUILD, DiagnosticCode.ANALYSIS_FAILED, "Compilation failed")))
+        assertStatus(2, listOf(capacity, Diagnostic(AnalysisStage.GIT, DiagnosticCode.ANALYSIS_FAILED, "Invalid revision")))
+        assertStatus(3, listOf(capacity, Diagnostic(AnalysisStage.BUILD, DiagnosticCode.ANALYSIS_FAILED, "Build note", false)))
         assertStatus(0, listOf(capacity.copy(blocking = false)))
         assertStatus(1, listOf(capacity.copy(stage = AnalysisStage.GRAPH)))
         assertStatus(2, listOf(capacity.copy(stage = AnalysisStage.INPUT)))

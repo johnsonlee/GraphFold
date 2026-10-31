@@ -3,6 +3,13 @@ import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 import java.security.MessageDigest
 
+enum GraphFoldInputKind {
+    CLASSES('classes'), SOURCE('source'), DEPENDENCY('dependency'), SOURCE_OUTPUT('sourceOutput');
+
+    final String tag
+    GraphFoldInputKind(String tag) { this.tag = tag }
+}
+
 def originPlugin = new File(System.getProperty('graphfold.origin.plugin'))
 def originOutput = new File(System.getProperty('graphfold.origin.output'))
 def originRunId = System.getProperty('graphfold.origin.runId')
@@ -146,20 +153,20 @@ gradle.projectsEvaluated {
                 }
             }
             def lines = []
-            def record = { kind, file ->
-                lines.add(kind + '|' + file.absolutePath.getBytes('UTF-8').encodeBase64().toString())
+            def record = { GraphFoldInputKind kind, file ->
+                lines.add(kind.tag + '|' + file.absolutePath.getBytes('UTF-8').encodeBase64().toString())
             }
             projects.each { project ->
                 def main = project.sourceSets.main
-                main.output.classesDirs.files.each { record('classes', it) }
+                main.output.classesDirs.files.each { record(GraphFoldInputKind.CLASSES, it) }
                 main.allSource.srcDirs.each { source ->
-                    record('source', source)
+                    record(GraphFoldInputKind.SOURCE, source)
                     main.output.classesDirs.files.each { classes ->
-                        lines.add('sourceOutput|' + source.absolutePath.getBytes('UTF-8').encodeBase64().toString() +
+                        lines.add(GraphFoldInputKind.SOURCE_OUTPUT.tag + '|' + source.absolutePath.getBytes('UTF-8').encodeBase64().toString() +
                             '|' + classes.absolutePath.getBytes('UTF-8').encodeBase64().toString())
                     }
                 }
-                main.compileClasspath.files.each { record('dependency', it) }
+                main.compileClasspath.files.each { record(GraphFoldInputKind.DEPENDENCY, it) }
             }
             new File(System.getProperty('graphfold.export.path')).setText(lines.join('\n'), 'UTF-8')
         }

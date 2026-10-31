@@ -120,6 +120,18 @@ scenarios:
 
 规则表达的是用户授权的假定；过宽的查询也会产生过宽的假定。引擎记录实际选点供审计，并验证规则中的参数约束，但不能凭业务知识证明用户声明的假定正确。
 
+有限的预定义状态和 code 在内部使用 enum；外部 JSON、CLI 与构建协议中的字符串在边界解析/编码。该约定也适用于 Git 变更类型、Gradle 导出记录类型、编译器来源类型/前端、方法修饰符和 CLI 报告格式。Git rename/copy 的相似度是独立数值，不编码进类型字符串。未知协议标签会显式拒绝，不静默忽略。路径、符号名、JVM 描述符及自由文本诊断仍是字符串。
+
+| 内部领域 | 类型 | 外部表示 |
+| --- | --- | --- |
+| diagnostic code | `DiagnosticCode` | 既有大写 code 名称 |
+| Git 文件变化 | `GitChangeType` | rename/copy 相似度单独保存在 `similarityScore` |
+| Gradle 导出记录 | `GradleInputKind` | 保留 `classes` / `source` / `dependency` / `sourceOutput` 标签 |
+| 编译器与来源 | `OriginProtocol` 中的 compiler/backend/frontend/kind/provenance enums | 保留原 manifest 与 bytecode marker 值；共享类型只依赖 JDK |
+| 方法修饰符 | SootUp `MethodModifier` | 仅生成 canonical 文本时按名称排序并编码 |
+| 来源对齐版本 | `Revision` | 诊断文字和既有 hash 输入仍编码为小写 base/head |
+| CLI 报告格式 | `ReportFormat` | 保留 `--format json` / `--format text` |
+
 ### 3.2 结果模型
 
 以下展示已实现模型的核心字段；完整定义以 engine 的 `AnalysisModel.kt` 为准：
@@ -175,7 +187,7 @@ Finding 分类：
 | `UNCONTROLLED_CHANGE` | 已确认本次变化在折叠后仍存活且不等价 | 是 |
 | `UNVERIFIABLE_CHANGE` | 已定位本次变化，但无法证明其受控或等价 | 是 |
 
-构建失败、Git 失败、源码映射失败等使用阻断 diagnostic，不虚构源码位置或业务 violation。即使 findings 为空，只要有阻断 diagnostic，verdict 仍为 `FAIL`。
+构建失败、Git 失败、源码映射失败等使用阻断 diagnostic，不虚构源码位置或业务 violation。`Diagnostic.code` 使用 `DiagnosticCode` enum；引擎、CLI 和 Gradle plugin 均按 enum 分支，不比较 hardcoded 字符串。JSON 仍序列化为既有 code 名称，Schema 枚举值与模型通过测试核对。即使 findings 为空，只要有阻断 diagnostic，verdict 仍为 `FAIL`。
 
 当前 Metadata 记录解析后的 SHA、Graphite 版本、场景和 obligation/证明完成数量。编译器版本、规则摘要、构建产物身份与完整 provenance 仍是待补的审计信息，不能声称已经输出。Finding ID 使用内容摘要，不依赖图节点编号。
 

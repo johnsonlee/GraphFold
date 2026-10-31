@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin.kotlin
 
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.KotlinFrontend
 import java.nio.file.Path
 import org.jetbrains.kotlin.backend.jvm.extensions.ClassGenerator
 import org.jetbrains.kotlin.backend.jvm.extensions.ClassGeneratorExtension
@@ -28,7 +29,7 @@ class KotlinOriginRegistrar : CompilerPluginRegistrar() {
             "Unsupported GraphFold Kotlin provenance compiler: ${KotlinCompilerVersion.VERSION}"
         }
         val collector = KotlinOriginCollector(Path.of(output), KotlinCompilerVersion.VERSION,
-            if (configuration.getBoolean(CommonConfigurationKeys.USE_FIR)) "K2" else "K1", runId)
+            if (configuration.getBoolean(CommonConfigurationKeys.USE_FIR)) KotlinFrontend.K2 else KotlinFrontend.K1, runId)
         collector.start()
         registerOutputCapture(configuration, collector)
         ClassGeneratorExtension.registerExtension(object : ClassGeneratorExtension {

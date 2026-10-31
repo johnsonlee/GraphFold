@@ -4,6 +4,31 @@ Date: 2026-10-31. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
 
+## Typed statuses and codes: full quality gate (2026-10-31)
+
+The unfiltered command `./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :cli:installDist --continue --console=plain` passed in 19m 55s.
+All **667 JUnit tests passed**, with zero failures, errors or skips. The unchanged
+per-module **95% branch / 90% line hard gates** passed without production exclusions.
+These are full-suite counters, not merged targeted runs.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| engine | 615 | 99.1143% | 95.4588% (3048/3193) |
+| cli | 24 | 98.5915% | 96.6667% (29/30) |
+| gradle-plugin | 28 | 100.0000% | 100.0000% (16/16) |
+
+Regression coverage includes enum-backed diagnostic and Git change codes, separate
+rename similarity, strict typed Gradle export records, CLI format conversion, all nine
+report enum/schema contracts, and compiler-origin protocol validation. The provider's
+shared enums load in a JDK-only isolated classloader. Java 130 and Kotlin 186 corpus
+cases remain correct, and all 316 actual reports pass the JSON Schema.
+
+The current provider passed the [20-run Kotlin compiler matrix](experiments/kotlin-origin/verified-enums-2026-10-31.log),
+including K1/K2 and four physical encodings; unsupported 1.9.0 was rejected.
+This is correctness and compiler-hook compatibility evidence, not representative
+multi-graph performance acceptance. The previous 657-test result is preserved in
+[its historical record](experiments/fold-audit-validation-before-enums-2026-10-31.json).
+
 ## PR review: capacity, version and fold audit quality gate (2026-10-31)
 
 The unfiltered command passed in 20m 51s:

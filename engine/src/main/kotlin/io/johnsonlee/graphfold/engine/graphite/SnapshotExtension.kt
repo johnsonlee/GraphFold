@@ -40,7 +40,8 @@ internal class SnapshotSink(private val ignoredFields: Set<String> = emptySet())
         ).joinToString("\n")
         for (method in type.methods) {
             val identity = context.toMethodDescriptor(method).identity
-            val modifiers = method.modifiers.map { it.name }.toSortedSet()
+            val modifiers = method.modifiers.toSet()
+            val canonicalModifiers = modifiers.map { it.name }.sorted().joinToString(",")
             val body = if (method.hasBody()) method.body else null
             val calls = body?.stmts.orEmpty().mapNotNull { stmt ->
                 if (!stmt.isInvokableStmt) null else stmt.asInvokableStmt().invokeExpr.orElse(null)?.methodSignature
@@ -49,9 +50,9 @@ internal class SnapshotSink(private val ignoredFields: Set<String> = emptySet())
                     jvmMethodDescriptor(signature.parameterTypes.map { it.toString() }, signature.type.toString())
             }.toSet()
             val lines = body?.stmts.orEmpty().map { it.positionInfo.stmtPosition.firstLine }.filter { it > 0 }.toSet()
-            val canonical = modifiers.joinToString(",") + "\n" + (body?.let { canonicalBody(it) } ?: "NO_BODY")
+            val canonical = canonicalModifiers + "\n" + (body?.let { canonicalBody(it) } ?: "NO_BODY")
             val references = mutableListOf<String>()
-            val normalized = modifiers.joinToString(",") + "\n" +
+            val normalized = canonicalModifiers + "\n" +
                 (body?.let { canonicalBody(it, references, ignoredFields, identity) } ?: "NO_BODY")
             check(methods.put(identity, MethodSnapshot(identity, canonical, calls, modifiers, lines, normalized, references)) == null) {
                 "Duplicate method identity $identity"

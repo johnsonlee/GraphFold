@@ -1,6 +1,7 @@
 package io.johnsonlee.graphfold.engine.origin.kotlin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.KotlinFrontend
 import java.nio.file.Files
 import java.nio.file.Path
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
@@ -151,7 +152,7 @@ class KotlinOriginRegistrationTest {
         if (messages != null) put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, messages)
     }
 
-    private fun collector() = KotlinOriginCollector(temporary.resolve("origins"), "2.1.20", "K2", "registration-test")
+    private fun collector() = KotlinOriginCollector(temporary.resolve("origins"), "2.1.20", KotlinFrontend.K2, "registration-test")
 
     private fun outputMessage(source: Path, output: String): String = OutputMessageUtil.formatOutputMessage(
         listOf(source.toFile()), temporary.resolve("classes").resolve(output).toFile(),

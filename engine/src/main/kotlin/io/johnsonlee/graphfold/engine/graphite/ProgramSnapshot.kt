@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import sootup.core.model.MethodModifier
 /** Structural evidence, not a proof that differing representations differ in behavior. */
 data class ProgramSnapshot(
     val methods: Map<String, MethodSnapshot>,
@@ -20,7 +21,7 @@ data class MethodSnapshot(
     val identity: String,
     val canonical: String,
     val calls: Set<String>,
-    val modifiers: Set<String>,
+    val modifiers: Set<MethodModifier>,
     val lines: Set<Int>,
     val referenceCanonical: String = canonical,
     val references: List<String> = emptyList(),

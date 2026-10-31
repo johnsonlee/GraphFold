@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
+import sootup.core.model.MethodModifier
 import io.johnsonlee.graphfold.engine.graphite.FieldSnapshot
 import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
 import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
@@ -53,7 +54,7 @@ class PrivateMemberAlignmentTest {
         val b = helper("Example.b()I")
         assertTrue(PrivateMemberAlignment(snapshot(before), snapshot(a, b)).names.isEmpty())
         assertTrue(PrivateMemberAlignment(snapshot(a, b), snapshot(before)).names.isEmpty())
-        assertTrue(PrivateMemberAlignment(snapshot(before.copy(modifiers = setOf("PUBLIC"))), snapshot(a)).names.isEmpty())
+        assertTrue(PrivateMemberAlignment(snapshot(before.copy(modifiers = setOf(MethodModifier.PUBLIC))), snapshot(a)).names.isEmpty())
         assertTrue(PrivateMemberAlignment(snapshot(before), snapshot(a.copy(identity = "Other.a()I"))).names.isEmpty())
         assertTrue(PrivateMemberAlignment(snapshot(before), snapshot(a.copy(identity = "Example.a(I)I"))).names.isEmpty())
         val field = FieldSnapshot("Example.old:I", "private", "1", false)
@@ -89,7 +90,7 @@ class PrivateMemberAlignmentTest {
     @Test
     fun `uncalled added method is unreachable even in a reachable owner`() {
         val base = snapshot(root())
-        val added = helper("Example.added()I").copy(modifiers = setOf("PUBLIC"))
+        val added = helper("Example.added()I").copy(modifiers = setOf(MethodModifier.PUBLIC))
         val head = snapshot(root(), added)
         val comparison = SnapshotComparison(base, head)
         assertTrue(comparison.isUnreachable(obligation(added.identity)))
@@ -98,11 +99,11 @@ class PrivateMemberAlignmentTest {
 
     @Test
     fun `anonymous callbacks require an allocation while public entry owners retain static initialization`() {
-        val callback = helper("Example\$1.run()I").copy(modifiers = setOf("PUBLIC"))
+        val callback = helper("Example\$1.run()I").copy(modifiers = setOf(MethodModifier.PUBLIC))
         val base = snapshot(root(), callback).copy(entryClasses = setOf("Example"))
         val head = base.copy(methods = base.methods + (callback.identity to callback.copy(referenceCanonical = "changed")))
         assertTrue(SnapshotComparison(base, head).differences(obligation(root().identity)).isEmpty())
-        val initializer = helper("Example.<clinit>()V").copy(modifiers = setOf("STATIC"))
+        val initializer = helper("Example.<clinit>()V").copy(modifiers = setOf(MethodModifier.STATIC))
         val before = snapshot(root(), initializer)
         val after = snapshot(root(), initializer.copy(referenceCanonical = "observable side effect"))
         assertTrue(SnapshotComparison(before, after).differences(obligation(root().identity)).isNotEmpty())
@@ -111,7 +112,7 @@ class PrivateMemberAlignmentTest {
     @Test
     fun `new framework entry cannot be classified as uncalled`() {
         val base = snapshot(root())
-        val added = helper("Example.handler()I").copy(modifiers = setOf("PUBLIC"))
+        val added = helper("Example.handler()I").copy(modifiers = setOf(MethodModifier.PUBLIC))
         val head = snapshot(root(), added).copy(externalEntries = setOf(added.identity))
         val comparison = SnapshotComparison(base, head)
         assertFalse(comparison.isUnreachable(obligation(added.identity)))
@@ -175,11 +176,11 @@ class PrivateMemberAlignmentTest {
         assertEquals(before.indices.associate { after[it].identity to before[it].identity }, alignment.names)
     }
 
-    private fun helper(identity: String) = MethodSnapshot(identity, "body", emptySet(), setOf("PRIVATE"), emptySet())
+    private fun helper(identity: String) = MethodSnapshot(identity, "body", emptySet(), setOf(MethodModifier.PRIVATE), emptySet())
 
     private fun root(reference: String? = null): MethodSnapshot = MethodSnapshot(
         "Example.run()I", "body", if (reference == null || '(' !in reference) emptySet() else setOf(reference),
-        setOf("PUBLIC"), emptySet(), "root @member0", listOfNotNull(reference),
+        setOf(MethodModifier.PUBLIC), emptySet(), "root @member0", listOfNotNull(reference),
     )
 
     private fun snapshot(vararg methods: MethodSnapshot) = ProgramSnapshot(

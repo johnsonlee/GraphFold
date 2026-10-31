@@ -72,9 +72,16 @@ data class Finding(
     }
 }
 
+/** Stable machine-readable diagnostic identities; JSON uses these enum names unchanged. */
+enum class DiagnosticCode {
+    WORKSPACE_CAPACITY_TIMEOUT, ANALYSIS_CANCELLED, ANALYSIS_FAILED,
+    UNVERIFIED_ORIGIN, INCOMPLETE_GRAPH, UNMATCHED_RULE, UNMAPPED_CHANGE,
+    SOURCE_RESOLUTION_FAILED, UNLOCATED_MOVE_DIFFERENCE,
+}
+
 data class Diagnostic(
     val stage: AnalysisStage,
-    val code: String,
+    val code: DiagnosticCode,
     val message: String,
     val blocking: Boolean = true,
 )

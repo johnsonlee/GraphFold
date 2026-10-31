@@ -4,7 +4,6 @@ import java.nio.file.Files
 import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT
 import java.nio.file.Path
 import java.time.Duration
-import java.util.Base64
 
 internal class GradleBuildAdapter(
     private val timeout: Duration, private val environmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
@@ -35,23 +34,14 @@ internal class GradleBuildAdapter(
                 timeout, environmentAllowlist,
             )
             checkBuild(Files.exists(manifest), "Gradle did not export analysis inputs")
-            val lines = Files.readAllLines(manifest)
-            val entries = lines.filterNot { it.startsWith("sourceOutput|") }.map { line ->
-                val parts = line.split('|', limit = 2)
-                checkBuild(parts.size == 2, "Invalid Gradle input export")
-                parts[0] to Path.of(String(Base64.getDecoder().decode(parts[1]), Charsets.UTF_8))
-            }
-            val outputs = entries.filter { it.first == "classes" }.map { it.second }
-            val roots = entries.filter { it.first == "source" }.map { it.second }.filter(Files::isDirectory)
-            val dependencies = entries.filter { it.first == "dependency" }.map { it.second }
+            val entries = parseGradleInputs(Files.readAllLines(manifest))
+            val outputs = entries.filter { it.kind == GradleInputKind.CLASSES }.map { it.paths.single() }
+            val roots = entries.filter { it.kind == GradleInputKind.SOURCE }.map { it.paths.single() }.filter(Files::isDirectory)
+            val dependencies = entries.filter { it.kind == GradleInputKind.DEPENDENCY }.map { it.paths.single() }
                 .filterNot { it in outputs }.distinct()
             checkBuild(dependencies.all { Files.exists(it) }, "Gradle exported missing dependencies")
-            val sourceOutputs = lines.filter { it.startsWith("sourceOutput|") }.map { line ->
-                val parts = line.split('|')
-                checkBuild(parts.size == SOURCE_OUTPUT_FIELDS, "Invalid Gradle source/output export")
-                fun decode(value: String) = Path.of(String(Base64.getDecoder().decode(value), Charsets.UTF_8))
-                decode(parts[1]) to decode(parts[2])
-            }.groupBy({ it.first }, { it.second })
+            val sourceOutputs = entries.filter { it.kind == GradleInputKind.SOURCE_OUTPUT }
+                .groupBy({ it.paths[0] }, { it.paths[1] })
             return CompiledProject(collectClasses(output, outputs), roots.distinct(), dependencies, origins, runId, sourceOutputs)
         } finally {
             Files.deleteIfExists(init)
@@ -59,5 +49,3 @@ internal class GradleBuildAdapter(
     }
 
 }
-
-private const val SOURCE_OUTPUT_FIELDS = 3

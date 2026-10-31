@@ -1,5 +1,10 @@
 package io.johnsonlee.graphfold.engine.origin.kotlin
 
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Backend
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Compiler
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Kind
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.KotlinFrontend
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Provenance
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -7,7 +12,7 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /** The invisible marker survives backend inline copying. The engine removes it from analysis artifacts. */
-internal class KotlinOriginCollector(outputDirectory: Path, private val version: String, private val frontend: String,
+internal class KotlinOriginCollector(outputDirectory: Path, private val version: String, private val frontend: KotlinFrontend,
     private val runId: String) {
     private val output = outputDirectory.resolve("kotlin-${java.util.UUID.randomUUID()}.json")
     private val emitted = linkedMapOf<String, Emission>()
@@ -28,7 +33,7 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
         writeDocument(emptyList(), emptyList(), complete = false)
     }
 
-    fun capture(owner: String, source: String, start: Int, end: Int, kind: String): Origin? {
+    fun capture(owner: String, source: String, start: Int, end: Int, kind: Kind): Origin? {
         val path = try {
             Path.of(source).toRealPath().toString()
         } catch (_: IOException) {
@@ -44,7 +49,7 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
 
     fun emitted(owner: String, origin: Origin?, missingIr: Boolean, anonymous: Boolean) {
         check(owner !in emitted) { "Duplicate emitted class: $owner" }
-        emitted[owner] = Emission(owner, origin, if (origin == null) "INLINE_COPY" else "DIRECT_IR",
+        emitted[owner] = Emission(owner, origin, if (origin == null) Provenance.INLINE_COPY else Provenance.DIRECT_IR,
             markers = if (origin == null) 0 else 1, missingIr = missingIr, anonymous = anonymous)
     }
 
@@ -79,8 +84,9 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
     }
 
     private fun writeDocument(records: List<String>, unresolved: List<String>, complete: Boolean) {
-        val document = "{\"schema\":1,\"runId\":${json(runId)},\"producer\":{\"compiler\":\"kotlinc\",\"version\":${json(version)}," +
-            "\"frontend\":${json(frontend)},\"backend\":\"JVM\"},\"complete\":$complete," +
+        val document = "{\"schema\":1,\"runId\":${json(runId)},\"producer\":{\"compiler\":${json(Compiler.KOTLINC.wireValue())}," +
+            "\"version\":${json(version)}," +
+            "\"frontend\":${json(frontend.name)},\"backend\":${json(Backend.JVM.name)}},\"complete\":$complete," +
             "\"records\":[${records.joinToString(",")}],\"unresolved\":[${unresolved.joinToString(",")}]," +
             "\"outputs\":[${outputs.values.joinToString(",")}] }"
         val target = output.toAbsolutePath().normalize()
@@ -98,14 +104,14 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
         val span = "{\"start\":${origin.start},\"end\":${origin.end}}"
         return "{\"owner\":${json(emission.owner.replace('/', '.'))},\"source\":${json(origin.source)}," +
             "\"sourceHash\":${json(origin.sourceHash)},\"declaration\":$span,\"allocation\":$span," +
-            "\"originKind\":${json(origin.kind)},\"provenance\":${json(emission.kind)}," +
+            "\"originKind\":${json(origin.kind.name)},\"provenance\":${json(emission.kind.name)}," +
             "\"enclosingOwner\":${json(emission.outerOwner?.replace('/', '.'))}," +
             "\"enclosingMethod\":${json(emission.outerMethod)},\"enclosingDescriptor\":${json(emission.outerDescriptor)}}"
     }
 
     private fun decode(values: Map<String, Any?>): Origin? {
         if (values["schema"] != 1 || values["runId"] != runId) return null
-        val kind = values["originKind"] as? String
+        val kind = Kind.values().firstOrNull { it.name == values["originKind"] }
         val source = values["source"] as? String
         val hash = values["sourceHash"] as? String
         val start = values["start"] as? Int
@@ -113,12 +119,11 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
         return when {
             kind == null || source == null || hash == null -> null
             start == null || end == null -> null
-            kind !in setOf("ANONYMOUS_OBJECT", "DECLARATION") -> null
             else -> verifiedOrigin(source, hash, start, end, kind)
         }
     }
 
-    private fun verifiedOrigin(source: String, hash: String, start: Int, end: Int, kind: String): Origin? {
+    private fun verifiedOrigin(source: String, hash: String, start: Int, end: Int, kind: Kind): Origin? {
         val contents = readSource(source) ?: return null
         return if (!validRange(contents, start, end) || contents.hash != hash) null
         else Origin(source, hash, start, end, kind)
@@ -144,9 +149,9 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
         null // The final sidecar retains an explicit unresolved record for unreadable compiler source.
     }
 
-    internal data class Origin(val source: String, val sourceHash: String, val start: Int, val end: Int, val kind: String)
+    internal data class Origin(val source: String, val sourceHash: String, val start: Int, val end: Int, val kind: Kind)
     private data class Emission(
-        val owner: String, var origin: Origin?, val kind: String, var markers: Int, val missingIr: Boolean, val anonymous: Boolean,
+        val owner: String, var origin: Origin?, val kind: Provenance, var markers: Int, val missingIr: Boolean, val anonymous: Boolean,
         var complete: Boolean = false, var outerOwner: String? = null, var outerMethod: String? = null,
         var outerDescriptor: String? = null,
     )

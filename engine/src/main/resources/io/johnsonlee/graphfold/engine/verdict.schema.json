@@ -209,7 +209,18 @@
           ]
         },
         "code": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "WORKSPACE_CAPACITY_TIMEOUT",
+            "ANALYSIS_CANCELLED",
+            "ANALYSIS_FAILED",
+            "UNVERIFIED_ORIGIN",
+            "INCOMPLETE_GRAPH",
+            "UNMATCHED_RULE",
+            "UNMAPPED_CHANGE",
+            "SOURCE_RESOLUTION_FAILED",
+            "UNLOCATED_MOVE_DIFFERENCE"
+          ]
         },
         "message": {
           "type": "string"

@@ -13,16 +13,17 @@ class AnalysisReportsTest {
             listOf(SourceLocation(Revision.HEAD, "Example.java", SourceRange(2, 3), SourceRange(4, 7))),
         )
         val result = AnalysisResult(
-            listOf(finding), listOf(Diagnostic(AnalysisStage.COMPARE, "unsupported", "Unresolved target")),
+            listOf(finding), listOf(Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, "Unresolved target")),
             AnalysisMetadata("base", "head", listOf("baseline"), 1, 0),
         )
         val json = jacksonObjectMapper().readTree(AnalysisReports.json(result))
         assertEquals("FAIL", json["verdict"].asText())
+        assertEquals("INCOMPLETE_GRAPH", json["diagnostics"][0]["code"].asText())
         assertEquals(4, json["findings"][0]["locations"][0]["column"]["start"].asInt())
         val text = AnalysisReports.text(result)
         assertTrue(text.contains("Proved 0/1 change obligations"))
         assertTrue(text.contains("HEAD Example.java:2:4-3:7"))
-        assertTrue(text.contains("COMPARE/unsupported: Unresolved target"))
+        assertTrue(text.contains("GRAPH/INCOMPLETE_GRAPH: Unresolved target"))
     }
 
     @Test

@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin.kotlin
 
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Kind
 import org.jetbrains.kotlin.backend.jvm.extensions.ClassGenerator
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.util.file
@@ -19,17 +20,19 @@ internal class OriginClassGenerator(
     ) {
         owner = name
         generator.defineClass(version, access, name, signature, superName, interfaces)
-        val sourceAnonymous = declaration?.let { it.isAnonymousObject && it.origin.name !in GENERATED_CLASS_ORIGINS } == true
+        val sourceAnonymous = declaration?.let {
+            it.isAnonymousObject && GeneratedClassOrigin.values().none { origin -> origin.name == it.origin.name }
+        } == true
         val origin = declaration?.let {
             collector.capture(name, it.file.fileEntry.name, it.startOffset, it.endOffset,
-                if (sourceAnonymous) "ANONYMOUS_OBJECT" else "DECLARATION")
+                if (sourceAnonymous) Kind.ANONYMOUS_OBJECT else Kind.DECLARATION)
         }
         collector.emitted(name, origin, declaration == null, sourceAnonymous)
         if (origin != null) {
             generator.visitAnnotation(KotlinOriginCollector.MARKER, false).apply {
                 visit("schema", 1)
                 visit("runId", runId)
-                visit("originKind", origin.kind)
+                visit("originKind", origin.kind.name)
                 visit("source", origin.source)
                 visit("sourceHash", origin.sourceHash)
                 visit("start", origin.start)
@@ -69,4 +72,4 @@ internal class OriginClassGenerator(
 // Backend-generated lambda/continuation classes also satisfy IrClass.isAnonymousObject.
 // Only these explicit compiler origins are exempt; an unknown source anonymous object remains required.
 // IrDeclarationOrigin.name is ABI-stable across K1/K2; JvmLoweredDeclarationOrigin singleton layout is not.
-private val GENERATED_CLASS_ORIGINS = setOf("LAMBDA_IMPL", "SUSPEND_LAMBDA", "CONTINUATION_CLASS")
+private enum class GeneratedClassOrigin { LAMBDA_IMPL, SUSPEND_LAMBDA, CONTINUATION_CLASS }

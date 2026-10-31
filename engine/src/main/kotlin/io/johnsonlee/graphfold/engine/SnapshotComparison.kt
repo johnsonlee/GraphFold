@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
+import sootup.core.model.MethodModifier
 import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
@@ -9,7 +10,7 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
     private val alignment = PrivateMemberAlignment(base, originalHead)
     private val head = alignment.aligned()
     private val entryPoints = base.methods.values.filter {
-        "PRIVATE" !in it.modifiers && !it.identity.substringBefore('(').endsWith(".<clinit>") &&
+        MethodModifier.PRIVATE !in it.modifiers && !it.identity.substringBefore('(').endsWith(".<clinit>") &&
             (base.entryClasses == null || methodOwner(it.identity) in base.entryClasses)
     }.map { it.identity }.toSet() + base.externalEntries + head.externalEntries + head.overrides.filter {
         methodOwner(it) in base.entryClasses.orEmpty()
@@ -131,7 +132,7 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
 
     private fun syntheticDependency(identity: String, obligation: ProofObligation): Boolean =
         methodOwner(identity) == obligation.owner &&
-            (base.methods[identity]?.modifiers.orEmpty() + head.methods[identity]?.modifiers.orEmpty()).contains("SYNTHETIC")
+            (base.methods[identity]?.modifiers.orEmpty() + head.methods[identity]?.modifiers.orEmpty()).contains(MethodModifier.SYNTHETIC)
 
     private fun reachable(snapshot: ProgramSnapshot): Set<String> {
         val byOwner = snapshot.methods.values.groupBy { methodOwner(it.identity) }
@@ -152,7 +153,7 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
                 (setOf(owner) + referencedOwners + constructedOwners).flatMap { byOwner[it].orEmpty() }.filter { candidate ->
                     ((methodOwner(candidate.identity) == owner || methodOwner(candidate.identity) in referencedOwners) &&
                         candidate.identity.substringBefore('(').endsWith(".<clinit>")) ||
-                        (methodOwner(candidate.identity) in constructedOwners && "PRIVATE" !in candidate.modifiers)
+                        (methodOwner(candidate.identity) in constructedOwners && MethodModifier.PRIVATE !in candidate.modifiers)
                 }.map { it.identity }.forEach(pending::addLast)
             }
         }

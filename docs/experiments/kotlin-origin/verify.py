@@ -9,8 +9,11 @@ def classpath(version):
  coords=[('org.jetbrains.kotlin','kotlin-compiler-embeddable',version),('org.jetbrains.kotlin','kotlin-stdlib',version),('org.jetbrains.kotlin','kotlin-reflect','1.6.10'),('org.jetbrains.intellij.deps','trove4j','1.0.20200330'),('org.jetbrains.kotlinx','kotlinx-coroutines-core-jvm','1.8.0'),('org.jetbrains','annotations','13.0')]
  return os.pathsep.join(str(next(p for p in (root/g/a/v).glob('*/*.jar') if not p.name.endswith('-sources.jar'))) for g,a,v in coords)
 cp=classpath('2.1.20');compiled=d/'production-plugin'
+compiled.mkdir()
+protocol=repo/'engine/src/main/java/io/johnsonlee/graphfold/engine/origin/protocol'
+subprocess.run(['javac','--release','17','-d',str(compiled)]+list(map(str,protocol.glob('*.java'))),check=True)
 source=repo/'engine/src/main/kotlin/io/johnsonlee/graphfold/engine/origin/kotlin'
-subprocess.run(['java','-cp',cp,'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler','-no-stdlib','-no-reflect','-classpath',cp,'-jvm-target','17','-d',str(compiled)]+list(map(str,source.glob('*.kt'))),check=True)
+subprocess.run(['java','-cp',cp,'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler','-no-stdlib','-no-reflect','-classpath',cp+os.pathsep+str(compiled),'-jvm-target','17','-d',str(compiled)]+list(map(str,source.glob('*.kt'))),check=True)
 plugin=d/'production-plugin.jar'
 with zipfile.ZipFile(plugin,'w') as z:
  for p in compiled.rglob('*'):

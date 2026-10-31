@@ -147,6 +147,10 @@ println(AnalysisReports.json(result))
 
 The SDK accepts fold document contents, not a filename. Results include `verdict`, findings, diagnostics, analysis metadata, and `reasons` for both passing and failing obligations. A finding can have multiple locations. Locations identify BASE or HEAD, repository-relative paths, and one-based `line: {start, end}` / `column: {start, end}` coordinates. End positions are exclusive and columns count UTF-16 code units. Deletions can refer to BASE. Each reason separates AST change categories (such as `FIELD_INITIALIZER_CHANGED` or `METHOD_RENAMED`) from the proof outcome: `FOLDED_EQUIVALENT`, `UNREACHABLE`, or `SURVIVING_DIFFERENCE`. A rename label is a structural candidate, not an equivalence proof. Pure file moves record old/new paths without inventing changed character ranges.
 
+`Diagnostic.code` uses the `DiagnosticCode` enum throughout the engine and entrypoints;
+JSON preserves the existing code names. Other finite statuses and protocol kinds also
+use enums internally, with strings decoded and encoded at external boundaries.
+
 Reports declare `schemaVersion: 1` and follow the packaged
 [verdict JSON Schema](engine/src/main/resources/io/johnsonlee/graphfold/engine/verdict.schema.json)
 (draft 2020-12), also available through `AnalysisReports.schema()`. The schema applies

@@ -3,6 +3,11 @@ package io.johnsonlee.graphfold.engine.origin
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.johnsonlee.graphfold.engine.build.CompiledProject
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Backend
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Compiler
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Kind
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.KotlinFrontend
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Provenance
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.ClassNode
@@ -67,16 +72,25 @@ private class OriginReader(private val project: CompiledProject, private val roo
         require(document.path("schema").asInt() == 1) { "Unknown compiler origin schema" }
         require(document.path("complete").asBoolean()) { "Compiler origin manifest is incomplete" }
         require(document.path("runId").asText() == project.originRunId) { "Stale compiler origin runId" }
-        val producer = document.path("producer")
-        val compiler = producer.path("compiler").asText()
-        require(compiler in setOf("javac", "kotlinc") && producer.path("backend").asText() == "JVM" &&
-            producer.path("version").asText().isNotBlank()) { "Unknown compiler origin producer" }
+        val compiler = compiler(document.path("producer"))
         require(document.path("records").isArray) { "Compiler origin records are missing" }
         document.path("unresolved").forEach { diagnostics += "Unresolved compiler origin: $it" }
         document.path("records").forEach { record -> guarded(record.path("owner").asText()) { record(record, compiler) } }
     }
 
-    private fun record(record: JsonNode, compiler: String) {
+    private fun compiler(producer: JsonNode): Compiler {
+        val compiler = requireNotNull(Compiler.entries.firstOrNull { it.wireValue() == producer.path("compiler").asText() }) {
+            "Unknown compiler origin producer"
+        }
+        require(producer.path("backend").asText() == Backend.JVM.name &&
+            producer.path("version").asText().isNotBlank()) { "Unknown compiler origin producer" }
+        if (compiler == Compiler.KOTLINC) require(KotlinFrontend.entries.any { it.name == producer.path("frontend").asText() }) {
+            "Unknown compiler origin frontend"
+        }
+        return compiler
+    }
+
+    private fun record(record: JsonNode, compiler: Compiler) {
         val owner = record.path("owner").asText()
         require(owner in classes) { "Compiler origin owner was not emitted: $owner" }
         if (project.originRunId.orEmpty().let { it.startsWith("gradle-v1-") || it.startsWith("maven-v1-") }) {
@@ -84,7 +98,7 @@ private class OriginReader(private val project: CompiledProject, private val roo
             val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             require(record.path("classHash").asText() == hash) { "Compiler origin class hash differs: $owner" }
         }
-        if (compiler == "javac") require(anonymousObject(classes.getValue(owner))) {
+        if (compiler == Compiler.JAVAC) require(anonymousObject(classes.getValue(owner))) {
             "Compiler origin owner is not an anonymous class: $owner"
         }
         require(recorded.add(owner)) { "Duplicate compiler origin owner: $owner" }
@@ -98,13 +112,21 @@ private class OriginReader(private val project: CompiledProject, private val roo
         require(record.path("sourceHash").asText() == hash) { "Compiler origin source hash differs: $file" }
         val allocation = span(record.path("allocation"), text.length)
         span(record.path("declaration"), text.length)
-        if (compiler == "kotlinc") verifyMarker(classes.getValue(owner), record)
-        val kind = record.path("originKind").asText()
-        require(compiler == "javac" || kind in setOf("DECLARATION", "ANONYMOUS_OBJECT")) { "Unknown origin kind: $kind" }
-        if (compiler == "kotlinc" && kind == "DECLARATION") return
+        if (compiler == Compiler.KOTLINC && kotlinKind(classes.getValue(owner), record) == Kind.DECLARATION) return
         val match = syntax.singleOrNull { it.range == allocation || allocation in it.aliases }
         requireNotNull(match) { "Compiler range does not identify one anonymous source expression: $file $allocation" }
         origins[owner] = SourceOrigin(owner, root.relativize(file).toString(), match)
+    }
+
+    private fun kotlinKind(node: ClassNode, record: JsonNode): Kind {
+        verifyMarker(node, record)
+        val kind = requireNotNull(Kind.entries.firstOrNull { it.name == record.path("originKind").asText() }) {
+            "Unknown origin kind: ${record.path("originKind").asText()}"
+        }
+        require(Provenance.entries.any { it.name == record.path("provenance").asText() }) {
+            "Unknown origin provenance: ${record.path("provenance").asText()}"
+        }
+        return kind
     }
 
     private fun span(node: JsonNode, length: Int): OriginSpan {

@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import sootup.core.model.MethodModifier
 import io.johnsonlee.graphite.input.ConstantFold
 import io.johnsonlee.graphite.input.FoldSites
 import org.junit.jupiter.api.Test
@@ -113,7 +114,7 @@ class GraphiteAnalyzerTest {
     }
 
     @Test fun `jars preserve declaration metadata and abstract native method inventory`() {
-        val classes = compile("metadata", "@Deprecated static final int VALUE = 7; native void nativeCall();")
+        val classes = compile("metadata", "@Deprecated static final int VALUE = 7; private static native void nativeCall();")
         val jar = directory.resolve("sample.jar")
         ZipOutputStream(Files.newOutputStream(jar)).use { zip ->
             zip.putNextEntry(ZipEntry("Sample.class"))
@@ -122,7 +123,10 @@ class GraphiteAnalyzerTest {
         }
         val snapshot = GraphiteAnalyzer().analyze(jar, emptyList())
         assertTrue(snapshot.diagnostics.single().contains("Native/JNI"), snapshot.diagnostics.toString())
-        assertTrue(snapshot.methods.getValue("Sample.nativeCall()V").canonical.contains("NO_BODY"))
+        val nativeMethod = snapshot.methods.getValue("Sample.nativeCall()V")
+        assertEquals(setOf(MethodModifier.NATIVE, MethodModifier.PRIVATE, MethodModifier.STATIC), nativeMethod.modifiers)
+        assertEquals("NATIVE,PRIVATE,STATIC\nNO_BODY", nativeMethod.canonical)
+        assertEquals(nativeMethod.canonical, nativeMethod.referenceCanonical)
         assertTrue(snapshot.declarations.getValue("Sample").contains("Deprecated"))
         assertTrue(snapshot.declarations.getValue("Sample").contains("java.lang.Integer:1:7"))
     }

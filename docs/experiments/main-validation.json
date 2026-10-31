@@ -2,31 +2,31 @@
   "date": "2026-10-31",
   "command": "./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :cli:installDist --continue --console=plain",
   "exit": 0,
-  "duration": "20m 51s",
+  "duration": "19m 55s",
   "modules": {
     "engine": {
       "junit": {
-        "tests": 606,
+        "tests": 615,
         "failures": 0,
         "errors": 0,
         "skipped": 0
       },
       "coverage": {
         "branch": {
-          "covered": 3038,
+          "covered": 3048,
           "missed": 145,
-          "percent": 95.4445491674521
+          "percent": 95.45881616035076
         },
         "line": {
-          "covered": 3660,
+          "covered": 3693,
           "missed": 33,
-          "percent": 99.10641754670999
+          "percent": 99.11433172302738
         }
       }
     },
     "cli": {
       "junit": {
-        "tests": 23,
+        "tests": 24,
         "failures": 0,
         "errors": 0,
         "skipped": 0
@@ -38,9 +38,9 @@
           "percent": 96.66666666666667
         },
         "line": {
-          "covered": 66,
+          "covered": 70,
           "missed": 1,
-          "percent": 98.50746268656717
+          "percent": 98.59154929577464
         }
       }
     },
@@ -53,7 +53,7 @@
       },
       "coverage": {
         "branch": {
-          "covered": 14,
+          "covered": 16,
           "missed": 0,
           "percent": 100.0
         },
@@ -102,11 +102,11 @@
     "successfulCompilations": 20,
     "recordsPerCompilation": 15,
     "unresolvedRecords": 0,
-    "probeProviderSha256": "4069a38e791c5fcd9d061bb2032d5b564237376c5472b3b2bfc3fc37a8dc04c9",
+    "probeProviderSha256": "d6b64a2bc0d5d095bb6a559ffbdb359b93e36b2164f419c099df4de341b043f7",
     "rejectedCompilerVersion": "1.9.0",
     "maximumNormalizationMetadataSchema": "2.1",
     "verifiedOutputOwnersPerCompilation": 16,
-    "verificationScope": "Previously verified compiler-provider source; matrix was not rerun for these adapter/review changes."
+    "verificationScope": "Current enum-based provider verified across all 20 compiler/frontend/encoding combinations; unsupported 1.9.0 rejected."
   },
   "additionalChecks": {
     "installedCliHelp": true,
@@ -201,5 +201,15 @@
     "structuredCliStderrAndGradleLifecycleLogs": true,
     "bothRevisionsUnmatchedBlocks": true,
     "actualCorpusReportsValidatedAgainstSchema": 316
+  },
+  "finiteStatuses": {
+    "diagnosticCodes": "DiagnosticCode",
+    "gitChanges": "GitChangeType with separate similarityScore",
+    "gradleExport": "GradleInputKind; unknown tags rejected",
+    "compilerOrigins": "pure Java OriginProtocol enums, isolated from Kotlin runtime",
+    "cliFormat": "ReportFormat",
+    "methodModifiers": "SootUp MethodModifier retained as enums until canonical serialization",
+    "reportSchemaEnumParity": 9,
+    "wireNamesPreserved": true
   }
 }

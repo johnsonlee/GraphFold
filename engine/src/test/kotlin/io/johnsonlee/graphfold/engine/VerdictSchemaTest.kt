@@ -27,7 +27,9 @@ class VerdictSchemaTest {
         val pass = passing()
         assertEquals("PASS", report(pass)["verdict"].asText())
         assertValid(pass)
-        assertValid(pass.copy(diagnostics = listOf(Diagnostic(AnalysisStage.BUILD, "NOTE", "No rebuild needed", false))))
+        assertValid(pass.copy(diagnostics = listOf(
+            Diagnostic(AnalysisStage.BUILD, DiagnosticCode.ANALYSIS_FAILED, "Nonblocking build failure", false),
+        )))
         val fail = failing()
         assertEquals("FAIL", report(fail)["verdict"].asText())
         assertValid(fail)
@@ -35,6 +37,36 @@ class VerdictSchemaTest {
         val incomplete = pass.copy(metadata = pass.metadata.copy(provedObligations = 0))
         assertEquals("FAIL", report(incomplete)["verdict"].asText())
         assertValid(incomplete)
+    }
+
+    @Test
+    fun `every report enum exactly matches its schema values`() {
+        val document = mapper.readTree(AnalysisReports.schema())
+        val definitions = "/\$defs"
+        val contracts = mapOf<String, List<Enum<*>>>(
+            "/properties/verdict/enum" to Verdict.entries,
+            "$definitions/revision/enum" to Revision.entries,
+            "$definitions/finding/properties/kind/enum" to FindingKind.entries,
+            "$definitions/diagnostic/properties/stage/enum" to AnalysisStage.entries,
+            "$definitions/diagnostic/properties/code/enum" to DiagnosticCode.entries,
+            "$definitions/reason/properties/changes/items/enum" to ChangeKind.entries,
+            "$definitions/reason/properties/code/enum" to ReasonCode.entries,
+            "$definitions/selector/properties/kind/enum" to RuleSelectorKind.entries,
+            "$definitions/ruleAudit/properties/selectionStatus/enum" to RuleSelectionStatus.entries,
+        )
+        contracts.forEach { (path, values) ->
+            assertEquals(values.map { it.name }.toSet(), document.at(path).map { it.asText() }.toSet(), path)
+        }
+    }
+
+    @Test
+    fun `every diagnostic code serializes by name and validates against the schema`() {
+        val expectedCodes = DiagnosticCode.entries.map { it.name }.toSet()
+        val result = passing().copy(diagnostics = DiagnosticCode.entries.map {
+            Diagnostic(AnalysisStage.INPUT, it, "Diagnostic serialization contract")
+        })
+        assertEquals(expectedCodes, report(result)["diagnostics"].map { it["code"].asText() }.toSet())
+        assertValid(result)
     }
 
     @Test
@@ -98,6 +130,7 @@ class VerdictSchemaTest {
             "/findings/0/locations" to "[]", "/findings/0/locations/0/revision" to "\"WORKTREE\"",
             "/findings/0/locations/0/line/start" to "0", "/findings/0/locations/0/column/end" to "-1",
             "/diagnostics/0/blocking" to "\"true\"", "/diagnostics/0/stage" to "\"DEPLOY\"",
+            "/diagnostics/0/code" to "\"UNKNOWN_DIAGNOSTIC\"",
             "/reasons/0/changes" to "[\"UNKNOWN\"]", "/reasons/0/code" to "\"OTHER\"",
             "/ruleAudits/0/ruleIndex" to "-1", "/ruleAudits/0/selectedCount" to "null",
             "/ruleAudits/0/selectedCount" to "-1", "/ruleAudits/0/matchedCallCount" to "-1",
@@ -130,7 +163,9 @@ class VerdictSchemaTest {
                 Finding("finding-$kind", kind, "fold-0", "Changed call remains", listOf(location),
                     listOf(Evidence("Diff intersects call", location), Evidence("No equivalent fold")), listOf("control"))
             },
-            diagnostics = AnalysisStage.entries.map { Diagnostic(it, "DETAIL", "Analysis detail", it == AnalysisStage.FOLD) },
+            diagnostics = AnalysisStage.entries.map {
+                Diagnostic(it, DiagnosticCode.ANALYSIS_FAILED, "Analysis detail", it == AnalysisStage.FOLD)
+            },
             reasons = ReasonCode.entries.map { code ->
                 VerdictReason(ChangeKind.entries.toSet(), code, "Change classification", listOf(location), "control",
                     if (code == ReasonCode.UNREACHABLE) null else "src/Old.java", "src/Example.java")

@@ -38,7 +38,8 @@ private fun changed(entry: DiffEntry, formatter: DiffFormatter): ChangedFile {
         edits.mapNotNull { range(it.beginA, it.endA) },
         edits.mapNotNull { range(it.beginB, it.endB) },
         header.patchType == FileHeader.PatchType.BINARY,
-        status(entry), edits.map(::hunk),
+        changeType(entry), edits.map(::hunk),
+        entry.score.takeIf { entry.changeType == DiffEntry.ChangeType.RENAME || entry.changeType == DiffEntry.ChangeType.COPY },
     )
 }
 
@@ -50,12 +51,13 @@ private fun hunk(edit: Edit) = ChangedHunk(
     if (edit.lengthB == 0) edit.beginB else edit.beginB + 1, edit.lengthB,
 )
 
-private fun status(entry: DiffEntry): String = when (entry.changeType) {
-    DiffEntry.ChangeType.ADD -> "A"
-    DiffEntry.ChangeType.DELETE -> "D"
-    DiffEntry.ChangeType.RENAME -> "R${entry.score}"
-    DiffEntry.ChangeType.COPY -> "C${entry.score}"
-    DiffEntry.ChangeType.MODIFY -> if ((entry.oldMode.bits and TYPE_MASK) != (entry.newMode.bits and TYPE_MASK)) "T" else "M"
+private fun changeType(entry: DiffEntry): GitChangeType = when (entry.changeType) {
+    DiffEntry.ChangeType.ADD -> GitChangeType.ADD
+    DiffEntry.ChangeType.DELETE -> GitChangeType.DELETE
+    DiffEntry.ChangeType.RENAME -> GitChangeType.RENAME
+    DiffEntry.ChangeType.COPY -> GitChangeType.COPY
+    DiffEntry.ChangeType.MODIFY ->
+        if ((entry.oldMode.bits and TYPE_MASK) != (entry.newMode.bits and TYPE_MASK)) GitChangeType.TYPE_CHANGE else GitChangeType.MODIFY
 }
 
 private const val TYPE_MASK = 0xF000

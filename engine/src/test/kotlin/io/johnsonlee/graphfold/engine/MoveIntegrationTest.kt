@@ -35,7 +35,7 @@ class MoveIntegrationTest {
         val result = analyzeFixture("kotlin_facade_rename")
         assertEquals(Verdict.FAIL, result.verdict, result.toString())
         assertTrue(result.findings.isEmpty(), "Content-identical rename has no changed source coordinates")
-        assertTrue(result.diagnostics.any { it.code == "UNLOCATED_MOVE_DIFFERENCE" }, result.toString())
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNLOCATED_MOVE_DIFFERENCE }, result.toString())
         assertTrue(result.reasons.any {
             ChangeKind.FILE_RENAMED in it.changes && it.code == ReasonCode.SURVIVING_DIFFERENCE &&
                 it.basePath == before && it.headPath == after && it.locations.isEmpty()
@@ -151,6 +151,6 @@ class MoveIntegrationTest {
         val after: String,
         val verdict: Verdict,
         val kind: ChangeKind,
-        val diagnostic: String? = null,
+        val diagnostic: DiagnosticCode? = null,
     )
 }

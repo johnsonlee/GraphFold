@@ -4,6 +4,7 @@ import io.johnsonlee.graphfold.engine.build.CompiledProject
 import io.johnsonlee.graphfold.engine.build.ProjectCompiler
 import io.johnsonlee.graphfold.engine.graphite.GraphiteAnalyzer
 import io.johnsonlee.graphfold.engine.git.ChangedFile
+import io.johnsonlee.graphfold.engine.git.GitChangeType
 import io.johnsonlee.graphite.input.FoldSites
 import java.nio.file.Files
 import java.nio.file.Path
@@ -100,9 +101,10 @@ class OriginProjectsTest {
         val root = temporary.resolve("head")
         val after = ProjectCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("head-output"))
         val changes = listOf(
-            ChangedFile("src/main/java/Example.java", "src/main/java/moved/Example.java", emptyList(), emptyList(), changeType = "R100"),
-            ChangedFile(null, "README.md", emptyList(), emptyList(), changeType = "A"),
-            ChangedFile("old.md", null, emptyList(), emptyList(), changeType = "D"),
+            ChangedFile("src/main/java/Example.java", "src/main/java/moved/Example.java", emptyList(), emptyList(),
+                changeType = GitChangeType.RENAME, similarityScore = 100),
+            ChangedFile(null, "README.md", emptyList(), emptyList(), changeType = GitChangeType.ADD),
+            ChangedFile("old.md", null, emptyList(), emptyList(), changeType = GitChangeType.DELETE),
             ChangedFile("build.gradle.kts", "build.gradle.kts", emptyList(), emptyList()),
         )
         val projects = prepareOrigins(before.project, after, before.root, root, changes, temporary.resolve("prepared"))

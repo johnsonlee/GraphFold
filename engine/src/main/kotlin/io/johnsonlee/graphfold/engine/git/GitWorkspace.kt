@@ -13,6 +13,8 @@ data class ChangedLineRange(val start: Int, val end: Int) {
 
 data class ChangedHunk(val baseStart: Int, val baseCount: Int, val headStart: Int, val headCount: Int)
 
+enum class GitChangeType { ADD, DELETE, MODIFY, TYPE_CHANGE, RENAME, COPY }
+
 /** Paths are relative to the repository; ranges contain changed lines, never context. */
 data class ChangedFile(
     val basePath: String?,
@@ -20,8 +22,10 @@ data class ChangedFile(
     val baseLines: List<ChangedLineRange>,
     val headLines: List<ChangedLineRange>,
     val binary: Boolean = false,
-    val changeType: String = "M",
+    val changeType: GitChangeType = GitChangeType.MODIFY,
     val hunks: List<ChangedHunk> = emptyList(),
+    /** Git similarity percentage for a rename or copy, otherwise absent. */
+    val similarityScore: Int? = null,
 )
 
 /** Exclusively leases two persistent private checkouts; closing retains their incremental build outputs. */

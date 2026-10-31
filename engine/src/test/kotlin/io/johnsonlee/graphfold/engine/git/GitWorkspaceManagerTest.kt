@@ -54,6 +54,8 @@ class GitWorkspaceManagerTest {
         assertEquals(listOf(ChangedLineRange(2, 2), ChangedLineRange(4, 4)), change.headLines)
         assertEquals("Example.java", change.basePath)
         assertFalse(change.binary)
+        assertEquals(GitChangeType.MODIFY, change.changeType)
+        assertNull(change.similarityScore)
         workspace.close()
         workspace.close()
         assertTrue(Files.exists(workspace.baseDirectory))
@@ -74,15 +76,16 @@ class GitWorkspaceManagerTest {
         val head = commit()
         manager.open(repository.toString(), base, head).use { workspace ->
             val changes = workspace.changes()
-            val renamed = changes.single { it.changeType.startsWith("R") }
+            val renamed = changes.single { it.changeType == GitChangeType.RENAME }
             assertEquals("old.java", renamed.basePath)
+            assertEquals(100, renamed.similarityScore)
             assertEquals("renamed\nfile.java", renamed.headPath)
             assertTrue(renamed.baseLines.isEmpty())
-            val added = changes.single { it.changeType == "A" }
+            val added = changes.single { it.changeType == GitChangeType.ADD }
             assertNull(added.basePath)
             assertEquals(listOf(ChangedLineRange(1, 2)), added.headLines)
             assertTrue(added.baseLines.isEmpty())
-            val deleted = changes.single { it.changeType == "D" }
+            val deleted = changes.single { it.changeType == GitChangeType.DELETE }
             assertNull(deleted.headPath)
             assertEquals(listOf(ChangedLineRange(1, 1)), deleted.baseLines)
             assertTrue(deleted.headLines.isEmpty())
@@ -98,7 +101,7 @@ class GitWorkspaceManagerTest {
         val head = commit()
         manager.open(repository.toString(), base, head).use {
             assertTrue(it.changes().single { change -> change.headPath == "binary" }.binary)
-            assertEquals("empty", it.changes().single { change -> change.changeType == "D" }.basePath)
+            assertEquals("empty", it.changes().single { change -> change.changeType == GitChangeType.DELETE }.basePath)
         }
     }
 
@@ -247,6 +250,27 @@ class GitWorkspaceManagerTest {
             assertEquals("script", change.headPath)
             assertTrue(change.headLines.isEmpty())
             assertTrue(Files.isExecutable(it.headDirectory.resolve("script")))
+        }
+    }
+
+    @Test
+    fun `changing a regular file into a symbolic link preserves Git addition and deletion records`() {
+        write("target", "content")
+        write("link", "target")
+        val base = commit()
+        updateIndex("link", FileMode.SYMLINK)
+        commitIndex("change file type")
+        manager.open(repository.toString(), base, head()).use { workspace ->
+            val changes = workspace.changes()
+            assertEquals(setOf(GitChangeType.ADD, GitChangeType.DELETE), changes.map { it.changeType }.toSet())
+            val added = changes.single { it.changeType == GitChangeType.ADD }
+            val deleted = changes.single { it.changeType == GitChangeType.DELETE }
+            assertEquals("link", added.headPath)
+            assertNull(added.basePath)
+            assertEquals("link", deleted.basePath)
+            assertNull(deleted.headPath)
+            assertTrue(changes.all { it.similarityScore == null })
+            assertTrue(Files.isSymbolicLink(workspace.headDirectory.resolve("link")))
         }
     }
 

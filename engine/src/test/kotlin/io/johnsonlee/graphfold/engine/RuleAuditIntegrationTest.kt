@@ -15,7 +15,7 @@ class RuleAuditIntegrationTest {
         val query = "MATCH (cs:CallSite) WHERE cs.callee_name = 'missing' RETURN cs"
         val result = analyze("folds:\n  - select: \"$query\"\n    value: false\n")
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == "UNMATCHED_RULE" })
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMATCHED_RULE })
         assertEquals(2, result.ruleAudits.size)
         assertTrue(result.ruleAudits.all {
             it.selectionStatus == RuleSelectionStatus.SELECTED && it.selectedCount == 0 && it.matchedCallCount == 0 &&

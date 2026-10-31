@@ -12,7 +12,7 @@ class AnalysisModelTest {
         val complete = AnalysisMetadata("base", "head", listOf("control"), 2, 2)
         assertEquals(Verdict.PASS, AnalysisResult(emptyList(), emptyList(), complete).verdict)
         assertEquals(Verdict.FAIL, AnalysisResult(emptyList(), emptyList(), complete.copy(provedObligations = 1)).verdict)
-        val warning = Diagnostic(AnalysisStage.BUILD, "NOTE", "information", blocking = false)
+        val warning = Diagnostic(AnalysisStage.BUILD, DiagnosticCode.ANALYSIS_FAILED, "information", blocking = false)
         assertEquals(Verdict.PASS, AnalysisResult(emptyList(), listOf(warning), complete).verdict)
         assertEquals(Verdict.FAIL, AnalysisResult(emptyList(), listOf(warning.copy(blocking = true)), complete).verdict)
         val finding = Finding("id", FindingKind.UNCONTROLLED_CHANGE, "rule", "remaining change", listOf(location()))

@@ -8,6 +8,8 @@ import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Backend;
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Compiler;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -117,8 +119,8 @@ final class OriginListener implements TaskListener {
         if (!generated.containsAll(origins.keySet())) return;
         var records = new ArrayList<String>();
         origins.values().stream().sorted(java.util.Comparator.comparing(Origin::owner)).forEach(origin -> records.add(origin.json()));
-        String json = "{\"schema\":1,\"runId\":" + quote(runId) + ",\"producer\":{\"compiler\":\"javac\",\"version\":"
-            + quote(System.getProperty("java.version")) + ",\"backend\":\"JVM\"},\"complete\":true,\"records\":["
+        String json = "{\"schema\":1,\"runId\":" + quote(runId) + ",\"producer\":{\"compiler\":" + quote(Compiler.JAVAC.wireValue()) + ",\"version\":"
+            + quote(System.getProperty("java.version")) + ",\"backend\":" + quote(Backend.JVM.name()) + "},\"complete\":true,\"records\":["
             + String.join(",", records) + "],\"outputs\":[" + String.join(",", outputs.values()) + "]}\n";
         Files.createDirectories(output);
         Path destination = output.resolve(UUID.randomUUID() + ".json");

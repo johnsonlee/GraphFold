@@ -51,7 +51,8 @@ val compilerOriginJar = tasks.register<Jar>("compilerOriginJar") {
     destinationDirectory.set(layout.buildDirectory.dir("compiler-origin"))
     dependsOn(tasks.named("compileJava"), tasks.named("compileKotlin"))
     from(sourceSets.main.get().output.classesDirs) {
-        include("io/johnsonlee/graphfold/engine/origin/javac/**", "io/johnsonlee/graphfold/engine/origin/kotlin/**")
+        include("io/johnsonlee/graphfold/engine/origin/javac/**", "io/johnsonlee/graphfold/engine/origin/kotlin/**",
+            "io/johnsonlee/graphfold/engine/origin/protocol/**")
     }
     from(compilerOriginServices)
 }

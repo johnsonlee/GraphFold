@@ -2,6 +2,8 @@ package io.johnsonlee.graphfold.engine.origin.kotlin
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.Kind
+import io.johnsonlee.graphfold.engine.origin.protocol.OriginProtocol.KotlinFrontend
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -124,7 +126,7 @@ class KotlinOriginCollectorTest {
         assertEquals(2, records.size)
         assertEquals(records.first()["declaration"], records.last()["declaration"])
         assertTrue(records.all { it["provenance"].asText() == "INLINE_COPY" })
-        assertTrue(records.all { it["originKind"].asText() == ANONYMOUS })
+        assertTrue(records.all { it["originKind"].asText() == ANONYMOUS.name })
         assertTrue(records.all { it["enclosingOwner"].asText() == "sample.Caller" })
         assertTrue(records.all { it["enclosingMethod"].asText() == "invoke" && it["enclosingDescriptor"].asText() == "()V" })
     }
@@ -223,7 +225,7 @@ class KotlinOriginCollectorTest {
     @Test fun `valid named declaration marker supports copied backend classes and nullable enclosing method`() {
         val source = Files.writeString(temporary.resolve("Example.kt"), "class Example")
         val collector = collector()
-        val origin = requireNotNull(collector.capture("Original", source.toString(), 0, 13, "DECLARATION"))
+        val origin = requireNotNull(collector.capture("Original", source.toString(), 0, 13, Kind.DECLARATION))
         collector.emitted("Copy", null, true, false)
         collector.annotation("Copy", marker(origin))
         collector.enclosing("Copy", "sample/Outer", null, null)
@@ -239,7 +241,7 @@ class KotlinOriginCollectorTest {
     @Test fun `compiler metadata JSON round trips physical filenames and run IDs containing escape characters`() {
         val characters = "quote\" slash\\ newline\n return\r tab\t control\u0001"
         val source = Files.writeString(temporary.resolve("$characters.kt"), "object {}")
-        val collector = KotlinOriginCollector(temporary.resolve("origins"), "2.1.20", "K2", characters)
+        val collector = KotlinOriginCollector(temporary.resolve("origins"), "2.1.20", KotlinFrontend.K2, characters)
         val origin = requireNotNull(collector.capture("Owner", source.toString(), 0, 9, ANONYMOUS))
         collector.emitted("Owner", origin, false, true)
         collector.completed("Owner")
@@ -313,19 +315,19 @@ class KotlinOriginCollectorTest {
         assertEquals("Invalid", document()["unresolved"].single()["owner"].asText())
     }
 
-    private fun collector() = KotlinOriginCollector(temporary.resolve("origins"), "2.1.20", "K2", "run-one")
+    private fun collector() = KotlinOriginCollector(temporary.resolve("origins"), "2.1.20", KotlinFrontend.K2, "run-one")
     private fun document(): JsonNode = Files.list(temporary.resolve("origins")).use { files ->
         jacksonObjectMapper().readTree(files.filter { it.toString().endsWith(".json") }.toList().single().toFile())
     }
     private fun marker(origin: KotlinOriginCollector.Origin): Map<String, Any> = mapOf(
-        "schema" to 1, "runId" to "run-one", "originKind" to origin.kind,
+        "schema" to 1, "runId" to "run-one", "originKind" to origin.kind.name,
         "source" to origin.source, "sourceHash" to origin.sourceHash, "start" to origin.start, "end" to origin.end,
     )
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private companion object {
-        const val ANONYMOUS = "ANONYMOUS_OBJECT"
+        val ANONYMOUS = Kind.ANONYMOUS_OBJECT
         const val INVALID_UTF8_LEAD: Byte = -61
     }
 }

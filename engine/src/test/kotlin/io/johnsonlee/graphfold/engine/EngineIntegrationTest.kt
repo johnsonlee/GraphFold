@@ -23,7 +23,7 @@ class EngineIntegrationTest {
                 val result = GraphFoldEngine(config).analyze(request)
                 assertEquals(Verdict.FAIL, result.verdict)
                 assertTrue(result.findings.isEmpty())
-                assertEquals("WORKSPACE_CAPACITY_TIMEOUT", result.diagnostics.single().code)
+                assertEquals(DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT, result.diagnostics.single().code)
                 assertEquals(AnalysisStage.GIT, result.diagnostics.single().stage)
                 assertTrue(result.diagnostics.single().message.contains("Retry"))
             }
@@ -87,7 +87,7 @@ class EngineIntegrationTest {
         val result = analyze("new Object() {}; new Object() {}; return x;",
             "new Object() {}; new Object() {}; return x + 1;")
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.blocking && it.code == "UNVERIFIED_ORIGIN" }, result.toString())
+        assertTrue(result.diagnostics.any { it.blocking && it.code == DiagnosticCode.UNVERIFIED_ORIGIN }, result.toString())
         assertTrue(result.diagnostics.any { it.message.contains("Ambiguous") }, result.toString())
         assertTrue(result.findings.isEmpty(), "An analysis gap is not a confirmed diff violation")
         assertEquals(0, result.metadata.provedObligations)
@@ -97,7 +97,7 @@ class EngineIntegrationTest {
     fun `unmatched rule on both sides blocks even an equivalent source change`() {
         val result = analyze("return x + 1;", "return x + 1; // comment", "missing")
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == "UNMATCHED_RULE" })
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMATCHED_RULE })
     }
 
     @Test
@@ -108,7 +108,7 @@ class EngineIntegrationTest {
         val head = commit(repository)
         val result = engine().analyze(AnalysisRequest(repository.toString(), base, head, rules()))
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == "UNMAPPED_CHANGE" })
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMAPPED_CHANGE })
     }
 
     @Test
@@ -142,7 +142,7 @@ class EngineIntegrationTest {
         val before = "return Example.class.getDeclaredMethods().length;"
         val result = analyze(before, "return Example.class.getDeclaredMethods().length + 1;")
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == "INCOMPLETE_GRAPH" }, result.toString())
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.INCOMPLETE_GRAPH }, result.toString())
     }
 
     @Test
@@ -167,7 +167,7 @@ class EngineIntegrationTest {
             Thread.currentThread().interrupt()
             val result = engine().analyze(AnalysisRequest(repository.toString(), revision, revision, rules()))
             assertEquals(Verdict.FAIL, result.verdict)
-            assertEquals("ANALYSIS_CANCELLED", result.diagnostics.single().code)
+            assertEquals(DiagnosticCode.ANALYSIS_CANCELLED, result.diagnostics.single().code)
             assertTrue(Thread.currentThread().isInterrupted)
         } finally {
             Thread.interrupted()
@@ -184,7 +184,7 @@ class EngineIntegrationTest {
         val head = commit(repository)
         val result = engine().analyze(AnalysisRequest(repository.toString(), base, head, rules()))
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == "UNMAPPED_CHANGE" }, result.toString())
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMAPPED_CHANGE }, result.toString())
         assertTrue(result.findings.isEmpty())
     }
 
@@ -213,7 +213,7 @@ class EngineIntegrationTest {
         val head = commit(repository)
         val result = engine().analyze(AnalysisRequest(repository.toString(), base, head, rules()))
         assertEquals(Verdict.FAIL, result.verdict)
-        val diagnostic = result.diagnostics.single { it.code == "UNMAPPED_CHANGE" }
+        val diagnostic = result.diagnostics.single { it.code == DiagnosticCode.UNMAPPED_CHANGE }
         assertTrue(diagnostic.message.contains("application.properties"))
     }
 
@@ -227,7 +227,7 @@ class EngineIntegrationTest {
         val head = commit(repository)
         val result = engine().analyze(AnalysisRequest(repository.toString(), base, head, rules()))
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == "UNMAPPED_CHANGE" }, result.toString())
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMAPPED_CHANGE }, result.toString())
         assertTrue(result.findings.isEmpty())
     }
 

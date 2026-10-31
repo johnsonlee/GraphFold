@@ -46,14 +46,14 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             }
             state.result()
         } catch (failure: WorkspaceLeaseTimeoutException) {
-            state.diagnostics += Diagnostic(AnalysisStage.GIT, "WORKSPACE_CAPACITY_TIMEOUT", requireNotNull(failure.message))
+            state.diagnostics += Diagnostic(AnalysisStage.GIT, DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT, requireNotNull(failure.message))
             state.result()
         } catch (failure: InterruptedException) {
             Thread.currentThread().interrupt()
-            state.diagnostics += Diagnostic(state.stage, "ANALYSIS_CANCELLED", "Analysis was interrupted")
+            state.diagnostics += Diagnostic(state.stage, DiagnosticCode.ANALYSIS_CANCELLED, "Analysis was interrupted")
             state.result()
         } catch (failure: Exception) {
-            state.diagnostics += Diagnostic(state.stage, "ANALYSIS_FAILED", failure.message ?: failure.javaClass.simpleName)
+            state.diagnostics += Diagnostic(state.stage, DiagnosticCode.ANALYSIS_FAILED, failure.message ?: failure.javaClass.simpleName)
             state.result()
         }
     }
@@ -73,7 +73,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             val head = compiler.compile(workspace.headDirectory, run.resolve("head"))
             state.stage = AnalysisStage.SOURCE
             val origins = prepareOrigins(base, head, workspace.baseDirectory, workspace.headDirectory, changes, run.resolve("normalized"))
-            origins.diagnostics.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, "UNVERIFIED_ORIGIN", it) }
+            origins.diagnostics.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.UNVERIFIED_ORIGIN, it) }
             if (origins.diagnostics.isNotEmpty()) return
             val oldProject = requireNotNull(origins.base)
             val newProject = requireNotNull(origins.head)
@@ -99,12 +99,12 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         val new = GraphiteAnalyzer { index, update -> state.audit(scenario.name, Revision.HEAD, index, update) }
             .analyzeOriginProject(head, scenario.rules)
         (old.diagnostics.map { "base: $it" } + new.diagnostics.map { "head: $it" }).forEach {
-            state.diagnostics += Diagnostic(AnalysisStage.GRAPH, "INCOMPLETE_GRAPH", it)
+            state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it)
         }
         scenario.rules.indices.forEach { index ->
             if (old.matchedRules[index] == 0 && new.matchedRules[index] == 0) {
                 state.diagnostics += Diagnostic(
-                    AnalysisStage.FOLD, "UNMATCHED_RULE", "${scenario.name}: rule $index matched neither revision",
+                    AnalysisStage.FOLD, DiagnosticCode.UNMATCHED_RULE, "${scenario.name}: rule $index matched neither revision",
                 )
             }
         }
@@ -121,19 +121,19 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
     ): List<ProofObligation> {
         if (listOfNotNull(change.basePath, change.headPath).any { !it.endsWith(".java") && !it.endsWith(".kt") } || change.binary) {
             state.diagnostics += Diagnostic(
-                AnalysisStage.SOURCE, "UNMAPPED_CHANGE", "Unsupported changed input: ${change.headPath ?: change.basePath}",
+                AnalysisStage.SOURCE, DiagnosticCode.UNMAPPED_CHANGE, "Unsupported changed input: ${change.headPath ?: change.basePath}",
             )
             return emptyList()
         }
         val old = source(workspace.baseDirectory, change.basePath, Revision.BASE, base)
         val new = source(workspace.headDirectory, change.headPath, Revision.HEAD, head)
         (old?.diagnostics.orEmpty() + new?.diagnostics.orEmpty()).forEach {
-            state.diagnostics += Diagnostic(AnalysisStage.SOURCE, "SOURCE_RESOLUTION_FAILED", it)
+            state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.SOURCE_RESOLUTION_FAILED, it)
         }
         val planned = planChanges(old, new, change)
         if (planned.isEmpty()) {
             state.diagnostics += Diagnostic(
-                AnalysisStage.SOURCE, "UNMAPPED_CHANGE", "Cannot bind ${change.headPath ?: change.basePath} to a declaration",
+                AnalysisStage.SOURCE, DiagnosticCode.UNMAPPED_CHANGE, "Cannot bind ${change.headPath ?: change.basePath} to a declaration",
             )
         }
         return planned
@@ -185,7 +185,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             obligation.locations, scenario, obligation.basePath, obligation.headPath,
         )
         if (!proved && obligation.locations.isEmpty()) {
-            state.diagnostics += Diagnostic(AnalysisStage.COMPARE, "UNLOCATED_MOVE_DIFFERENCE",
+            state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNLOCATED_MOVE_DIFFERENCE,
                 "Moving ${obligation.basePath} to ${obligation.headPath} changes JVM representation: ${differences.joinToString()}")
         } else if (!proved) {
             val message = "Surviving program representation differs: ${differences.joinToString()}"

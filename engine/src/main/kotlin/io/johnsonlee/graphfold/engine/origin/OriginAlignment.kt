@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin
 
+import io.johnsonlee.graphfold.engine.Revision
 import java.security.MessageDigest
 
 internal data class SourceOrigin(
@@ -27,8 +28,8 @@ private class OriginPairing(
     private val baseOwners = linkedMapOf<String, String>()
     private val headOwners = linkedMapOf<String, String>()
     private val diagnostics = linkedSetOf<String>()
-    private val blockedBase = invalid(base, "base")
-    private val blockedHead = invalid(head, "head")
+    private val blockedBase = invalid(base, Revision.BASE)
+    private val blockedHead = invalid(head, Revision.HEAD)
     private val remainingBase = base.filterNot { it.owner in blockedBase }.toMutableList()
     private val remainingHead = head.filterNot { it.owner in blockedHead }.toMutableList()
 
@@ -39,24 +40,25 @@ private class OriginPairing(
             match(eligible(remainingBase, base, baseOwners), eligible(remainingHead, head, headOwners), anchored = false)
         } while (baseOwners.size > previous)
         ambiguousRemainders()
-        assignUnmatched(base, baseOwners, "base")
-        assignUnmatched(head, headOwners, "head")
+        assignUnmatched(base, baseOwners, Revision.BASE)
+        assignUnmatched(head, headOwners, Revision.HEAD)
         return OriginAlignment(baseOwners, headOwners, diagnostics.toList())
     }
 
-    private fun invalid(origins: List<SourceOrigin>, revision: String): Set<String> {
+    private fun invalid(origins: List<SourceOrigin>, revision: Revision): Set<String> {
+        val label = revision.name.lowercase()
         val blocked = mutableSetOf<String>()
         origins.groupBy { it.owner }.filterValues { it.size != 1 }.forEach { (owner, _) ->
-            diagnostics += "$revision has duplicate compiler provenance for $owner"
+            diagnostics += "$label has duplicate compiler provenance for $owner"
             blocked += owner
         }
         origins.groupBy { it.path to it.syntax.range }.values.filter(::ambiguousCopies).forEach { copies ->
-            diagnostics += "$revision has ambiguous emitted copies at one source origin: ${copies.map { it.owner }.sorted()}"
+            diagnostics += "$label has ambiguous emitted copies at one source origin: ${copies.map { it.owner }.sorted()}"
             blocked += copies.map { it.owner }
         }
         origins.filter { it.syntax.parentRange != null }.forEach { origin ->
             if (parent(origin, origins) == null) {
-                diagnostics += "$revision has no unique parent origin for ${origin.owner}"
+                diagnostics += "$label has no unique parent origin for ${origin.owner}"
                 blocked += origin.owner
             }
         }
@@ -122,16 +124,16 @@ private class OriginPairing(
         }
     }
 
-    private fun assignUnmatched(origins: List<SourceOrigin>, aligned: MutableMap<String, String>, revision: String) {
+    private fun assignUnmatched(origins: List<SourceOrigin>, aligned: MutableMap<String, String>, revision: Revision) {
         origins.sortedBy { it.syntax.range.start }.forEach { origin ->
             if (origin.owner !in aligned) aligned[origin.owner] = canonical(origin, origins, aligned, revision)
         }
     }
 
-    private fun canonical(origin: SourceOrigin, all: List<SourceOrigin>, aligned: Map<String, String>, side: String): String {
+    private fun canonical(origin: SourceOrigin, all: List<SourceOrigin>, aligned: Map<String, String>, side: Revision): String {
         val parent = parent(origin, all)
         val prefix = parent?.let { aligned[it.owner] } ?: namedPrefix(origin)
-        val identity = listOf(side, origin.path, origin.owner, origin.syntax.range.start, origin.syntax.range.end,
+        val identity = listOf(side.name.lowercase(), origin.path, origin.owner, origin.syntax.range.start, origin.syntax.range.end,
             origin.syntax.container, origin.syntax.anchor).joinToString("\u0000")
         val hash = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }

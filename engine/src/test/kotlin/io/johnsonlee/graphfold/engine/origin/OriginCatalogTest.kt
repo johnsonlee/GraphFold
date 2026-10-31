@@ -219,6 +219,28 @@ class OriginCatalogTest {
         assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "Unknown origin kind" in it })
     }
 
+    @Test
+    fun `Kotlin protocol rejects unknown or absent frontend and provenance labels`() {
+        val fixture = compile(kotlin = true)
+        val file = manifest(fixture.project)
+        val original = mapper.readTree(file.toFile()) as ObjectNode
+        listOf("FUTURE", "", null).forEach { invalid ->
+            val frontend = original.deepCopy()
+            val producer = frontend["producer"] as ObjectNode
+            if (invalid == null) producer.remove("frontend") else producer.put("frontend", invalid)
+            mapper.writeValue(file.toFile(), frontend)
+            assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "Unknown compiler origin frontend" in it })
+
+            val provenance = original.deepCopy()
+            val record = provenance["records"][0] as ObjectNode
+            if (invalid == null) record.remove("provenance") else record.put("provenance", invalid)
+            mapper.writeValue(file.toFile(), provenance)
+            assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "Unknown origin provenance" in it })
+        }
+        mapper.writeValue(file.toFile(), original)
+        assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.isEmpty())
+    }
+
     private fun compile(kotlin: Boolean = false, format: (String) -> String = { it }): Fixture {
         val root = Files.createDirectory(temporary.resolve("repository"))
         val source = root.resolve(if (kotlin) "src/main/kotlin/sample/Example.kt" else "src/main/java/sample/Example.java")

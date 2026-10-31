@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
+import sootup.core.model.MethodModifier
 import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
 import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
@@ -224,7 +225,7 @@ class SnapshotComparisonTest {
     )
 
     private fun method(identity: String, canonical: String = "body", calls: Set<String> = emptySet(), isPrivate: Boolean = false) =
-        MethodSnapshot(identity, canonical, calls, setOf(if (isPrivate) "PRIVATE" else "PUBLIC"), emptySet())
+        MethodSnapshot(identity, canonical, calls, setOf(if (isPrivate) MethodModifier.PRIVATE else MethodModifier.PUBLIC), emptySet())
 
     private fun snapshot(vararg methods: MethodSnapshot) = ProgramSnapshot(
         methods.associateBy { it.identity },

@@ -2,6 +2,7 @@ package io.johnsonlee.graphfold.cli
 
 import com.github.ajalt.clikt.testing.test
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.johnsonlee.graphfold.engine.DiagnosticCode
 import io.johnsonlee.graphfold.engine.AnalysisMetadata
 import io.johnsonlee.graphfold.engine.AnalysisRequest
 import io.johnsonlee.graphfold.engine.AnalysisResult
@@ -50,7 +51,7 @@ class GraphFoldCommandTest {
     @Test
     fun `operational diagnostics return two`() {
         for (stage in listOf(AnalysisStage.INPUT, AnalysisStage.GIT, AnalysisStage.BUILD)) {
-            val output = GraphFoldCommand { _, _ -> result(listOf(Diagnostic(stage, "error", "Cannot proceed"))) }
+            val output = GraphFoldCommand { _, _ -> result(listOf(Diagnostic(stage, DiagnosticCode.ANALYSIS_FAILED, "Cannot proceed"))) }
                 .test(arguments("json"))
             assertEquals(2, output.statusCode)
         }
@@ -58,13 +59,15 @@ class GraphFoldCommandTest {
 
     @Test
     fun `analysis gaps return one while informational errors do not block`() {
-        val blocked = GraphFoldCommand { _, _ -> result(listOf(Diagnostic(AnalysisStage.GRAPH, "gap", "Unsupported"))) }
-            .test(arguments("text"))
+        val blocked = GraphFoldCommand { _, _ ->
+            result(listOf(Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, "Unsupported")))
+        }.test(arguments("text"))
         assertEquals(1, blocked.statusCode)
-        val info = GraphFoldCommand { _, _ -> result(listOf(Diagnostic(AnalysisStage.GIT, "info", "Cached", false))) }
-            .test(arguments("text"))
+        val info = GraphFoldCommand { _, _ ->
+            result(listOf(Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, "Partial graph note", false)))
+        }.test(arguments("text"))
         assertEquals(0, info.statusCode)
-        assertTrue(info.stdout.contains("GIT/info: Cached"))
+        assertTrue(info.stdout.contains("GRAPH/INCOMPLETE_GRAPH: Partial graph note"))
     }
 
     @Test
@@ -74,6 +77,17 @@ class GraphFoldCommandTest {
         val invalid = GraphFoldCommand { _, _ -> throw IllegalArgumentException("Invalid rule") }
         assertEquals(2, invalid.test(arguments("json")).statusCode)
         assertEquals(2, executeCli(emptyArray()))
+    }
+
+    @Test
+    fun `report format accepts only the documented enum spellings`() {
+        for (format in listOf("yaml", "JSON", "TEXT", "")) {
+            val command = GraphFoldCommand { _, _ -> error("Invalid format must not analyze") }
+            assertEquals(2, executeCli(arguments(format).toTypedArray(), command), format)
+        }
+        val help = GraphFoldCommand { _, _ -> error("Help must not analyze") }.test("--help")
+        assertTrue(help.stdout.contains("json"))
+        assertTrue(help.stdout.contains("text"))
     }
 
     @Test
@@ -91,7 +105,7 @@ class GraphFoldCommandTest {
         assertEquals(0, executeCli(arrayOf("--help")))
         assertEquals(0, executeCli(arguments("text").toTypedArray(), GraphFoldCommand { _, _ -> result() }))
         assertEquals(2, executeCli(arguments("text").toTypedArray(), GraphFoldCommand { _, _ ->
-            result(listOf(Diagnostic(AnalysisStage.GIT, "missing", "Missing repository")))
+            result(listOf(Diagnostic(AnalysisStage.GIT, DiagnosticCode.ANALYSIS_FAILED, "Missing repository")))
         }))
     }
 

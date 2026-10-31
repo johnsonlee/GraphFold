@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
+import sootup.core.model.MethodModifier
 import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
 
 /** Only uniquely equivalent removed/added private members are paired. Public API names stay observable. */
@@ -13,9 +14,9 @@ internal class PrivateMemberAlignment(private val base: ProgramSnapshot, private
             .mapValues { (_, fields) -> fields.map { it.identity } },
             newFields.groupBy { listOf(owner(it.identity), it.declaration, it.constant) }
                 .mapValues { (_, fields) -> fields.map { it.identity } })
-        val oldMethods = base.methods.values.filter { "PRIVATE" in it.modifiers && it.identity !in head.methods }
+        val oldMethods = base.methods.values.filter { MethodModifier.PRIVATE in it.modifiers && it.identity !in head.methods }
             .associateBy { it.identity }.toMutableMap()
-        val newMethods = head.methods.values.filter { "PRIVATE" in it.modifiers && it.identity !in base.methods }
+        val newMethods = head.methods.values.filter { MethodModifier.PRIVATE in it.modifiers && it.identity !in base.methods }
             .associateBy { it.identity }.toMutableMap()
         // A round indexes signatures once. Stop at the fixed point; ambiguous cycles stay unpaired.
         while (oldMethods.isNotEmpty() && newMethods.isNotEmpty()) {

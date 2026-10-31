@@ -13,6 +13,7 @@ import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.path
+import io.johnsonlee.graphfold.engine.DiagnosticCode
 import io.johnsonlee.graphfold.engine.AnalysisReports
 import io.johnsonlee.graphfold.engine.AnalysisRequest
 import io.johnsonlee.graphfold.engine.AnalysisResult
@@ -45,6 +46,8 @@ internal fun executeCli(args: Array<String>, command: GraphFoldCommand = GraphFo
     if (error.statusCode == 0) 0 else 2
 }
 
+internal enum class ReportFormat { JSON, TEXT }
+
 internal class GraphFoldCommand(
     private val analyze: (EngineConfiguration, AnalysisRequest) -> AnalysisResult = { configuration, request ->
         GraphFoldEngine(configuration).analyze(request)
@@ -61,7 +64,8 @@ internal class GraphFoldCommand(
         .path(mustExist = true, canBeDir = false, mustBeReadable = true).required()
     private val cacheDirectory by option("--cache-dir", help = "Shared Git and analysis cache directory")
         .path(canBeFile = false).default(Path.of(System.getProperty("user.home"), ".cache", "graphfold"))
-    private val format by option("--format", help = "Report format").choice("json", "text").default("text")
+    private val format by option("--format", help = "Report format")
+        .choice(ReportFormat.entries.associateBy { it.name.lowercase() }).default(ReportFormat.TEXT)
 
     private val workspaceSlots by option("--workspace-slots", help = "Maximum concurrent checkout pairs in the shared cache")
         .int().default(DEFAULT_MAXIMUM_WORKSPACE_SLOTS).check("must be positive") { it > 0 }
@@ -97,7 +101,10 @@ internal class GraphFoldCommand(
             throw ProgramResult(INPUT_FAILURE)
         }
         AnalysisReports.foldSelectionLog(result).forEach { echo(it, err = true) }
-        echo(if (format == "json") AnalysisReports.json(result) else AnalysisReports.text(result))
+        echo(when (format) {
+            ReportFormat.JSON -> AnalysisReports.json(result)
+            ReportFormat.TEXT -> AnalysisReports.text(result)
+        })
         val exitCode = result.exitCode()
         if (exitCode != SUCCESS) throw ProgramResult(exitCode)
     }
@@ -110,7 +117,7 @@ internal class GraphFoldCommand(
     }
 
     private fun Diagnostic.isCapacityTimeout(): Boolean =
-        stage == AnalysisStage.GIT && code == "WORKSPACE_CAPACITY_TIMEOUT"
+        stage == AnalysisStage.GIT && code == DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT
 
     private companion object {
         const val SUCCESS = 0

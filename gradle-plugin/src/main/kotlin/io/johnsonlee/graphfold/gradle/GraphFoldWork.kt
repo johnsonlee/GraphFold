@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.gradle
 
+import io.johnsonlee.graphfold.engine.DiagnosticCode
 import io.johnsonlee.graphfold.engine.AnalysisReports
 import io.johnsonlee.graphfold.engine.AnalysisRequest
 import io.johnsonlee.graphfold.engine.EngineConfiguration
@@ -46,7 +47,7 @@ abstract class GraphFoldWork : WorkAction<GraphFoldParameters> {
         Files.writeString(json, AnalysisReports.json(result))
         Files.writeString(text, AnalysisReports.text(result))
         if (result.verdict == Verdict.FAIL) {
-            val message = if (result.diagnostics.any { it.code == "WORKSPACE_CAPACITY_TIMEOUT" }) {
+            val message = if (result.diagnostics.any { it.code == DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT }) {
                 "GraphFold timed out waiting for workspace capacity; increase graphfold.leaseTimeout or graphfold.workspaceSlots"
             } else {
                 "GraphFold detected uncontrolled or unverifiable changes"
