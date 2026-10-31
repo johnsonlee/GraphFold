@@ -174,6 +174,12 @@ enum class DiagnosticCode {
     UNMATCHED_RULE,
     /** A changed input could not be mapped to supported source obligations. */
     UNMAPPED_CHANGE,
+    /** The build adapter did not establish a complete production output inventory for changed non-JVM inputs. */
+    PRODUCTION_INVENTORY_UNAVAILABLE,
+    /** Actual production resources, packaging, or runtime dependencies changed outside the folding model. */
+    PRODUCTION_OUTPUT_CHANGED,
+    /** Non-JVM input changes could not be proved harmless by comparing the whole folded production program. */
+    UNVERIFIED_BUILD_INPUT,
     /** Source indexing could not resolve a required declaration or symbol. */
     SOURCE_RESOLUTION_FAILED,
     /** A file move changed the JVM representation without a diff range for a finding. */
@@ -272,6 +278,8 @@ data class EngineConfiguration(
 
 /** Syntax-level categories describe the change, independently of whether it is safe. */
 enum class ChangeKind {
+    /** A repository input outside the Java/Kotlin syntax model changed; classification does not imply runtime impact. */
+    BUILD_INPUT_CHANGED,
     /** A field declaration was added. */
     FIELD_ADDED,
     /** A field declaration was removed. */
@@ -314,6 +322,8 @@ enum class ChangeKind {
 
 /** Machine-readable outcome of a change proof under one folding scenario. */
 enum class ReasonCode {
+    /** Actual production bytecode, resources, packages, and runtime dependency inventories are unchanged. */
+    BUILD_OUTPUT_UNCHANGED,
     /** No difference survives in the analyzed folded representation. */
     FOLDED_EQUIVALENT,
     /** The change is unreachable under the analyzed entry model and folding assumptions. */
@@ -327,10 +337,10 @@ enum class ReasonCode {
 /**
  * Explanation of an obligation outcome under a particular folding scenario.
  *
- * @property changes Syntax-level change categories, independent of the safety outcome.
+ * @property changes Source syntax or build-input change categories, independent of the safety outcome.
  * @property code Machine-readable proof outcome.
  * @property message Human-readable explanation of the outcome.
- * @property locations Diff spans for the obligation; may be empty for a pure file move.
+ * @property locations Diff spans for the obligation; empty for pure file moves or file-level build-input proofs.
  * @property scenario Name of the folding scenario used for this proof.
  * @property basePath Repository-relative old path, or null if absent or unspecified.
  * @property headPath Repository-relative new path, or null if absent or unspecified.

@@ -254,6 +254,50 @@ class MavenIntegrationTest {
         """.trimIndent())
     }
 
+    @Test
+    fun `real Maven inventory excludes documentation and retires deleted resources without recompiling classes`() {
+        val maven = downloadMaven()
+        val project = Files.createDirectory(temporary.resolve("production"))
+        Files.writeString(project.resolve("mvnw"), "#!/bin/sh\nexec sh '${maven.resolve("bin/mvn")}' \"${'$'}@\"\n")
+        Files.writeString(project.resolve("pom.xml"), """
+            <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
+            <groupId>fixture</groupId><artifactId>production</artifactId><version>1</version>
+            <properties><maven.compiler.source>17</maven.compiler.source><maven.compiler.target>17</maven.compiler.target></properties>
+            <dependencies>
+            <dependency><groupId>org.apache.commons</groupId><artifactId>commons-lang3</artifactId><version>3.17.0</version>
+            <scope>runtime</scope></dependency>
+            <dependency><groupId>org.jetbrains</groupId><artifactId>annotations</artifactId><version>26.0.2</version>
+            <scope>provided</scope></dependency></dependencies>
+            <build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version></plugin>
+            <plugin><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version></plugin></plugins></build></project>
+        """.trimIndent())
+        val sources = Files.createDirectories(project.resolve("src/main/java"))
+        Files.writeString(sources.resolve("App.java"), "public class App {}")
+        val resources = Files.createDirectories(project.resolve("src/main/resources"))
+        Files.writeString(resources.resolve("translation.properties"), "message=hello")
+        val compiler = ProjectCompiler(Duration.ofMinutes(3))
+        val first = compiler.compile(project, temporary.resolve("first"))
+        val inventory = kotlin.test.assertNotNull(first.production)
+        assertTrue(inventory.nonClassEntries.keys.any { it.endsWith("translation.properties") })
+        val runtime = Files.readString(project.resolve("target/graphfold-runtime-classpath.txt"))
+        assertTrue(runtime.contains("commons-lang3-3.17.0.jar"))
+        assertTrue(!runtime.contains("annotations-26.0.2.jar"))
+        val binary = project.resolve("target/classes/App.class")
+        val compiledAt = Files.getLastModifiedTime(binary)
+        Files.writeString(project.resolve("README.md"), "documentation only")
+        val documentation = compiler.compile(project, temporary.resolve("documentation"))
+        assertEquals(inventory, documentation.production)
+        assertEquals(compiledAt, Files.getLastModifiedTime(binary))
+        Files.delete(resources.resolve("translation.properties"))
+        val removed = compiler.compile(project, temporary.resolve("removed"))
+        assertEquals(compiledAt, Files.getLastModifiedTime(binary))
+        assertTrue(!Files.exists(project.resolve("target/classes/translation.properties")))
+        java.util.zip.ZipFile(project.resolve("target/production-1.jar").toFile()).use { jar ->
+            assertEquals(null, jar.getEntry("translation.properties"))
+        }
+        assertTrue(inventory.nonClassEntries != kotlin.test.assertNotNull(removed.production).nonClassEntries)
+    }
+
     private fun downloadMaven(): Path {
         val url = URI("https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.11/apache-maven-3.9.11-bin.zip").toURL()
         val bytes = url.openConnection().apply { connectTimeout = 30_000; readTimeout = 30_000 }.getInputStream().use { it.readBytes() }

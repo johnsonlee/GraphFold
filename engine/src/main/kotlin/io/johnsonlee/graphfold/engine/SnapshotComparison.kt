@@ -50,6 +50,12 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
             initializationChanges(obligation)).distinct().sorted()
     }
 
+    /** Checks all represented application owners when a build input cannot be attributed to one source declaration. */
+    fun wholeProgramDifferences(): List<String> = (base.declarations.keys + head.declarations.keys)
+        .filterNot { '(' in it }.flatMap { owner ->
+            differences(ProofObligation(owner, SymbolKind.CLASS, owner, emptyList()))
+        }.distinct().sorted()
+
     private fun initializationChanges(obligation: ProofObligation): List<String> =
         initializationDifferences[obligation.owner].orEmpty()
 

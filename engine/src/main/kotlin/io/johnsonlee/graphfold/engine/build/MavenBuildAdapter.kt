@@ -20,33 +20,36 @@ internal class MavenBuildAdapter(
             checkBuild(Files.isRegularFile(model), "Maven did not export its effective compiler configuration")
             model
         }
+        val production = MavenProductionInventory(effective)
         val modules = effective.keys.map { it.parent }
         val roots = modules.flatMap(::productionRoots)
         val provider = CompilerOriginPlugin.artifact()
         val identity = digest(provider)
         val state = checkout.resolve("target/graphfold/maven")
         val identityFile = state.resolve("identity.txt")
-        val configurationIdentity = "maven-v2-$identity" + effective.values.joinToString("") { digest(it) }
+        val configurationIdentity = "maven-v3-$identity" + effective.values.joinToString("") { digest(it) }
         val incomplete = state.resolve("incomplete")
         if (!Files.exists(identityFile) || Files.readString(identityFile) != configurationIdentity || Files.exists(incomplete)) {
             // Reuse is unsafe after build inputs change, but the slot must remain usable on this and later runs.
             modules.map { it.resolve("target") }.forEach { io.johnsonlee.graphfold.engine.git.deleteDirectory(it) }
         }
         Files.createDirectories(state)
-        val runId = "maven-v2-$identity"
+        val runId = "maven-v3-$identity"
         val provenance = MavenProvenance(state, runId)
         val outputs = modules.map { it.resolve("target/classes") }
         val inventory = MavenClassInventory(checkout, state, outputs)
+        Files.writeString(incomplete, configurationIdentity)
         inventory.prepare()
         provenance.prepare()
+        production.prepare(state)
         io.johnsonlee.graphfold.engine.git.deleteDirectory(state.resolve("test-origins"))
-        Files.writeString(incomplete, configurationIdentity)
-        MavenOriginOverlay(checkout, state, provider, effective, runId).use { overlay ->
+        MavenOriginOverlay(checkout, state, provider, effective, runId, production.supported).use { overlay ->
             runBuild(
                 checkout, output.resolve("build.log"), executable + listOf(
                     "package", "-DskipTests", "dependency:build-classpath", "-Dmdep.includeScope=compile",
                     "-Dmdep.outputFile=target/graphfold-classpath.txt",
-                ), timeout, buildEnvironmentAllowlist,
+                ) + if (production.supported) listOf("dependency:build-classpath@graphfold-production-runtime") else emptyList(),
+                timeout, buildEnvironmentAllowlist,
             )
             val dependencies = dependencies(modules).filterNot(overlay::isProviderDependency)
             checkBuild(dependencies.all { Files.exists(it) }, "Maven exported missing dependencies")
@@ -54,11 +57,12 @@ internal class MavenBuildAdapter(
             val classes = collectClasses(output, outputs)
             val origins = output.resolve("origins")
             provenance.publish(classes, origins)
+            val productionInventory = production.capture(classes, output, overlay::isProviderDependency)
             Files.writeString(identityFile, configurationIdentity)
             Files.delete(incomplete)
             return CompiledProject(classes, roots, dependencies, origins, runId, modules.flatMap { module ->
                 productionRoots(module).map { it to listOf(module.resolve("target/classes")) }
-            }.toMap())
+            }.toMap(), production = productionInventory)
         }
     }
 

@@ -264,10 +264,16 @@ Git diff 提供文件和行级变化，源码解析进一步识别声明、表�
 flowchart TD
     I[Repo / base / head / fold] --> W[共享仓库与隔离 checkout]
     W --> D[Git diff 与文件变更清单]
-    D --> S[源码索引：变更类 / 字段 / 方法 / 表达式]
+    D -->|Java/Kotlin| S[源码索引：变更类 / 字段 / 方法 / 表达式]
+    D -->|其他输入| E[保留文件级构建输入义务]
     S --> O[逐项建立证明义务与源码范围]
     W --> B[构建两侧产物并检查可比性]
-    B --> G[完整构建两侧 Graphite 关系图]
+    B --> A[实际生产产物清单比较]
+    E --> A
+    A -->|仅非源码且产物一致| R
+    A -->|范围未知或非 class 产物不同| X[记录阻断诊断]
+    X --> R
+    A -->|需要源码或程序等价证明| G[完整构建两侧 Graphite 关系图]
     G --> F[Cypher 选点与折叠计划]
     O --> C[展开证明依赖]
     G --> C
@@ -335,6 +341,26 @@ flowchart TD
 - 工具链或依赖发生变化时必须覆盖其影响，首版无法证明则阻断；不能静默将其归一化。
 - 如使用 Gradle plugin 运行 GraphFold，内部构建不得再次触发同一个 GraphFold task，避免递归。
 - 相同输入若出现无法解释的产物漂移，视为不可比，不能随机选择一次结果通过。
+
+### 6.1 非源码变更按实际生产产物证明
+
+不使用 README、`docs/`、`.github/` 或文件扩展名白名单。所有非 Java/Kotlin diff 保留为 `BUILD_INPUT_CHANGED` 义务，两侧构建完成后以实际输出决定是否需要继续分析。README 被生成器读取、CI 文件被打包、翻译文件来自自定义目录，都适用相同流程。
+
+构建适配器导出 `ProductionInventory`：应用 class、处理后的资源、按模块及顺序记录的 runtime classpath、实际生产包。清单的键使用逻辑位置及相对路径，值为内容摘要；ZIP 时间戳、压缩参数及条目排列不参与比较。资源、manifest、依赖内容、classpath 顺序与模块边界保留。只有 JVM 路径和内容均匹配已建图应用 class 的条目才能从非 class 清单移除，未知或被打包插件转换的 class 仍保留，不能冒充已被 Graphite 证明。Kotlin 编译来源标记含 checkout 绝对路径，不能把该工具注入的路径差异当成生产变化。原始字节不一致时，先完成两侧 provenance 校验，再仅移除保留的 `SourceOrigin` 注解比较 class；不改用户字符串、其他注解、方法体或 owner 名称。这一步与原始 class 装载位置及非 class 清单共同成立，才允许输出未改变的结论。两侧共有应用 class 的资源/classpath/归档位置另行比较，防止编译结果相同但打包时删除或移动 class 被误放行；真正新增或删除的 class 继续由可达性和图比较判断。
+
+| 构建证据 | 处理 | verdict reason / diagnostic |
+| --- | --- | --- |
+| 仅非源码 diff，完整生产清单一致 | 所有相关输入义务证明完成；不执行图查询，审计状态记录 `NOT_EXECUTED` 及原因 | `BUILD_OUTPUT_UNCHANGED` |
+| 资源、包内非 class 内容或运行时依赖不同 | 当前 class 折叠模型不能证明其效果受控；阻断并列出实际变化的输出条目 | `PRODUCTION_OUTPUT_CHANGED` |
+| 非 class 清单一致，但 class 不同或同时修改源码 | 完成来源校验和 Graphite 分析，在每个场景下比较整个已建模生产程序；源码 diff 同时保留声明级义务 | 成功为 `FOLDED_EQUIVALENT` |
+| 折叠后仍有程序差异，无法归因给某个非源码输入 | 保留该输入义务为未证明；不把生成文件或未改文件伪造成 finding | `UNVERIFIED_BUILD_INPUT` |
+| 任一侧未建立完整生产清单 | 明确报告缺少构建范围证据；不能仅凭扩展名放行或声称业务违规 | `PRODUCTION_INVENTORY_UNAVAILABLE` |
+
+例如 README 和受控 Java 修改同时出现，且资源、运行时依赖及折叠后的程序均一致，可以通过。若 Java 留下差异，其 finding 仍定位到 Java diff；README 的影响没有独立因果证明时只记录分析缺口。当前不执行反事实构建来分别隔离每个输入的贡献，因此混合 PR 可能有保守的未证明 reason。
+
+**适配范围。** Gradle 执行生产 `main` 输出及 `runtimeElements` 出站 artifact 的依赖任务，导出各项目实际 runtime classpath（包含应用输出）和 source-set 输出。发现额外可消费的 Java runtime variant 时，保留主源码分析，但不声明生产清单完整。Maven 使用 effective reactor 模型、单次 reactor 构建内独立导出的 runtime scope classpath，以及约定 JAR/package 输出；分析注入的 POM 仅在清单副本中还原为原 POM，真实构建输出保持可复用。自定义 Maven packaging、无法确定的资源映射或未支持的插件组合不宣称清单完整。source-only 编译器没有资源与打包模型，非源码 diff 会报告缺少生产清单。
+
+**增量与局限。** 不禁用增量编译或任务缓存；复用 checkout 时必须验证删除资源不会残留。Maven 对受支持的资源复制保存输入、目标和输出 hash，只有旧输入已删除且目标仍匹配所有权记录时才清理旧资源，不能删除任意生成输出。这个证明覆盖适配器明确导出的生产范围，不覆盖仓库外部署步骤、未声明的运行时文件读取、容器构建或外部 CI 发布逻辑。Gradle `runtimeElements` 未声明的自定义部署任务需要独立适配；不能把清单一致解释为所有部署环境的行为等价。完整清单哈希有额外 I/O 成本，尚无代表性多图负载的性能验收。
 
 ## 7. Graphite 能力基线
 
@@ -805,7 +831,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 - 构建适配包含约定布局的 Java/Kotlin/混合源码、Gradle wrapper 与 Maven。任意 compiler plugin、生成器、Multiplatform、自定义 source set、依赖锁定及环境 provenance 不属于已验证的通用保证。
 - Graphite 固定 2.12.0。两次建图完成 Cypher 选点与折叠，通过公开 SPI 捕获折叠后 Jimple，以 ASM 清单交叉检查缺类、缺方法及声明信息，无需修改 Graphite 上游。
 - 当前快照保存在内存。未实现流式落盘、增量图、跨过程常量专门化、一般符号等价证明或自动场景缩减。
-- 存活结构差异输出 `UNVERIFIABLE_CHANGE`，不冒充已确认业务反例。基础设施失败、未映射资源或缺失分析信息通过 blocking diagnostic 阻断。
+- 存活结构差异输出 `UNVERIFIABLE_CHANGE`，不冒充已确认业务反例。基础设施失败、变化的非 class 生产产物或缺失分析信息通过 blocking diagnostic 阻断；非源码 diff 按第 6.1 节的实际产物证据判断。
 - 质量门禁要求各模块行覆盖率至少 90%、分支覆盖率至少 95%，测试与 detekt 同属 `check`。不能以此前 90% 门禁的历史结果代替当前验收；各模块最新覆盖率及执行记录见 [validation.md](validation.md)。
 - 发布 workflow 支持 tag 发布与 dry-run。已完成的本地产物验收不代表已经执行远程发布。
 

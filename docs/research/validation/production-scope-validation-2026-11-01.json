@@ -1,0 +1,128 @@
+{
+  "date": "2026-11-01",
+  "baseCommit": "8c0fc35948a597100ede3f0e065340521c47d150",
+  "testedState": "Working tree with production-scope changes before commit; development artifact version derives from baseCommit.",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :gfc:detektMain :cli:detektMain :cli:detektTest :gradle-plugin:detektMain :gradle-plugin:detektTest :cli:installDist :cli:distZip :cli:distTar publishAllPublicationsToReleaseVerificationRepository --continue --console=plain",
+  "buildSummary": "BUILD SUCCESSFUL in 22m 9s",
+  "modules": {
+    "gfc": {
+      "tests": {
+        "tests": 62,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 187,
+          "missed": 9,
+          "percent": 95.4082
+        },
+        "line": {
+          "covered": 335,
+          "missed": 5,
+          "percent": 98.5294
+        }
+      }
+    },
+    "engine": {
+      "tests": {
+        "tests": 623,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 3085,
+          "missed": 141,
+          "percent": 95.6293
+        },
+        "line": {
+          "covered": 3783,
+          "missed": 25,
+          "percent": 99.3435
+        }
+      }
+    },
+    "cli": {
+      "tests": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 33,
+          "missed": 1,
+          "percent": 97.0588
+        },
+        "line": {
+          "covered": 75,
+          "missed": 1,
+          "percent": 98.6842
+        }
+      }
+    },
+    "gradle-plugin": {
+      "tests": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 18,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 95,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "junitTests": 742,
+  "hardGates": {
+    "branchPercent": 95,
+    "linePercent": 90,
+    "productionExclusionsAdded": false
+  },
+  "corpus": {
+    "java": {
+      "cases": 130,
+      "mismatches": 0
+    },
+    "kotlin": {
+      "cases": 186,
+      "mismatches": 0
+    }
+  },
+  "regressions": [
+    "README, CI and unpackaged translations pass only from equal actual production inventories.",
+    "Processed resource edits, deletions, runtime-only dependency changes and packaged README inputs remain observable.",
+    "Runtime classpath order and module boundaries, package metadata and shared-class placements are retained.",
+    "Changing archive inclusion of a compiled class blocks even when graph bytecode is identical.",
+    "Mixed documentation and gated Java changes pass whole-program folding; uncontrolled changes keep diff-owned findings.",
+    "README-driven code generation blocks without inventing findings outside the diff.",
+    "Kotlin documentation-only changes with unmatched selectors pass after verified marker-only bytecode normalization.",
+    "Corrupted provenance cannot use the instrumented-class equality shortcut; user annotations, strings and instructions stay significant.",
+    "Gradle honors runtime file builtBy dependencies and preserves incremental resource deletion.",
+    "Maven runtime scope excludes provided dependencies; owned resource deletion refreshes the JAR without recompiling classes.",
+    "Linked resource directories are inventoried; unowned or tampered resource outputs are never silently removed.",
+    "Unsupported runtime variants, packaging/resource mappings and source-only build scopes remain explicit inventory gaps."
+  ],
+  "publicationVerification": {
+    "version": "0.1.0-8c0fc35948a5",
+    "localOnly": true,
+    "releaseHelperVerify": true,
+    "zipTarSmoke": true
+  },
+  "schemaValidatedReports": 316,
+  "releaseHelperTests": 17,
+  "performanceAcceptance": false
+}

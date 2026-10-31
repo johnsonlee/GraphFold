@@ -19,10 +19,12 @@ import kotlin.io.path.extension
  * @property originDirectory Compiler provenance directory, or null when no provenance was exported.
  * @property originRunId Expected provenance run identity, or null when no identity was exported.
  * @property sourceOutputs Source-root to original class-output mapping used to disambiguate module ownership.
+ * @property production Actual production classpath and package inventory, or null when the adapter cannot establish its scope.
  */
 data class CompiledProject(
     val classes: Path, val sourceRoots: List<Path>, val dependencies: List<Path>, val originDirectory: Path? = null,
     val originRunId: String? = null, val sourceOutputs: Map<Path, List<Path>> = emptyMap(),
+    val production: ProductionInventory? = null,
 )
 
 /**

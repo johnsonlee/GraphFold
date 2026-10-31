@@ -16,7 +16,7 @@ import org.w3c.dom.Element
 /** Temporary configuration in the isolated checkout. Original POM bytes are always restored. */
 internal class MavenOriginOverlay(
     private val checkout: Path, private val output: Path, plugin: Path,
-    effectiveModels: Map<Path, Path>, private val runId: String,
+    effectiveModels: Map<Path, Path>, private val runId: String, private val runtimeInventory: Boolean = false,
 ) : AutoCloseable {
     private val originals = effectiveModels.keys.associateWith(Files::readAllBytes)
     private val version = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(plugin)))
@@ -66,12 +66,38 @@ internal class MavenOriginOverlay(
         val effectivePlugins = effective.documentElement.existing("build")?.existing("plugins")?.children("plugin").orEmpty()
         val compiler = effectivePlugins.firstOrNull { it.value("artifactId") == "maven-compiler-plugin" }
         configureCompiler(project, compiler)
+        if (runtimeInventory) configureRuntimeDependencies(project, effectivePlugins, pom)
         effectivePlugins.firstOrNull { it.value("artifactId") == "kotlin-maven-plugin" }?.let {
             configureKotlin(project, it)
         }
         val transformer = TransformerFactory.newInstance().newTransformer()
         transformer.setOutputProperty(OutputKeys.INDENT, "yes")
         transformer.transform(DOMSource(document), StreamResult(pom.toFile()))
+    }
+
+    private fun configureRuntimeDependencies(project: Element, effectivePlugins: List<Element>, pom: Path) {
+        val effective = effectivePlugins.firstOrNull { it.value("artifactId") == "maven-dependency-plugin" }
+        val plugin = plugin(project, "org.apache.maven.plugins", "maven-dependency-plugin", effective)
+        val executions = plugin.child("executions")
+        checkBuild(executions.children("execution").none { it.value("id") == "graphfold-production-runtime" },
+            "Maven dependency execution graphfold-production-runtime is reserved for analysis")
+        executions.append("execution").apply {
+            append("id", "graphfold-production-runtime")
+            child("configuration").apply {
+                append("includeScope", "runtime")
+                append("outputFile", pom.parent.resolve("target/graphfold-runtime-classpath.txt").toString())
+                append("excludeScope", "")
+                append("excludeArtifactIds", "")
+                append("excludeGroupIds", "")
+                append("includeArtifactIds", "")
+                append("includeGroupIds", "")
+                append("includeTypes", "")
+                append("excludeTypes", "")
+                append("includeClassifiers", "")
+                append("excludeClassifiers", "")
+                append("excludeTransitive", "false")
+            }.setAttribute("combine.self", "override")
+        }
     }
 
     private fun configureCompiler(project: Element, effective: Element?) {

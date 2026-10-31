@@ -4,6 +4,41 @@ Date: 2026-11-01. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
 
+## Production scope from actual build outputs (2026-11-01)
+
+The unfiltered root check and type-aware detekt checks passed with **742 JUnit tests**,
+zero failures/errors/skips. All four modules retain the **95% branch / 90% line**
+hard gates, without production exclusions.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| gfc | 62 | 98.5294% | 95.4082% (187/196) |
+| engine | 623 | 99.3435% | 95.6293% (3085/3226) |
+| cli | 28 | 98.6842% | 97.0588% (33/34) |
+| gradle-plugin | 29 | 100.0000% | 100.0000% (18/18) |
+
+Actual Gradle builds verify unchanged README/CI/unpackaged translation inputs,
+packaged resources, resource deletion, runtime-only generated dependencies, README
+code generation, shared-class packaging exclusions, and mixed gated/uncontrolled
+source changes. Kotlin-only README changes pass even with unmatched selectors after
+validating provenance and removing only GraphFold's source marker; damaged origin
+records block that shortcut. Class instructions, user annotations and string values
+remain significant.
+
+Real Maven builds verify runtime-only/provided separation, unchanged documentation,
+and removal of an owned resource from classes and JAR while retaining the class
+modification time. Unit regressions cover runtime grouping/order, archive metadata,
+linked resource directories, ownership failures, unavailable build scope, and
+whole-program comparison. These are correctness checks, not performance acceptance.
+No representative multi-graph performance claim is made.
+
+The Java 130 / Kotlin 186 corpus remains unchanged with zero mismatches; all 316
+serialized reports validate against the JSON Schema. Local publication and CLI
+ZIP/TAR version smoke checks pass, along with 17 release-helper tests. No remote
+release was performed. See [production-scope evidence](research/validation/production-scope-validation-2026-11-01.json)
+and the supported scope/tradeoffs in [design section 6.1](design.md#61-非源码变更按实际生产产物证明).
+Earlier validation sections below are historical baselines.
+
 ## PR review: audit logging and compile-only SPI annotations (2026-11-01)
 
 The full root check and type-aware detekt checks passed with **677 JUnit tests**,

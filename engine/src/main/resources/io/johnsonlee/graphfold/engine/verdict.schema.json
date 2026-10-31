@@ -245,7 +245,10 @@
             "UNMATCHED_RULE",
             "UNMAPPED_CHANGE",
             "SOURCE_RESOLUTION_FAILED",
-            "UNLOCATED_MOVE_DIFFERENCE"
+            "UNLOCATED_MOVE_DIFFERENCE",
+            "PRODUCTION_INVENTORY_UNAVAILABLE",
+            "PRODUCTION_OUTPUT_CHANGED",
+            "UNVERIFIED_BUILD_INPUT"
           ],
           "description": "Stable machine-readable diagnostic identity. Distinguishes workspace-capacity timeout, cancellation, unexpected failure, unverified compiler origin, incomplete graph, unmatched fold rule, unmapped change, failed source resolution, and an unlocated difference after a file move."
         },
@@ -324,6 +327,7 @@
           "items": {
             "type": "string",
             "enum": [
+              "BUILD_INPUT_CHANGED",
               "FIELD_ADDED",
               "FIELD_REMOVED",
               "FIELD_INITIALIZER_CHANGED",
@@ -346,11 +350,12 @@
             ]
           },
           "uniqueItems": true,
-          "description": "Distinct syntax-level change categories associated with the obligation. These describe what changed, independently of whether the change is safe."
+          "description": "Distinct source syntax or build-input change categories associated with the obligation. These describe what changed, independently of whether the change is safe."
         },
         "code": {
           "type": "string",
           "enum": [
+            "BUILD_OUTPUT_UNCHANGED",
             "FOLDED_EQUIVALENT",
             "UNREACHABLE",
             "SURVIVING_DIFFERENCE",
@@ -367,7 +372,7 @@
           "items": {
             "$ref": "#/$defs/sourceLocation"
           },
-          "description": "Diff spans associated with the obligation; may be empty for a pure file move."
+          "description": "Diff spans associated with the obligation; empty for pure file moves or file-level build-input proofs, whose paths remain recorded."
         },
         "scenario": {
           "type": "string",

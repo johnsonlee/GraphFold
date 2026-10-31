@@ -1,0 +1,76 @@
+package io.johnsonlee.graphfold.engine
+
+import io.johnsonlee.graphfold.engine.build.ProductionInventory
+import io.johnsonlee.graphfold.engine.git.ChangedFile
+import io.johnsonlee.graphfold.engine.origin.ORIGIN_MARKER
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.MessageDigest
+import java.util.HexFormat
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.tree.ClassNode
+
+/** Non-JVM inputs are assessed by observed production outputs, never a filename allowlist. */
+internal class BuildInputProof(
+    val changes: List<ChangedFile>,
+    private val base: ProductionInventory?,
+    private val head: ProductionInventory?,
+) {
+    val unchanged: Boolean get() = base != null && head != null && base.entries == head.entries
+
+    fun gap(): Diagnostic? {
+        if (base == null || head == null) return Diagnostic(
+            AnalysisStage.BUILD, DiagnosticCode.PRODUCTION_INVENTORY_UNAVAILABLE,
+            "The build adapter did not establish production resources, runtime classpaths and package outputs " +
+                "for both revisions; cannot determine the impact of changed non-JVM inputs",
+        )
+        val byteDifferences = (base.nonClassEntries.keys + head.nonClassEntries.keys).filter {
+            base.nonClassEntries[it] != head.nonClassEntries[it]
+        }
+        val placementDifferences = base.classPlacements.keys.intersect(head.classPlacements.keys).filter {
+            base.classPlacements[it] != head.classPlacements[it]
+        }.map { "classPlacement/$it" }
+        val differences = (byteDifferences + placementDifferences).sorted()
+        return if (differences.isEmpty()) null else Diagnostic(
+            AnalysisStage.COMPARE, DiagnosticCode.PRODUCTION_OUTPUT_CHANGED,
+            "Actual production resources, packages or runtime dependencies differ outside the class-folding model: " +
+                differences.take(MAXIMUM_OUTPUT_DETAILS).joinToString() + " (${differences.size} output entries)",
+        )
+    }
+
+    fun reasons(code: ReasonCode, scenario: String, message: String): List<VerdictReason> = changes.map {
+        VerdictReason(setOf(ChangeKind.BUILD_INPUT_CHANGED), code, message, emptyList(), scenario, it.basePath, it.headPath)
+    }
+
+    /**
+     * Compares original application classes after removing only GraphFold's verified provenance annotation.
+     * Call only after both revisions' compiler provenance has been validated against their original classes.
+     * Resource, dependency, and class-placement gaps still prevent this equality proof.
+     */
+    fun unchangedClasses(baseClasses: Path, headClasses: Path): Boolean =
+        gap() == null && applicationClassIdentity(baseClasses) == applicationClassIdentity(headClasses)
+
+    private companion object {
+        const val MAXIMUM_OUTPUT_DETAILS = 20
+    }
+}
+
+private fun applicationClassIdentity(directory: Path): Map<String, String> = Files.walk(directory).use { files ->
+    files.filter { Files.isRegularFile(it) && it.toString().endsWith(".class") }.sorted().toList().associate { file ->
+        val node = ClassNode()
+        ClassReader(Files.readAllBytes(file)).accept(node, 0)
+        node.visibleAnnotations?.removeAll { it.desc == ORIGIN_MARKER }
+        node.invisibleAnnotations?.removeAll { it.desc == ORIGIN_MARKER }
+        // A fresh constant pool removes the injected source paths without rewriting user string values.
+        val writer = ClassWriter(0)
+        node.accept(writer)
+        directory.relativize(file).joinToString("/") to
+            HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(writer.toByteArray()))
+    }
+}
+
+/** Both rename endpoints must belong to the JVM source model before declaration-level proof is applicable. */
+internal fun ChangedFile.isJvmSourceChange(): Boolean = listOfNotNull(basePath, headPath).all {
+    it.endsWith(".java") || it.endsWith(".kt")
+}

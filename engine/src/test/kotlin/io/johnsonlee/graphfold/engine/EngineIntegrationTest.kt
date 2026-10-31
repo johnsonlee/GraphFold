@@ -101,14 +101,14 @@ class EngineIntegrationTest {
     }
 
     @Test
-    fun `configuration change remains an explicit unresolved obligation`() {
+    fun `buildless configuration change requires production scope evidence`() {
         val repository = repository("return x;")
         val base = commit(repository)
         Files.writeString(repository.resolve("application.properties"), "feature.value=changed\n")
         val head = commit(repository)
         val result = engine().analyze(AnalysisRequest(repository.toString(), base, head, rules()))
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMAPPED_CHANGE })
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.PRODUCTION_INVENTORY_UNAVAILABLE })
     }
 
     @Test
@@ -213,8 +213,9 @@ class EngineIntegrationTest {
         val head = commit(repository)
         val result = engine().analyze(AnalysisRequest(repository.toString(), base, head, rules()))
         assertEquals(Verdict.FAIL, result.verdict)
-        val diagnostic = result.diagnostics.single { it.code == DiagnosticCode.UNMAPPED_CHANGE }
-        assertTrue(diagnostic.message.contains("application.properties"))
+        assertEquals(DiagnosticCode.PRODUCTION_INVENTORY_UNAVAILABLE, result.diagnostics.single().code)
+        assertEquals("application.properties", result.reasons.single().basePath)
+        assertEquals(null, result.reasons.single().headPath)
     }
 
     @Test

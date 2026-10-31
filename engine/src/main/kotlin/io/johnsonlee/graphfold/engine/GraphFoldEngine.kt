@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.build.CompiledProject
 import io.johnsonlee.graphfold.engine.build.ProjectCompiler
 import io.johnsonlee.graphfold.engine.git.ChangedFile
 import io.johnsonlee.graphfold.engine.git.GitWorkspace
@@ -12,6 +13,7 @@ import io.johnsonlee.graphite.input.FoldSites
 import io.johnsonlee.graphfold.engine.origin.OriginProject
 import io.johnsonlee.graphfold.engine.origin.bindOrigins
 import io.johnsonlee.graphfold.engine.origin.prepareOrigins
+import io.johnsonlee.graphfold.engine.origin.readOrigins
 import io.johnsonlee.graphfold.engine.source.DiffLocations
 import io.johnsonlee.graphfold.engine.source.ChangeClassifier
 import io.johnsonlee.graphfold.engine.source.SymbolKind
@@ -86,25 +88,107 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             val compiler = ProjectCompiler(configuration.buildTimeout, configuration.buildEnvironmentAllowlist)
             val base = compiler.compile(workspace.baseDirectory, run.resolve("base"))
             val head = compiler.compile(workspace.headDirectory, run.resolve("head"))
-            state.stage = AnalysisStage.SOURCE
-            val origins = prepareOrigins(base, head, workspace.baseDirectory, workspace.headDirectory, changes, run.resolve("normalized"))
-            origins.diagnostics.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.UNVERIFIED_ORIGIN, it) }
-            if (origins.diagnostics.isNotEmpty()) return
-            val oldProject = requireNotNull(origins.base)
-            val newProject = requireNotNull(origins.head)
-            val obligations = changes.flatMap { change -> obligations(workspace, change, oldProject, newProject, state) }
-            state.obligations = obligations.size
-            val passed = BooleanArray(obligations.size) { true }
-            scenarios.forEach { scenario ->
-                val comparison = compareScenario(oldProject, newProject, scenario, state)
-                obligations.forEachIndexed { index, obligation ->
-                    if (!checkObligation(obligation, comparison, scenario.name, state)) passed[index] = false
-                }
+            val inputChanges = changes.filterNot { it.isJvmSourceChange() }
+            val inputProof = BuildInputProof(inputChanges, base.production, head.production)
+            if (prepareBuildInputProof(inputProof, changes.size, scenarios, state)) {
+                analyzeSources(workspace, changes, scenarios, state, CompiledRevisions(base, head), run, inputProof)
             }
-            state.proved = passed.count { it }
         } finally {
             cleanupDirectory(run)
         }
+    }
+
+    private fun analyzeSources(
+        workspace: GitWorkspace, changes: List<ChangedFile>, scenarios: List<FoldScenario>, state: RunState,
+        compiled: CompiledRevisions, run: Path, inputProof: BuildInputProof,
+    ) {
+        state.stage = AnalysisStage.SOURCE
+        if (prepareInstrumentedInputProof(inputProof, changes.size, compiled, workspace, scenarios, state)) return
+        val origins = prepareOrigins(
+            compiled.base, compiled.head, workspace.baseDirectory, workspace.headDirectory, changes, run.resolve("normalized"),
+        )
+        origins.diagnostics.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.UNVERIFIED_ORIGIN, it) }
+        if (origins.diagnostics.isNotEmpty()) return
+        val oldProject = requireNotNull(origins.base)
+        val newProject = requireNotNull(origins.head)
+        val obligations = changes.filter { it.isJvmSourceChange() }
+            .flatMap { change -> obligations(workspace, change, oldProject, newProject, state) }
+        state.obligations = obligations.size + inputProof.changes.size
+        val passed = BooleanArray(obligations.size) { true }
+        var inputsProved = true
+        scenarios.forEach { scenario ->
+            val comparison = compareScenario(oldProject, newProject, scenario, state)
+            val inputPassed = checkBuildInputs(inputProof, comparison, scenario.name, state)
+            inputsProved = inputsProved && inputPassed
+            obligations.forEachIndexed { index, obligation ->
+                if (!checkObligation(obligation, comparison, scenario.name, state)) passed[index] = false
+            }
+        }
+        state.proved = passed.count { it } + if (inputsProved) inputProof.changes.size else 0
+    }
+
+    private fun prepareInstrumentedInputProof(
+        proof: BuildInputProof, changeCount: Int, compiled: CompiledRevisions, workspace: GitWorkspace,
+        scenarios: List<FoldScenario>, state: RunState,
+    ): Boolean {
+        if (proof.changes.size != changeCount) return false
+        val failures = readOrigins(compiled.base, workspace.baseDirectory).diagnostics.map { "base: $it" } +
+            readOrigins(compiled.head, workspace.headDirectory).diagnostics.map { "head: $it" }
+        return when {
+            failures.isNotEmpty() -> {
+                failures.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.UNVERIFIED_ORIGIN, it) }
+                true
+            }
+            proof.unchangedClasses(compiled.base.classes, compiled.head.classes) -> {
+                recordUnchangedInputs(proof, scenarios, state,
+                    "Production outputs are unchanged after validating and removing GraphFold compiler-origin instrumentation")
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun prepareBuildInputProof(
+        proof: BuildInputProof, changeCount: Int, scenarios: List<FoldScenario>, state: RunState,
+    ): Boolean {
+        if (proof.changes.isEmpty()) return true
+        val gap = proof.gap()
+        return when {
+            gap != null -> {
+                state.diagnostics += gap
+                scenarios.forEach { state.reasons += proof.reasons(ReasonCode.ANALYSIS_INCOMPLETE, it.name, gap.message) }
+                false
+            }
+            proof.changes.size == changeCount && proof.unchanged -> {
+                recordUnchangedInputs(proof, scenarios, state,
+                    "Actual production bytecode, resources, runtime dependencies and package contents are unchanged")
+                false
+            }
+            else -> true
+        }
+    }
+
+    private fun recordUnchangedInputs(proof: BuildInputProof, scenarios: List<FoldScenario>, state: RunState, message: String) {
+        state.proved = proof.changes.size
+        scenarios.forEach { state.reasons += proof.reasons(ReasonCode.BUILD_OUTPUT_UNCHANGED, it.name, message) }
+        state.ruleAudits.replaceAll { it.copy(message = "Production outputs are unchanged; graph selection was not executed") }
+    }
+
+    private fun checkBuildInputs(
+        proof: BuildInputProof, comparison: SnapshotComparison, scenario: String, state: RunState,
+    ): Boolean {
+        if (proof.changes.isEmpty()) return true
+        val differences = comparison.wholeProgramDifferences()
+        val proved = differences.isEmpty()
+        val message = if (proved) "Production resources and runtime dependencies are unchanged; " +
+            "the entire analyzed production program is equivalent after folding"
+        else "Folded production program differs; non-JVM input effects cannot be independently attributed: " +
+            differences.joinToString()
+        state.reasons += proof.reasons(
+            if (proved) ReasonCode.FOLDED_EQUIVALENT else ReasonCode.ANALYSIS_INCOMPLETE, scenario, message,
+        )
+        if (!proved) state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNVERIFIED_BUILD_INPUT, message)
+        return proved
     }
 
     private fun compareScenario(base: OriginProject, head: OriginProject, scenario: FoldScenario, state: RunState): SnapshotComparison {
@@ -134,7 +218,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         head: OriginProject,
         state: RunState,
     ): List<ProofObligation> {
-        if (listOfNotNull(change.basePath, change.headPath).any { !it.endsWith(".java") && !it.endsWith(".kt") } || change.binary) {
+        if (change.binary) {
             state.diagnostics += Diagnostic(
                 AnalysisStage.SOURCE, DiagnosticCode.UNMAPPED_CHANGE, "Unsupported changed input: ${change.headPath ?: change.basePath}",
             )
@@ -222,6 +306,8 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }
+
+private data class CompiledRevisions(val base: CompiledProject, val head: CompiledProject)
 
 private class RunState(request: AnalysisRequest) {
     var stage = AnalysisStage.INPUT
