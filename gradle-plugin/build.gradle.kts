@@ -18,6 +18,7 @@ gradlePlugin {
 }
 dependencies {
     implementation(project(":engine"))
+    testImplementation(testFixtures(project(":engine")))
     testImplementation(gradleTestKit())
     testImplementation(libs.jackson.kotlin)
     testImplementation("org.mockito:mockito-core:5.16.1")

@@ -195,17 +195,17 @@ cache/workspaces/<repository-key>/slot-1/...         # 并发分析使用另一�
 流程：
 
 1. 规范化仓库身份，复用缓存；凭据不进入缓存键和日志。
-2. 通过 JGit fetch 缺失对象，将输入 revision 解析并固定为完整 commit SHA。
+2. 通过 JGit fetch 缺失对象：完整 SHA 优先直接获取，服务端不支持时再回退分支发现；缩写先发现分支，再解析为完整 commit SHA。歧义缩写和非 commit 对象提供明确错误，要求使用完整 commit SHA。
 3. 校验两个 commit 可读取；不依赖可变 branch 名继续分析。
-4. 租用空闲 slot 中的一对持久 checkout；没有空闲 slot 才新增。以原始 commit blob 恢复源码，内容及 mode 未变化的文件不重写、保留 mtime；被构建修改的 tracked 文件恢复原值，目标 commit 删除的文件移除。不运行 checkout hook 或 smudge filter。
+4. 租用空闲 slot 中的一对持久 checkout；每个仓库最多使用 `EngineConfiguration.maximumWorkspaceSlots` 个 slot（默认 2），全部忙碌时可中断地等待 `workspaceLeaseTimeout`（默认 5 分钟），超时阻断分析。以原始 commit blob 恢复源码，内容及 mode 未变化的文件不重写、保留 mtime；被构建修改的 tracked 文件恢复原值，目标 commit 删除的文件移除。不运行 checkout hook 或 smudge filter。
 5. 按目标 commit 的 ignore 规则清理非忽略的 untracked 文件。私有 checkout 的 `info/exclude` 额外保留 `.gradle/`、`build/`、`target/`，构建系统负责验证其任务输入与输出。在独立工作目录构建与分析；用 JGit 读取 commit tree 与 diff。
 6. 完成分析后释放 slot 租约，保留工作目录与构建状态，后续分析继续使用相同路径。checkout 准备失败时删除该 slot 的不完整目录并释放租约；本次导出的分析快照仍独立管理。
 
 并发与恢复：
 
-- 对影响共享仓库状态的 fetch 和 checkout 准备使用按仓库锁；不同 run 的构建不持有此锁。
+- 影响共享仓库状态的 fetch 使用按仓库锁；等待 slot、独占 slot 的 checkout 准备和构建均不持有此锁。
 - JVM 内 reservation 与操作系统 file lock 共同保证一个 slot 同时只有一个使用者；base/head 始终是独立目录。释放租约可在不同线程执行，清理不触及用户 checkout 或仍在使用的其他 slot。
-- 进程退出后操作系统释放 file lock，后续分析可重新租用并恢复 tracked 源码；这不等于验证过任意崩溃点的事务恢复。JGit index 锁残留等恢复异常必须阻断，不能使用未确认的源码。持久 slot 数量随并发峰值增长，目前没有自动淘汰策略；共享 objects 回收必须同时考虑所有保留的 checkout。
+- 进程退出后操作系统释放 file lock，后续分析可重新租用并恢复 tracked 源码；这不等于验证过任意崩溃点的事务恢复。JGit index 锁残留等恢复异常必须阻断，不能使用未确认的源码。持久 slot 数量受配置上限限制；历史版本或调低上限前已存在的额外 slot 不再租用，但不会自动删除。目前没有磁盘配额或自动淘汰策略；共享 objects 回收必须同时考虑所有保留的 checkout。
 - submodule 和 Git LFS 尚未完整支持，检测到时阻断，不分析占位文件。
 - GraphFold 的 Git 操作不使用原生命令或 CLI fallback，不要求 `git` 出现在 `PATH`。这不等于承诺 JGit 内部永远不启动进程：库的可选用户/系统配置发现行为与“Git 可执行文件必需”是不同的边界。
 - HTTP/SSH 认证的实际集成尚未验证，不承诺自动沿用原生 credential helper 或 SSH agent；认证失败必须作为阻断 diagnostic 返回。
@@ -517,7 +517,7 @@ Kotlin inline 副本还依赖定义的物理源码身份：只在定义前增加
 
 当前 Gradle compiler arguments 含 checkout 内的绝对路径，build cache 按 checkout 路径隔离；支持同一路径的增量、up-to-date 与缓存恢复，不承诺跨目录或跨机器缓存命中。Kotlin marker 中仍保存物理源码路径，不能直接把其它 checkout 的 sidecar 当作本地来源。编译输出正确性与大仓库性能是不同的验收项目；后者仍需代表性的多图负载测量。
 
-Maven 同样保留项目配置的增量编译，不强制 `useIncrementalCompilation=false` 或执行 `clean`。checkout 的 `target/graphfold/maven/` 保存稳定 provider、来源快照与编译器输出清单。javac 的 GENERATE 事件以及 Kotlin 实际输出消息记录 class 的 owner 与物理输入文件，独立于匿名对象的源码范围；不能从 `SourceFile` 或生成类名反推删除归属。增量结果合并后校验源码与 class hash，删除源码或重编译后消失的 owner 只清理先前编译器明确记录且 hash 未变化的输出；Kotlin 对应的增量 class 缓存也必须核对。未归属的 class、混合来源的部分删除、来源或字节码过期均阻断。Maven 的 effective POM／provider 身份改变时，当前明确拒绝复用旧状态，尚未实现自动迁移；Kotlin Maven 2.1.20 的跨文件 inline 物理位置变化已验证由原生增量编译刷新副本的 hash 与 offset；没有照搬 Gradle 的参数失效策略，其它编译器／依赖组合仍需单独验证，未刷新的副本由 hash 校验阻断。
+Maven 同样保留项目配置的增量编译；配置未变且上次构建完整时，不强制 `useIncrementalCompilation=false` 或执行 `clean`。checkout 的 `target/graphfold/maven/` 保存稳定 provider、来源快照与编译器输出清单。javac 的 GENERATE 事件以及 Kotlin 实际输出消息记录 class 的 owner 与物理输入文件，独立于匿名对象的源码范围；不能从 `SourceFile` 或生成类名反推删除归属。增量结果合并后校验源码与 class hash，删除源码或重编译后消失的 owner 只清理先前编译器明确记录且 hash 未变化的输出；Kotlin 对应的增量 class 缓存也必须核对。未归属的 class、混合来源的部分删除、来源或字节码过期均阻断。Maven 的 effective POM／provider 身份改变、首次接管未验证的输出或上次构建未完成时，自动删除当前 reactor 各模块的 `target/` 并重新构建，成功后恢复增量复用；不会因旧身份永久阻塞持久化 slot。reactor 由 effective POM 的已激活模块声明递归解析，不扫描 fixture/example POM；生产源码只从这些模块的约定根目录导出，source-only 模式也只编译仓库根目录的约定源码。保留 `-DskipTests` 并编译测试源码，以支持 reactor 的 test-jar 依赖；测试 class 不导入分析结果；测试编译 execution 使用独立 `test-origins/`，避免相同 FQCN／匿名 owner 覆盖生产来源。混合 compile 与 test-compile goal 的单一 execution 明确阻断。Kotlin Maven 2.1.20 的跨文件 inline 物理位置变化已验证由原生增量编译刷新副本的 hash 与 offset；没有照搬 Gradle 的参数失效策略，其它编译器／依赖组合仍需单独验证，未刷新的副本由 hash 校验阻断。
 
 **校验。** 引擎检查成功构建的 runId、schema、完成标记、源码 hash、文件归属、范围、实际 class 和 Kotlin marker，并将编译范围与 AST 表达式精确匹配。找不到、重复或过期的记录产生 `UNVERIFIED_ORIGIN`，不能变成 PASS。Kotlin 编译器会折叠 CRLF 并去掉开头 BOM，provider 先将 IR 偏移转换回原始 UTF16 边界；inline marker 中的物理坐标不再转换。headless PSI 使用保持文本长度的输入预处理，token 与报告坐标仍取原文。sidecar 范围使用从零开始、末端不包含的 UTF16 offset；报告仍保留 diff 的文件与一基起止行列。来源绑定不依赖 SourceFile/LineNumberTable；普通 Kotlin 方法的现有索引仍有自己的调试信息限制。
 

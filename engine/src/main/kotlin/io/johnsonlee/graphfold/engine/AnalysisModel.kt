@@ -5,6 +5,8 @@ import java.time.Duration
 
 private const val DEFAULT_BUILD_TIMEOUT_MINUTES = 10L
 private const val DEFAULT_MAXIMUM_SCENARIOS = 32
+private const val DEFAULT_MAXIMUM_WORKSPACE_SLOTS = 2
+private const val DEFAULT_WORKSPACE_LEASE_TIMEOUT_MINUTES = 5L
 
 /** All business inputs to an analysis. [fold] is a Graphite fold document, optionally containing scenarios. */
 data class AnalysisRequest(
@@ -98,10 +100,17 @@ data class EngineConfiguration(
     val cacheDirectory: Path,
     val buildTimeout: Duration = Duration.ofMinutes(DEFAULT_BUILD_TIMEOUT_MINUTES),
     val maximumScenarios: Int = DEFAULT_MAXIMUM_SCENARIOS,
+    val buildEnvironmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
+    val maximumWorkspaceSlots: Int = DEFAULT_MAXIMUM_WORKSPACE_SLOTS,
+    val workspaceLeaseTimeout: Duration = Duration.ofMinutes(DEFAULT_WORKSPACE_LEASE_TIMEOUT_MINUTES),
 ) {
     init {
         require(!buildTimeout.isNegative && !buildTimeout.isZero) { "build timeout must be positive" }
         require(maximumScenarios > 0) { "maximumScenarios must be positive" }
+        require(maximumWorkspaceSlots > 0) { "maximumWorkspaceSlots must be positive" }
+        require(!workspaceLeaseTimeout.isNegative && !workspaceLeaseTimeout.isZero) {
+            "workspace lease timeout must be positive"
+        }
     }
 }
 

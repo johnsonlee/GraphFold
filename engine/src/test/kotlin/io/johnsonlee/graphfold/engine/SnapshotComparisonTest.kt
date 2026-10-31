@@ -197,6 +197,25 @@ class SnapshotComparisonTest {
         assertTrue(SnapshotComparison(base, head).isUnreachable(obligation(helper.identity)))
     }
 
+    @Test
+    fun `owner indexes retain reachable static fields and callbacks without pulling unrelated owners`() {
+        val root = method("Example.run()I", calls = setOf("Callback.<init>()V"))
+            .copy(references = listOf("State.value:I"))
+        val constructor = method("Callback.<init>()V")
+        val callback = method("Callback.run()V", "old callback")
+        val initializer = method("State.<clinit>()V", "old initializer")
+        val unrelated = method("Unrelated.run()V", "old unrelated")
+        val base = snapshot(root, constructor, callback, initializer, unrelated).copy(entryClasses = setOf("Example"))
+        val head = snapshot(root, constructor, callback.copy(referenceCanonical = "new callback"),
+            initializer.copy(referenceCanonical = "new initializer"), unrelated.copy(referenceCanonical = "new unrelated"))
+            .copy(entryClasses = setOf("Example"))
+        val comparison = SnapshotComparison(base, head)
+        val field = ProofObligation("State.value:I", SymbolKind.FIELD, "State", emptyList())
+        assertEquals(listOf(callback.identity, initializer.identity), comparison.differences(field))
+        assertTrue(comparison.isUnreachable(obligation(unrelated.identity)))
+        assertEquals(listOf(callback.identity, initializer.identity), comparison.differences(field))
+    }
+
     private fun differences(base: ProgramSnapshot, head: ProgramSnapshot): List<String> =
         SnapshotComparison(base, head).differences(obligation("Example.run()I"))
 

@@ -13,13 +13,16 @@ import kotlin.io.path.extension
 /** Classes are copied outside the checkout; dependency paths refer to resolved build inputs. */
 data class CompiledProject(
     val classes: Path, val sourceRoots: List<Path>, val dependencies: List<Path>, val originDirectory: Path? = null,
-    val originRunId: String? = null,
+    val originRunId: String? = null, val sourceOutputs: Map<Path, List<Path>> = emptyMap(),
 )
 
 class BuildFailure(message: String) : IllegalStateException(message)
 
 /** Build adapters export actual outputs and dependencies instead of guessing global cache entries. */
-class ProjectCompiler(private val timeout: Duration) {
+class ProjectCompiler(
+    private val timeout: Duration,
+    private val buildEnvironmentAllowlist: Set<String> = io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT,
+) {
     init {
         require(!timeout.isZero && !timeout.isNegative) { "Build timeout must be positive" }
     }
@@ -28,8 +31,8 @@ class ProjectCompiler(private val timeout: Duration) {
         Files.createDirectories(output)
         checkBuild(Files.list(output).use { it.findAny().isEmpty }, "Build output directory must be empty: $output")
         return when {
-            Files.exists(checkout.resolve("gradlew")) -> GradleBuildAdapter(timeout).compile(checkout, output)
-            Files.exists(checkout.resolve("pom.xml")) -> MavenBuildAdapter(timeout).compile(checkout, output)
+            Files.exists(checkout.resolve("gradlew")) -> GradleBuildAdapter(timeout, buildEnvironmentAllowlist).compile(checkout, output)
+            Files.exists(checkout.resolve("pom.xml")) -> MavenBuildAdapter(timeout, buildEnvironmentAllowlist).compile(checkout, output)
             Files.exists(checkout.resolve("build.gradle")) || Files.exists(checkout.resolve("build.gradle.kts")) ->
                 throw BuildFailure("Gradle projects require a checked-in wrapper")
             else -> compileSources(checkout, output)
@@ -46,12 +49,13 @@ class ProjectCompiler(private val timeout: Duration) {
             "Java module compilation requires a build-system adapter")
         val classes = Files.createDirectories(output.resolve("classes"))
         val dependencies = if (kotlin.isEmpty()) emptyList() else {
-            KotlinBuildAdapter(timeout).compile(checkout, output, classes, kotlin + sources)
+            KotlinBuildAdapter(timeout, buildEnvironmentAllowlist).compile(checkout, output, classes, kotlin + sources)
         }
         if (sources.isNotEmpty()) {
             compileJava(sources, classes, dependencies, output.resolve("origins"), checkout, CompilerOriginPlugin.runId(output))
         }
-        return CompiledProject(classes, roots, dependencies, output.resolve("origins"), CompilerOriginPlugin.runId(output))
+        return CompiledProject(classes, roots, dependencies, output.resolve("origins"), CompilerOriginPlugin.runId(output),
+            roots.associateWith { listOf(classes) })
     }
 
     private fun compileJava(
@@ -76,12 +80,9 @@ internal fun regularFiles(root: Path): List<Path> = Files.walk(root).use { paths
     paths.filter { Files.isRegularFile(it) }.sorted().toList()
 }
 
-internal fun productionRoots(checkout: Path): List<Path> = Files.walk(checkout).use { paths ->
-    paths.filter { Files.isDirectory(it) &&
-        (it.endsWith(Path.of("src/main/java")) || it.endsWith(Path.of("src/main/kotlin"))) }
-        .filter { path -> checkout.relativize(path).none { it.toString() in IGNORED_DIRECTORIES } }
-        .sorted().toList()
-}
+/** Source-only projects have one root; build adapters enumerate their declared production modules. */
+internal fun productionRoots(module: Path): List<Path> = listOf("src/main/java", "src/main/kotlin")
+    .map(module::resolve).filter(Files::isDirectory)
 
 internal fun collectClasses(output: Path, directories: List<Path>): Path {
     val classes = Files.createDirectories(output.resolve("classes"))
@@ -100,7 +101,6 @@ internal fun collectClasses(output: Path, directories: List<Path>): Path {
     return classes
 }
 
-private val IGNORED_DIRECTORIES = setOf("build", "target", ".git", ".gradle")
 
 internal fun checkBuild(condition: Boolean, message: String) {
     if (!condition) throw BuildFailure(message)

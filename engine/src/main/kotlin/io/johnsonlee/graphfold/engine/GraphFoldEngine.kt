@@ -30,7 +30,11 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             val scenarios = FoldDocument.parse(request.fold, configuration.maximumScenarios)
             state.scenarios = scenarios.map { it.name }
             state.stage = AnalysisStage.GIT
-            val manager = GitWorkspaceManager(configuration.cacheDirectory.resolve("git"))
+            val manager = GitWorkspaceManager(
+                configuration.cacheDirectory.resolve("git"),
+                configuration.maximumWorkspaceSlots,
+                configuration.workspaceLeaseTimeout,
+            )
             manager.open(request.repository, request.base, request.head).use { workspace ->
                 state.baseSha = workspace.baseSha
                 state.headSha = workspace.headSha
@@ -54,7 +58,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         state.stage = AnalysisStage.BUILD
         val run = Files.createTempDirectory(configuration.cacheDirectory, "analysis-")
         try {
-            val compiler = ProjectCompiler(configuration.buildTimeout)
+            val compiler = ProjectCompiler(configuration.buildTimeout, configuration.buildEnvironmentAllowlist)
             val base = compiler.compile(workspace.baseDirectory, run.resolve("base"))
             val head = compiler.compile(workspace.headDirectory, run.resolve("head"))
             state.stage = AnalysisStage.SOURCE
@@ -74,7 +78,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             }
             state.proved = passed.count { it }
         } finally {
-            Files.walk(run).use { files -> files.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+            cleanupDirectory(run)
         }
     }
 
@@ -148,7 +152,8 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
     private fun source(root: Path, path: String?, revision: Revision, project: OriginProject): IndexedSource? =
         when {
             path == null -> null
-            path.endsWith(".kt") -> KotlinSourceIndex(project.sourceClasses).use { it.index(root, path, revision) }
+            path.endsWith(".kt") -> KotlinSourceIndex(project.sourceClasses, project.compiled.sourceOutputs)
+                .use { it.index(root, path, revision) }
             path.endsWith(".java") -> JavaSourceIndex(project.compiled.sourceRoots, project.compiled.dependencies)
                 .use { it.index(root, path, revision) }
             else -> null

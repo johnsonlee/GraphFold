@@ -49,7 +49,7 @@ internal object ProofPlanner {
 
     private fun offset(text: String, line: Int, column: Int): Int {
         var cursor = 0
-        repeat(line - 1) { cursor = text.indexOf('\n', cursor).let { if (it < 0) text.length else it + 1 } }
+        repeat(line - 1) { cursor = text.indexOf('\n', cursor).let { next -> if (next < 0) text.length else next + 1 } }
         return (cursor + column - 1).coerceAtMost(text.length)
     }
 

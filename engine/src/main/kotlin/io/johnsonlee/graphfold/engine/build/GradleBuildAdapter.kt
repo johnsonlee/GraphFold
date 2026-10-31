@@ -1,11 +1,14 @@
 package io.johnsonlee.graphfold.engine.build
 
 import java.nio.file.Files
+import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT
 import java.nio.file.Path
 import java.time.Duration
 import java.util.Base64
 
-internal class GradleBuildAdapter(private val timeout: Duration) {
+internal class GradleBuildAdapter(
+    private val timeout: Duration, private val environmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
+) {
     fun compile(checkout: Path, output: Path): CompiledProject {
         val extracted = CompilerOriginPlugin.extract(output)
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(extracted))
@@ -28,10 +31,12 @@ internal class GradleBuildAdapter(private val timeout: Duration) {
                 checkout, output.resolve("build.log"),
                 listOf("sh", "./gradlew", "--no-daemon", "--no-configuration-cache", "--init-script", init.toString(),
                     "-Dgraphfold.export.path=$manifest", "-Dgraphfold.origin.plugin=$plugin",
-                    "-Dgraphfold.origin.output=$origins", "-Dgraphfold.origin.runId=$runId", ":graphfoldExportCompiledInputs"), timeout,
+                    "-Dgraphfold.origin.output=$origins", "-Dgraphfold.origin.runId=$runId", ":graphfoldExportCompiledInputs"),
+                timeout, environmentAllowlist,
             )
             checkBuild(Files.exists(manifest), "Gradle did not export analysis inputs")
-            val entries = Files.readAllLines(manifest).map { line ->
+            val lines = Files.readAllLines(manifest)
+            val entries = lines.filterNot { it.startsWith("sourceOutput|") }.map { line ->
                 val parts = line.split('|', limit = 2)
                 checkBuild(parts.size == 2, "Invalid Gradle input export")
                 parts[0] to Path.of(String(Base64.getDecoder().decode(parts[1]), Charsets.UTF_8))
@@ -41,10 +46,18 @@ internal class GradleBuildAdapter(private val timeout: Duration) {
             val dependencies = entries.filter { it.first == "dependency" }.map { it.second }
                 .filterNot { it in outputs }.distinct()
             checkBuild(dependencies.all { Files.exists(it) }, "Gradle exported missing dependencies")
-            return CompiledProject(collectClasses(output, outputs), roots.distinct(), dependencies, origins, runId)
+            val sourceOutputs = lines.filter { it.startsWith("sourceOutput|") }.map { line ->
+                val parts = line.split('|')
+                checkBuild(parts.size == SOURCE_OUTPUT_FIELDS, "Invalid Gradle source/output export")
+                fun decode(value: String) = Path.of(String(Base64.getDecoder().decode(value), Charsets.UTF_8))
+                decode(parts[1]) to decode(parts[2])
+            }.groupBy({ it.first }, { it.second })
+            return CompiledProject(collectClasses(output, outputs), roots.distinct(), dependencies, origins, runId, sourceOutputs)
         } finally {
             Files.deleteIfExists(init)
         }
     }
 
 }
+
+private const val SOURCE_OUTPUT_FIELDS = 3

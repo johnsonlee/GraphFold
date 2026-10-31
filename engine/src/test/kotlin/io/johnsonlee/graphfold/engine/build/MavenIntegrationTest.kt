@@ -9,7 +9,6 @@ import java.util.zip.ZipInputStream
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /** Exercises a real reactor and Maven's dependency export, including an external artifact. */
@@ -27,7 +26,9 @@ class MavenIntegrationTest {
               <modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>parent</artifactId>
               <version>1</version><packaging>pom</packaging>
               <properties><maven.compiler.source>17</maven.compiler.source><maven.compiler.target>17</maven.compiler.target></properties>
-              <modules><module>library</module><module>app</module><module>retired</module></modules>
+              <modules><module>library</module><module>app</module></modules>
+              <profiles><profile><id>retired-module</id><activation><activeByDefault>true</activeByDefault></activation>
+                <modules><module>retired</module></modules></profile></profiles>
               <dependencies><dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId>
                 <version>1.18.36</version><scope>provided</scope></dependency></dependencies>
               <build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version>
@@ -37,11 +38,17 @@ class MavenIntegrationTest {
               </plugin></plugins></build>
             </project>
         """.trimIndent())
-        module(project, "library", "",
+        module(project, "library", """
+            <build><plugins><plugin><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version>
+              <executions><execution><goals><goal>test-jar</goal></goals></execution></executions>
+            </plugin></plugins></build>
+        """.trimIndent(),
             "package example; public class Library { @lombok.Getter private Object callback = new Object() {}; }")
         module(project, "app", """
             <dependencies>
               <dependency><groupId>fixture</groupId><artifactId>library</artifactId><version>1</version></dependency>
+              <dependency><groupId>fixture</groupId><artifactId>library</artifactId><version>1</version>
+                <type>test-jar</type><scope>test</scope></dependency>
               <dependency><groupId>org.apache.commons</groupId><artifactId>commons-lang3</artifactId><version>3.17.0</version></dependency>
             </dependencies>
         """.trimIndent(), """
@@ -51,12 +58,21 @@ class MavenIntegrationTest {
             }
         """.trimIndent())
         module(project, "retired", "", "package example; public class Retired { Object value = new Object() {}; }")
+        reactorTestSources(project)
+        // Neither unlisted examples nor plugin integration fixture POMs belong to the production reactor.
+        listOf("src/it/broken", "src/test/resources/broken", "examples/unlisted").forEach { path ->
+            val fixture = Files.createDirectories(project.resolve("$path/src/main/java"))
+            Files.writeString(fixture.resolve("Broken.java"), "this is deliberately invalid Java")
+            Files.writeString(project.resolve("$path/pom.xml"), "not even XML")
+        }
         val originalPoms = listOf("pom.xml", "library/pom.xml", "app/pom.xml", "retired/pom.xml").associateWith {
             Files.readString(project.resolve(it))
         }
         val result = ProjectCompiler(Duration.ofMinutes(3)).compile(project, temporary.resolve("output"))
         assertTrue(Files.exists(result.classes.resolve("example/App.class")))
         assertTrue(Files.exists(result.classes.resolve("example/Library.class")))
+        assertTrue(Files.exists(project.resolve("app/target/test-classes/example/ConsumerTest.class")))
+        assertTrue(!Files.exists(result.classes.resolve("example/SharedTestSupport.class")))
         val libraryClass = org.objectweb.asm.tree.ClassNode().also {
             org.objectweb.asm.ClassReader(Files.readAllBytes(result.classes.resolve("example/Library.class"))).accept(it, 0)
         }
@@ -76,6 +92,17 @@ class MavenIntegrationTest {
         verifyJavaReuse(project, result)
     }
 
+    private fun reactorTestSources(project: Path) {
+        val libraryTests = Files.createDirectories(project.resolve("library/src/test/java/example"))
+        Files.writeString(libraryTests.resolve("SharedTestSupport.java"),
+            "package example; public class SharedTestSupport { public static int number() { return 1; } }")
+        Files.writeString(libraryTests.resolve("Library.java"),
+            "package example; public class Library { Object testCallback = new Object() {}; }")
+        val appTests = Files.createDirectories(project.resolve("app/src/test/java/example"))
+        Files.writeString(appTests.resolve("ConsumerTest.java"),
+            "package example; public class ConsumerTest { int value = SharedTestSupport.number(); }")
+    }
+
     private fun verifyJavaReuse(project: Path, first: CompiledProject) {
         val compiler = ProjectCompiler(Duration.ofMinutes(3))
         val libraryClass = project.resolve("library/target/classes/example/Library.class")
@@ -84,6 +111,19 @@ class MavenIntegrationTest {
         assertEquals(first.originRunId, unchanged.originRunId)
         assertEquals(timestamp, Files.getLastModifiedTime(libraryClass))
         assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(unchanged, project).diagnostics.isEmpty())
+        val shadow = project.resolve("library/src/test/java/example/Library.java")
+        Files.writeString(shadow, Files.readString(shadow).replace("new Object() {}", "new Object() { int value = 2; }"))
+        val testEdited = compiler.compile(project, temporary.resolve("test-edited"))
+        assertEquals(timestamp, Files.getLastModifiedTime(libraryClass))
+        assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(testEdited, project).diagnostics.isEmpty())
+        val records = regularFiles(requireNotNull(testEdited.originDirectory)).flatMap {
+            com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(it.toFile())["records"].toList()
+        }
+        val mainOrigin = records.single { it["owner"].asText() == "example.Library${'$'}1" }
+        val mainSource = project.resolve("library/src/main/java/example/Library.java")
+        assertEquals(mainSource.toRealPath(), Path.of(mainOrigin["source"].asText()).toRealPath())
+        assertEquals(digest(mainSource), mainOrigin["sourceHash"].asText())
+        assertTrue(records.none { "/src/test/" in it["source"].asText() })
         val app = project.resolve("app/src/main/java/example/App.java")
         Files.writeString(app, Files.readString(app).replace("isEmpty(value)", "isBlank(value)"))
         val edited = compiler.compile(project, temporary.resolve("edited"))
@@ -93,6 +133,15 @@ class MavenIntegrationTest {
         assertTrue(!Files.exists(deleted.classes.resolve("example/Retired.class")))
         assertTrue(!Files.exists(deleted.classes.resolve("example/Retired${'$'}1.class")))
         assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(deleted, project).diagnostics.isEmpty())
+        listOf("pom.xml", "library/pom.xml", "app/pom.xml", "retired/pom.xml").forEach { path ->
+            val pom = project.resolve(path)
+            Files.writeString(pom, Files.readString(pom).replace("<version>1</version>", "<version>2</version>"))
+        }
+        val bumped = compiler.compile(project, temporary.resolve("version-bump"))
+        assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(bumped, project).diagnostics.isEmpty())
+        val bumpedTimestamp = Files.getLastModifiedTime(libraryClass)
+        compiler.compile(project, temporary.resolve("version-bump-reused"))
+        assertEquals(bumpedTimestamp, Files.getLastModifiedTime(libraryClass))
     }
 
     @Test
@@ -173,10 +222,17 @@ class MavenIntegrationTest {
         assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(deleted, project).diagnostics.isEmpty())
         val pom = project.resolve("pom.xml")
         Files.writeString(pom, Files.readString(pom).replace("<jvmTarget>17", "<jvmTarget>11"))
-        val changedConfiguration = assertFailsWith<BuildFailure> {
-            compiler.compile(project, temporary.resolve("kotlin-compiler-change"))
+        Files.writeString(source.resolve("Rebuilt.kt"), "package example; class Rebuilt { fun value(): Any = object {} }")
+        val changed = compiler.compile(project, temporary.resolve("kotlin-compiler-change"))
+        assertTrue(io.johnsonlee.graphfold.engine.origin.readOrigins(changed, project).diagnostics.isEmpty())
+        val rebuilt = project.resolve("target/classes/example/Rebuilt.class")
+        val classNode = org.objectweb.asm.tree.ClassNode().also {
+            org.objectweb.asm.ClassReader(Files.readAllBytes(rebuilt)).accept(it, 0)
         }
-        assertTrue(requireNotNull(changedConfiguration.message).contains("compiler configuration changed"))
+        assertEquals(org.objectweb.asm.Opcodes.V11, classNode.version)
+        val rebuiltTimestamp = Files.getLastModifiedTime(rebuilt)
+        compiler.compile(project, temporary.resolve("kotlin-compiler-change-reused"))
+        assertEquals(rebuiltTimestamp, Files.getLastModifiedTime(rebuilt))
     }
 
     private fun inlineCopy(project: CompiledProject): com.fasterxml.jackson.databind.JsonNode =

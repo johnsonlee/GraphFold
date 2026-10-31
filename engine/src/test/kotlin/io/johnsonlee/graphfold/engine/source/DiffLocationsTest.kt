@@ -71,6 +71,20 @@ class DiffLocationsTest {
         assertTrue(DiffLocations.locations(absentPaths.copy(hunks = listOf(ChangedHunk(1, 1, 1, 1))), "old", "new").isEmpty())
     }
 
+    @Test
+    fun `single blank line insertion and deletion retain zero width diff locations`() {
+        val added = change(ChangedHunk(1, 0, 2, 1))
+        val insertion = DiffLocations.locations(added, "first\nlast\n", "first\n\nlast\n").single()
+        assertEquals(Revision.HEAD, insertion.revision)
+        assertEquals(SourceRange(2, 2), insertion.line)
+        assertEquals(SourceRange(1, 1), insertion.column)
+        val removed = change(ChangedHunk(2, 1, 1, 0))
+        val deletion = DiffLocations.locations(removed, "first\n\nlast\n", "first\nlast\n").single()
+        assertEquals(Revision.BASE, deletion.revision)
+        assertEquals(insertion.line, deletion.line)
+        assertEquals(insertion.column, deletion.column)
+    }
+
     private fun change(vararg hunks: ChangedHunk) =
         ChangedFile("Example.java", "Example.java", emptyList(), emptyList(), hunks = hunks.toList())
 }

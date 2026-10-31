@@ -6,47 +6,51 @@ import java.nio.file.Path
 import java.time.Duration
 
 /** Supports conventional Maven JVM layouts; explicit custom layouts fail instead of being omitted. */
-internal class MavenBuildAdapter(private val timeout: Duration) {
+internal class MavenBuildAdapter(
+    private val timeout: Duration,
+    private val buildEnvironmentAllowlist: Set<String> = io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT,
+) {
     fun compile(checkout: Path, output: Path): CompiledProject {
-        val roots = productionRoots(checkout)
-        val pomFiles = regularFiles(checkout).filter { it.fileName.toString() == "pom.xml" }
-            .filter { path -> checkout.relativize(path).none { it.toString() in setOf("target", "build", ".git") } }
-        val modules = pomFiles.map { it.parent }.distinct()
-        if (pomFiles.any { Files.readString(it).contains("<sourceDirectory>") }) {
-            throw BuildFailure("Custom Maven source directories require an explicit source export adapter")
-        }
         val executable = if (Files.exists(checkout.resolve("mvnw"))) listOf("sh", "./mvnw") else listOf("mvn")
-        val effective = pomFiles.mapIndexed { index, pom ->
+        val effective = MavenReactor(checkout).models { pom, index ->
             val model = output.resolve("effective-$index.xml").toAbsolutePath()
             runBuild(checkout, output.resolve("maven-model-$index.log"), executable + listOf(
                 "-N", "-f", pom.toAbsolutePath().toString(), "help:effective-pom", "-Doutput=$model",
-            ), timeout)
+            ), timeout, buildEnvironmentAllowlist)
             checkBuild(Files.isRegularFile(model), "Maven did not export its effective compiler configuration")
-            pom to model
-        }.toMap()
+            model
+        }
+        val modules = effective.keys.map { it.parent }
+        val roots = modules.flatMap(::productionRoots)
         val extracted = CompilerOriginPlugin.extract(output)
         val identity = digest(extracted)
-        val state = Files.createDirectories(checkout.resolve("target/graphfold/maven"))
+        val state = checkout.resolve("target/graphfold/maven")
         val identityFile = state.resolve("identity.txt")
-        val configurationIdentity = identity + effective.values.joinToString("") { digest(it) }
-        checkBuild(!Files.exists(identityFile) || Files.readString(identityFile) == configurationIdentity,
-            "Maven compiler configuration changed; previous incremental provenance cannot establish equivalent compiler inputs")
+        val configurationIdentity = "maven-v2-$identity" + effective.values.joinToString("") { digest(it) }
+        val incomplete = state.resolve("incomplete")
+        if (!Files.exists(identityFile) || Files.readString(identityFile) != configurationIdentity || Files.exists(incomplete)) {
+            // Reuse is unsafe after build inputs change, but the slot must remain usable on this and later runs.
+            modules.map { it.resolve("target") }.forEach { io.johnsonlee.graphfold.engine.git.deleteDirectory(it) }
+        }
+        Files.createDirectories(state)
         val provider = state.resolve("compiler-origin-plugin.jar")
         if (!Files.exists(provider) || Files.mismatch(extracted, provider) != -1L) {
             Files.copy(extracted, provider, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         }
-        val runId = "maven-v1-$identity"
+        val runId = "maven-v2-$identity"
         val provenance = MavenProvenance(state, runId)
         val outputs = modules.map { it.resolve("target/classes") }
         val inventory = MavenClassInventory(checkout, state, outputs)
         inventory.prepare()
         provenance.prepare()
+        io.johnsonlee.graphfold.engine.git.deleteDirectory(state.resolve("test-origins"))
+        Files.writeString(incomplete, configurationIdentity)
         MavenOriginOverlay(checkout, state, provider, effective, runId).use { overlay ->
             runBuild(
                 checkout, output.resolve("build.log"), executable + listOf(
-                    "package", "-DskipTests", "-Dmaven.test.skip=true", "dependency:build-classpath", "-Dmdep.includeScope=compile",
+                    "package", "-DskipTests", "dependency:build-classpath", "-Dmdep.includeScope=compile",
                     "-Dmdep.outputFile=target/graphfold-classpath.txt",
-                ), timeout,
+                ), timeout, buildEnvironmentAllowlist,
             )
             val dependencies = dependencies(modules).filterNot(overlay::isProviderDependency)
             checkBuild(dependencies.all { Files.exists(it) }, "Maven exported missing dependencies")
@@ -55,7 +59,10 @@ internal class MavenBuildAdapter(private val timeout: Duration) {
             val origins = output.resolve("origins")
             provenance.publish(classes, origins)
             Files.writeString(identityFile, configurationIdentity)
-            return CompiledProject(classes, roots, dependencies, origins, runId)
+            Files.delete(incomplete)
+            return CompiledProject(classes, roots, dependencies, origins, runId, modules.flatMap { module ->
+                productionRoots(module).map { it to listOf(module.resolve("target/classes")) }
+            }.toMap())
         }
     }
 

@@ -9,6 +9,8 @@ import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.lib.TreeFormatter
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,12 +20,13 @@ import kotlin.test.assertTrue
 class CheckoutTest {
     @TempDir lateinit var temporary: Path
 
-    @Test
-    fun `raw tree cannot overwrite checkout metadata`() {
+    @ParameterizedTest
+    @ValueSource(strings = [".git", ".GiT"])
+    fun `raw tree cannot overwrite checkout metadata`(metadataName: String) {
         Git.init().setBare(true).setDirectory(temporary.resolve("objects.git").toFile()).call().use { git ->
             val commit = git.repository.newObjectInserter().use { objects ->
                 val blob = objects.insert(Constants.OBJ_BLOB, "malicious metadata".toByteArray())
-                val tree = objects.insert(TreeFormatter().apply { append(".git", FileMode.REGULAR_FILE, blob) })
+                val tree = objects.insert(TreeFormatter().apply { append(metadataName, FileMode.REGULAR_FILE, blob) })
                 val identity = PersonIdent("Fixture", "fixture@example.invalid")
                 val id = objects.insert(CommitBuilder().apply {
                     setTreeId(tree)

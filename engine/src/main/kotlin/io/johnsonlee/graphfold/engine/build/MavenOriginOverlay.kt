@@ -76,11 +76,11 @@ internal class MavenOriginOverlay(
 
     private fun configureCompiler(project: Element, effective: Element?) {
         val plugin = plugin(project, "org.apache.maven.plugins", "maven-compiler-plugin", effective)
-        val configurations = configurations(plugin, effective)
-        configurations.forEach { (target, source) ->
+        val configurations = configurations(plugin, effective, "testCompile", "default-testCompile")
+        configurations.forEach { (target, source, origins) ->
             checkBuild(source?.value("compilerId") in listOf(null, "", "javac"), "Provenance requires the Maven javac backend")
             appendArguments(target, source, "compilerArgs", listOf(
-                CompilerOriginPlugin.javacArgument(output.resolve("origins"), checkout, runId),
+                CompilerOriginPlugin.javacArgument(origins, checkout, runId),
             ))
             // Preserve effective inherited/execution-specific AP paths rather than replacing them with our provider.
             source?.existing("annotationProcessorPaths")?.let { paths ->
@@ -93,27 +93,37 @@ internal class MavenOriginOverlay(
 
     private fun configureKotlin(project: Element, effective: Element) {
         val plugin = plugin(project, "org.jetbrains.kotlin", "kotlin-maven-plugin", effective)
-        configurations(plugin, effective).forEach { (target, source) ->
+        configurations(plugin, effective, "test-compile", "default-test-compile").forEach { (target, source, origins) ->
             appendArguments(target, source, "args", listOf(
-                "-Xplugin=$pluginJar", "-P", "plugin:io.johnsonlee.graphfold.origin.kotlin:output=${output.resolve("origins")}",
+                "-Xplugin=$pluginJar", "-P", "plugin:io.johnsonlee.graphfold.origin.kotlin:output=$origins",
                 "-P", "plugin:io.johnsonlee.graphfold.origin.kotlin:runId=$runId",
             ))
         }
     }
 
-    private fun configurations(plugin: Element, effective: Element?): List<Pair<Element, Element?>> {
-        val result = mutableListOf(plugin.child("configuration") to effective?.existing("configuration"))
-        effective?.existing("executions")?.children("execution").orEmpty().forEach { execution ->
-            val id = execution.value("id")
-            val executions = plugin.child("executions")
+    private fun configurations(
+        plugin: Element, effective: Element?, testGoal: String, defaultTestId: String,
+    ): List<CompilerConfiguration> {
+        val shared = effective?.existing("configuration")
+        val result = mutableListOf(CompilerConfiguration(plugin.child("configuration"), shared, output.resolve("origins")))
+        val effectiveExecutions = effective?.existing("executions")?.children("execution").orEmpty()
+        val executions = plugin.child("executions")
+        val ids = (effectiveExecutions.map { it.value("id") } + defaultTestId).distinct()
+        ids.forEach { id ->
+            val execution = effectiveExecutions.firstOrNull { it.value("id") == id }
+            val goals = execution?.existing("goals")?.children("goal").orEmpty().map { it.textContent.trim() }
+            val test = testGoal in goals || id == defaultTestId
+            checkBuild(!test || "compile" !in goals, "Mixed production/test compiler executions cannot share provenance: $id")
             val target = executions.children("execution").firstOrNull { it.value("id") == id }
                 ?: executions.append("execution").also { it.append("id", id) }
-            // Execution configuration overrides plugin configuration: copy its effective argument lists explicitly.
-            val source = execution.existing("configuration") ?: effective?.existing("configuration")
-            result += target.child("configuration") to source
+            // Use pre-overlay effective arguments: test goals must never inherit the production destination.
+            val source = execution?.existing("configuration") ?: shared
+            result += CompilerConfiguration(target.child("configuration"), source, output.resolve(if (test) "test-origins" else "origins"))
         }
         return result
     }
+
+    private data class CompilerConfiguration(val target: Element, val source: Element?, val origins: Path)
 
     private fun appendArguments(target: Element, source: Element?, name: String, arguments: List<String>) {
         val existing = source?.existing(name)

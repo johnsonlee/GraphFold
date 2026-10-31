@@ -2,7 +2,7 @@ package io.johnsonlee.graphfold.engine.graphite
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Comparator
+import io.johnsonlee.graphfold.engine.cleanupDirectory
 
 /** A loader directory exposes libraries for resolution without changing the application inventory. */
 internal class AnalysisInputs(artifact: Path, dependencies: List<Path>) : AutoCloseable {
@@ -50,8 +50,6 @@ internal class AnalysisInputs(artifact: Path, dependencies: List<Path>) : AutoCl
     }
 
     override fun close() {
-        staged?.let { root ->
-            Files.walk(root).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
-        }
+        staged?.let { cleanupDirectory(it) }
     }
 }

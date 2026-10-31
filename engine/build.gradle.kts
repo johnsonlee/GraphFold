@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     `java-library`
+    `java-test-fixtures`
     alias(libs.plugins.sonatype)
 }
 dependencies {
@@ -55,4 +56,10 @@ val compilerOriginJar = tasks.register<Jar>("compilerOriginJar") {
 }
 tasks.named<ProcessResources>("processResources") {
     from(compilerOriginJar) { into("engine/origin") }
+}
+
+// Shared regression helpers are local build variants, not part of the public engine SDK.
+components.named<AdhocComponentWithVariants>("java") {
+    withVariantsFromConfiguration(configurations["testFixturesApiElements"]) { skip() }
+    withVariantsFromConfiguration(configurations["testFixturesRuntimeElements"]) { skip() }
 }

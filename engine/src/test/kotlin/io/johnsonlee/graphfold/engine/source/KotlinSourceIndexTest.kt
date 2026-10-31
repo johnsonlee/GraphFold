@@ -176,10 +176,34 @@ class KotlinSourceIndexTest {
         }
     }
 
-    private fun compile(source: String): Path {
-        val sourceFile = temporary.resolve("Example.kt")
+    @Test
+    fun `same package and filename across modules retain actual output ownership`() {
+        val firstRoot = Files.createDirectories(temporary.resolve("first/src/main/kotlin"))
+        val secondRoot = Files.createDirectories(temporary.resolve("second/src/main/kotlin"))
+        val first = compile("package shared\nclass First { fun value() = 1 }", firstRoot, temporary.resolve("first/classes"))
+        val second = compile("package shared\nclass Second { fun value() = 2 }", secondRoot, temporary.resolve("second/classes"))
+        val merged = Files.createDirectories(temporary.resolve("merged/shared"))
+        Files.copy(first.resolve("shared/First.class"), merged.resolve("First.class"))
+        Files.copy(second.resolve("shared/Second.class"), merged.resolve("Second.class"))
+        KotlinSourceIndex(merged.parent, mapOf(firstRoot to listOf(first), secondRoot to listOf(second))).use { index ->
+            val firstSource = index.index(temporary, "first/src/main/kotlin/Example.kt", Revision.HEAD)
+            val secondSource = index.index(temporary, "second/src/main/kotlin/Example.kt", Revision.HEAD)
+            assertTrue(firstSource.diagnostics.isEmpty(), firstSource.toString())
+            assertTrue(secondSource.diagnostics.isEmpty(), secondSource.toString())
+            assertEquals(setOf("shared.First"), firstSource.symbols.map { it.owner }.toSet())
+            assertEquals(setOf("shared.Second"), secondSource.symbols.map { it.owner }.toSet())
+            assertEquals(listOf("shared.First.value()I"), firstSource.symbols.filter { it.kind == SymbolKind.METHOD }.map { it.identity })
+            Files.writeString(temporary.resolve("Example.kt"), "package shared\nclass First")
+            val outside = index.index(temporary, "Example.kt", Revision.HEAD)
+            assertTrue(outside.symbols.isEmpty())
+            assertTrue(outside.diagnostics.any { it.contains("No emitted") })
+        }
+    }
+
+    private fun compile(source: String, root: Path = temporary, outputDirectory: Path = temporary.resolve("classes")): Path {
+        val sourceFile = root.resolve("Example.kt")
         Files.writeString(sourceFile, source)
-        val classes = Files.createDirectories(temporary.resolve("classes"))
+        val classes = Files.createDirectories(outputDirectory)
         val library = Path.of(Unit::class.java.protectionDomain.codeSource.location.toURI()).toString()
         val output = ByteArrayOutputStream()
         val result = PrintStream(output).use { stream ->

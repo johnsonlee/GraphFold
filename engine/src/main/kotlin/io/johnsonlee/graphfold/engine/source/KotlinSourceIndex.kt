@@ -29,7 +29,7 @@ import org.objectweb.asm.tree.ClassNode
  * File-wide fallback owners retain constructs such as constructors and compiler-generated declarations.
  * Exact diff fragments, rather than these enclosing ranges, remain the reported finding locations.
  */
-class KotlinSourceIndex(classes: Path) : AutoCloseable {
+class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List<Path>> = emptyMap()) : AutoCloseable {
     private val disposable = Disposer.newDisposable("graphfold-kotlin-source")
     private val environment = KotlinCoreEnvironment.createForProduction(
         disposable, CompilerConfiguration(), EnvironmentConfigFiles.JVM_CONFIG_FILES,
@@ -50,10 +50,17 @@ class KotlinSourceIndex(classes: Path) : AutoCloseable {
             return IndexedSource(relativePath, text, emptyList(), errors.map { it.errorDescription })
         }
         val packageName = file.packageFqName.asString()
-        val owners = inventory.filter { it.source == source.fileName.toString() && it.packageName == packageName }
+        val outputs = sourceOutputs.filterKeys { source.toAbsolutePath().normalize().startsWith(it.toAbsolutePath().normalize()) }
+            .values.flatten()
+        // SourceFile contains only a basename. Keep module ownership from the build export before
+        // matching that name, otherwise another module's same-package file contaminates obligations.
+        val scoped = if (sourceOutputs.isEmpty()) inventory else inventory.filter { owner ->
+            outputs.any { Files.isRegularFile(it.resolve(owner.name.replace('.', '/') + ".class")) }
+        }
+        val owners = scoped.filter { it.source == source.fileName.toString() && it.packageName == packageName }
         val diagnostics = mutableListOf<String>().apply {
             if (owners.isEmpty()) add("No emitted JVM owner for Kotlin source $relativePath")
-            if (inventory.any { it.kotlin && it.source == null }) {
+            if (scoped.any { it.kotlin && it.source == null }) {
                 add("Kotlin bytecode without SourceFile prevents complete source ownership for $relativePath")
             }
         }

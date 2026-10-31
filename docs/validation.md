@@ -3,7 +3,69 @@
 Date: 2026-10-31. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
-## Incremental builds and object flow: final quality verification (2026-10-31)
+
+## PR review: final full quality gate (2026-10-31)
+
+The unfiltered command passed in 20m 5s:
+
+```sh
+./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :cli:installDist --continue --console=plain
+```
+
+All **603 JUnit tests passed**, with zero failures, errors or skipped tests. Every
+module passed the unchanged **95% branch / 90% line** hard gates without production
+exclusions. These counters come from one complete run, not merged targeted runs.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| engine | 581 | 99.0878% | 95.3971% (2943/3085) |
+| cli | 9 | 97.4359% | 100.0000% (14/14) |
+| gradle-plugin | 13 | 100.0000% | 100.0000% (4/4) |
+
+The prior 581-test baseline is preserved in
+[its historical record](experiments/incremental-object-flow-validation-2026-10-31.json).
+Review-specific regressions and independent publication checks are documented below.
+
+## PR review regressions (2026-10-31)
+
+The review corrections preserve the 95% per-module branch-coverage hard gate and normal
+incremental compilation. Regression coverage includes:
+
+| Area | Regression evidence |
+| --- | --- |
+| Checkout containment | Parent symlink replacement and case-insensitive `.git` component rejection |
+| Revision resolution | A full-SHA local import excludes unrelated branch objects; deterministic abbreviated-object collisions and non-commit revisions have explicit diagnostics |
+| Workspace retention | Bounded slots, interruptible wait, timeout, released-slot reuse and aliased cache paths |
+| Kotlin Gradle hook | Real KGP `compilerOptions` contains the provider, output/run identity and inline-source arguments |
+| Empty diff lines | Single blank-line insertion/deletion has a zero-width source range and an end-to-end PASS |
+| Kotlin module ownership | Same-package, same-filename sources in separate compiled modules cannot borrow each other's owners |
+| Graph comparison | Owner indexes preserve class initialization, constructed callbacks, unreachable-owner behavior and repeated queries |
+| Rename alignment | A 24-helper dependency chain aligns to a fixed point; ambiguous leaves and mutual recursion remain unpaired |
+| Temporary cleanup | I/O, lazy traversal and access failures are logged without replacing the analysis result |
+| Build diagnostics | Bounded output survives log deletion; long lines and unreadable logs have deterministic handling |
+| Build environment | Non-allowlisted variables are absent in the subprocess; explicit SDK opt-in restores only selected names |
+| Maven recovery | POM version and compiler-target changes rebuild automatically, then resume incremental reuse; interrupted state recovers |
+| Maven reactor | Active-profile modules build; unrelated fixture/example POMs and source roots are excluded |
+| Maven test dependencies | A sibling test-jar reactor compiles without executing tests |
+| Maven test provenance | Main/test classes and anonymous owners may have identical FQCNs; a test-only edit cannot replace the production source hash or bytecode |
+| Shared fixture support | CLI and Gradle plugin execute against the same engine test fixture; fixture variants are excluded from publications |
+
+Publication verification has independent evidence. Seven Python helper tests cover version,
+asset and publication-inventory validation. `verify-publication-gate.py` creates a disposable
+signing key and an isolated local repository named `sonatype`: matching signed publications
+are accepted, GPG verifies every uploaded payload, and modified JAR/POM/module files are
+rejected before the implementation publication uploads. This regression runs in release
+preparation and never publishes remotely.
+
+Two clean, build-cache-disabled publication builds of the same review working-tree snapshot
+at `0.1.0-review.20261031.1` produced 18 byte-identical JAR/POM/module payloads. Both passed
+`release.py verify`; no test-fixtures artifacts or variants were published. Checksums are
+recorded in [the rehearsal record](experiments/review-release-rebuild-2026-10-31.json).
+This is local release verification, not evidence of remote publication or production
+performance. No single-graph timing is used as performance acceptance.
+
+
+## Incremental builds and object flow: previous baseline (2026-10-31)
 
 The standard, unfiltered command passed in 19m 17s:
 
@@ -324,8 +386,9 @@ manifests, unknown and duplicate outputs, partial deletion of multi-source outpu
 and class tampering, invalid paths and symlink escapes. No basename or generated-number
 heuristic authorizes deletion.
 
-Maven effective compiler configuration or provider changes explicitly block reuse of the
-old state; automatic cache migration is not implemented. Kotlin Maven’s native incremental compiler refreshes the tested 2.1.20 cross-file inline
+Maven effective compiler configuration or provider changes invalidate reactor target outputs
+and rebuild automatically; incomplete builds also recover this way. Subsequent unchanged
+builds resume incremental reuse. The original blocking behavior was replaced during PR review. Kotlin Maven’s native incremental compiler refreshes the tested 2.1.20 cross-file inline
 case; this does not establish every compiler/dependency combination, and unrefreshed copies
 fail source/hash validation. These remain stated limits, not successful analysis results. Cross-machine cache reuse and large-repository performance are not claimed.
 

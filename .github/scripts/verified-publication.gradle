@@ -1,0 +1,34 @@
+import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
+import java.nio.file.Files
+
+// Check the actual upload inputs after generators run, immediately before each remote publication.
+gradle.projectsEvaluated {
+    gradle.rootProject.allprojects { project ->
+        tasks.withType(PublishToMavenRepository).configureEach { publish ->
+            if (publish.repository.name.equalsIgnoreCase('sonatype')) {
+                publish.doFirst {
+                    def publication = publish.publication
+                    def root = new File(System.getProperty('graphfold.verifiedRepository'))
+                    def directory = new File(root, publication.groupId.replace('.', '/') + '/' +
+                        publication.artifactId + '/' + publication.version)
+                    def verify = { file, extension, classifier ->
+                        def suffix = classifier ? '-' + classifier : ''
+                        def original = new File(directory, publication.artifactId + '-' + publication.version + suffix + '.' + extension)
+                        if (!original.isFile() || Files.mismatch(original.toPath(), file.toPath()) != -1L) {
+                            throw new GradleException('Upload differs from verified release: ' + original)
+                        }
+                    }
+                    publication.artifacts.findAll { it.extension in ['jar', 'pom', 'module'] }.each {
+                        verify(it.file, it.extension, it.classifier)
+                    }
+                    def pom = project.tasks.named('generatePomFileFor' + publication.name.capitalize() + 'Publication').get()
+                    verify(pom.destination, 'pom', null)
+                    def metadata = project.tasks.findByName('generateMetadataFileFor' + publication.name.capitalize() + 'Publication')
+                    if (metadata != null && metadata.enabled && metadata.outputFile.get().asFile.isFile()) {
+                        verify(metadata.outputFile.get().asFile, 'module', null)
+                    }
+                }
+            }
+        }
+    }
+}

@@ -17,6 +17,15 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
     private val baseReachable = reachable(base)
     private val headReachable = reachable(head)
     private val allMethods = base.methods.keys + head.methods.keys
+    private val reachableMethods = baseReachable + headReachable
+    private val reachableByOwner = reachableMethods.groupBy(::methodOwner)
+    private val methodsByOwner = allMethods.groupBy(::methodOwner)
+    private val baseFields = base.fields.values.groupBy { fieldOwner(it.identity) }
+    private val headFields = head.fields.values.groupBy { fieldOwner(it.identity) }
+    private val nestedOwners = (base.enclosingClasses.entries + head.enclosingClasses.entries)
+        .groupBy({ it.value }, { it.key })
+    private val nestedMethods = mutableMapOf<String, List<String>>()
+    private val initializationDifferences = initializationDifferences()
 
     fun isUnreachable(obligation: ProofObligation): Boolean = roots(aligned(obligation)).isEmpty() &&
         (obligation.kind == SymbolKind.METHOD || !ownerReachable(obligation.owner))
@@ -41,22 +50,29 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
     }
 
     private fun initializationChanges(obligation: ProofObligation): List<String> =
-        (base.initializationDependencies.keys + head.initializationDependencies.keys).filter(::ownerReachable).mapNotNull { owner ->
+        initializationDifferences[obligation.owner].orEmpty()
+
+    private fun initializationDifferences(): Map<String, List<String>> {
+        val result = mutableMapOf<String, MutableList<String>>()
+        (base.initializationDependencies.keys + head.initializationDependencies.keys).filter(::ownerReachable).forEach { owner ->
             val old = base.initializationDependencies[owner].orEmpty()
             val new = head.initializationDependencies[owner].orEmpty()
             val changed = (old - new) + (new - old)
-            if (changed.isNotEmpty() && (owner == obligation.owner || obligation.owner in changed)) {
-                "Class initialization dependencies of $owner changed: $old -> $new"
-            } else null
+            if (changed.isNotEmpty()) {
+                val message = "Class initialization dependencies of $owner changed: $old -> $new"
+                (changed + owner).forEach { result.getOrPut(it) { mutableListOf() }.add(message) }
+            }
         }
+        return result
+    }
 
     private fun aligned(obligation: ProofObligation): ProofObligation =
         obligation.copy(identity = alignment.names[obligation.identity] ?: obligation.identity)
 
     private fun classDeclaration(snapshot: ProgramSnapshot, owner: String): String? {
         val shape = snapshot.classShapes[owner] ?: return snapshot.declarations[owner]
-        val fields = snapshot.fields.values.filter {
-            it.identity.substringBefore(':').substringBeforeLast('.') == owner && it.identity !in snapshot.ignoredFields
+        val fields = (if (snapshot === base) baseFields else headFields)[owner].orEmpty().filter {
+            it.identity !in snapshot.ignoredFields
         }.sortedBy { it.identity }.map { listOf(it.identity, it.declaration, it.constant) }
         return "$shape\n$fields"
     }
@@ -64,14 +80,12 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
     private fun roots(obligation: ProofObligation): List<String> {
         // A dead private source method must not make an unrelated public generated class relevant.
         if (obligation.kind == SymbolKind.METHOD && !isReachable(obligation.identity)) return emptyList()
-        return allMethods.filter { identity ->
-            when (obligation.kind) {
-                SymbolKind.METHOD -> identity == obligation.identity || syntheticDependency(identity, obligation) ||
-                    nestedDependency(identity, obligation.owner)
-                SymbolKind.FIELD -> true // Constant inlining can affect unmodified source in other classes.
-                SymbolKind.CLASS -> methodOwner(identity) == obligation.owner || nestedDependency(identity, obligation.owner)
-            }
-        }.filter(::isReachable)
+        return when (obligation.kind) {
+            SymbolKind.METHOD -> (listOf(obligation.identity) + reachableByOwner[obligation.owner].orEmpty()
+                .filter { syntheticDependency(it, obligation) } + nestedMethods(obligation.owner)).filter(::isReachable).distinct()
+            SymbolKind.FIELD -> reachableMethods.toList() // Constant inlining can cross owner boundaries.
+            SymbolKind.CLASS -> (reachableByOwner[obligation.owner].orEmpty() + nestedMethods(obligation.owner)).distinct()
+        }
     }
 
     /** Union both folded graphs: removal of an edge must not hide its old behavior. */
@@ -90,32 +104,29 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
             // Constructed objects can escape and have public methods invoked by code outside the current method.
             // Constructor calls alone do not represent these callbacks (e.g. a returned anonymous Runnable).
             val constructed = current.substringBefore('(').endsWith(".<init>")
-            allMethods.filter { candidate ->
-                methodOwner(candidate) == owner &&
-                    (candidate.substringBefore('(').endsWith(".<clinit>") || constructed && isReachable(candidate))
+            methodsByOwner[owner].orEmpty().filter { candidate ->
+                candidate.substringBefore('(').endsWith(".<clinit>") || constructed && isReachable(candidate)
             }.forEach { if (it !in visited) pending.addLast(it) }
         }
         return visited
     }
 
-    private fun ownerReachable(owner: String): Boolean =
-        (baseReachable + headReachable).any { methodOwner(it) == owner }
+    private fun ownerReachable(owner: String): Boolean = owner in reachableByOwner
 
-    private fun isReachable(identity: String): Boolean = identity in baseReachable || identity in headReachable
+    private fun isReachable(identity: String): Boolean = identity in reachableMethods
 
     private fun methodOwner(identity: String): String = identity.substringBefore('(').substringBeforeLast('.')
 
-    private fun nestedDependency(identity: String, owner: String): Boolean {
-        val pending = ArrayDeque(listOf(methodOwner(identity)))
+    private fun fieldOwner(identity: String): String = identity.substringBefore(':').substringBeforeLast('.')
+
+    private fun nestedMethods(owner: String): List<String> = nestedMethods.getOrPut(owner) {
+        val pending = ArrayDeque(nestedOwners[owner].orEmpty())
         val visited = mutableSetOf<String>()
         while (pending.isNotEmpty()) {
             val child = pending.removeFirst()
-            if (!visited.add(child)) continue
-            val parents = listOfNotNull(base.enclosingClasses[child], head.enclosingClasses[child])
-            if (owner in parents) return true
-            pending.addAll(parents)
+            if (visited.add(child)) pending.addAll(nestedOwners[child].orEmpty())
         }
-        return false
+        visited.flatMap { reachableByOwner[it].orEmpty() }
     }
 
     private fun syntheticDependency(identity: String, obligation: ProofObligation): Boolean =
@@ -123,6 +134,7 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
             (base.methods[identity]?.modifiers.orEmpty() + head.methods[identity]?.modifiers.orEmpty()).contains("SYNTHETIC")
 
     private fun reachable(snapshot: ProgramSnapshot): Set<String> {
+        val byOwner = snapshot.methods.values.groupBy { methodOwner(it.identity) }
         val visited = mutableSetOf<String>()
         val pending = ArrayDeque(entryPoints.filter { it in snapshot.methods })
         while (pending.isNotEmpty()) {
@@ -137,7 +149,7 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
                     .filter { '(' !in it }.map { it.substringBefore(':').substringBeforeLast('.') }.toSet()
                 val constructedOwners = method.calls
                     .filter { it.substringBefore('(').endsWith(".<init>") }.map(::methodOwner).toSet()
-                snapshot.methods.values.filter { candidate ->
+                (setOf(owner) + referencedOwners + constructedOwners).flatMap { byOwner[it].orEmpty() }.filter { candidate ->
                     ((methodOwner(candidate.identity) == owner || methodOwner(candidate.identity) in referencedOwners) &&
                         candidate.identity.substringBefore('(').endsWith(".<clinit>")) ||
                         (methodOwner(candidate.identity) in constructedOwners && "PRIVATE" !in candidate.modifiers)

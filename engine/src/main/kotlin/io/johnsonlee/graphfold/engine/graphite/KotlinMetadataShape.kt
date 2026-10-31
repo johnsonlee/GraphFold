@@ -51,8 +51,8 @@ internal object KotlinMetadataShape {
         kind = values["k"] as? Int ?: 1,
         metadataVersion = ints(values["mv"]),
         data1 = strings(values["d1"]), data2 = strings(values["d2"]),
-        extraString = values["xs"] as? String ?: "",
-        packageName = values["pn"] as? String ?: "",
+        extraString = (values["xs"] as? String).orEmpty(),
+        packageName = (values["pn"] as? String).orEmpty(),
         extraInt = values["xi"] as? Int ?: 0,
     )
 

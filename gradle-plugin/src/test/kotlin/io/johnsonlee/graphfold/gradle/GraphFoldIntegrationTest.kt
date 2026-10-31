@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.gradle
 
+import io.johnsonlee.graphfold.engine.testing.createFixture
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource

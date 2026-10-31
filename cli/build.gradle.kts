@@ -9,6 +9,7 @@ application {
 }
 dependencies {
     implementation(project(":engine"))
+    testImplementation(testFixtures(project(":engine")))
     implementation(libs.clikt)
     implementation(libs.jackson.kotlin)
 }

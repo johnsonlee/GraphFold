@@ -82,11 +82,14 @@ gradle.beforeProject { project ->
         options.compilerArgs.add('-Xplugin:GraphFoldOrigins ' + encodePath(delta) + ' ' + encodePath(project.rootDir) + ' ' + java.util.Base64.urlEncoder.withoutPadding().encodeToString(originRunId.getBytes('UTF-8')))
     }
     project.tasks.configureEach { compile ->
-        if (compile.name == 'compileKotlin' && compile.hasProperty('kotlinOptions')) {
+        if (compile.name == 'compileKotlin') {
+            if (!compile.hasProperty('compilerOptions')) {
+                throw new GradleException('Kotlin compile task requires compilerOptions for verified provenance: ' + compile.path)
+            }
             def delta = provenance(project, compile, { compile.destinationDirectory.get().asFile })
-            compile.kotlinOptions.freeCompilerArgs += ['-Xplugin=' + originPlugin.absolutePath,
+            compile.compilerOptions.freeCompilerArgs.addAll(['-Xplugin=' + originPlugin.absolutePath,
                 '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:output=' + delta.absolutePath,
-                '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:runId=' + originRunId]
+                '-P', 'plugin:io.johnsonlee.graphfold.origin.kotlin:runId=' + originRunId])
         }
     }
 }
@@ -149,7 +152,13 @@ gradle.projectsEvaluated {
             projects.each { project ->
                 def main = project.sourceSets.main
                 main.output.classesDirs.files.each { record('classes', it) }
-                main.allSource.srcDirs.each { record('source', it) }
+                main.allSource.srcDirs.each { source ->
+                    record('source', source)
+                    main.output.classesDirs.files.each { classes ->
+                        lines.add('sourceOutput|' + source.absolutePath.getBytes('UTF-8').encodeBase64().toString() +
+                            '|' + classes.absolutePath.getBytes('UTF-8').encodeBase64().toString())
+                    }
+                }
                 main.compileClasspath.files.each { record('dependency', it) }
             }
             new File(System.getProperty('graphfold.export.path')).setText(lines.join('\n'), 'UTF-8')

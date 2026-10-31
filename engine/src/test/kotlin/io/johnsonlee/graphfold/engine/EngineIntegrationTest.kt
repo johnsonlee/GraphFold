@@ -11,6 +11,23 @@ class EngineIntegrationTest {
     @TempDir lateinit var temporary: Path
 
     @Test
+    fun `single blank line insertion and deletion remain provable diff changes`() {
+        val repository = repository("return x;")
+        val base = commit(repository)
+        val source = repository.resolve("src/main/java/sample/Example.java")
+        Files.writeString(source, Files.readString(source).replace("  public int run", "\n  public int run"))
+        val head = commit(repository)
+        listOf(base to head, head to base).forEach { (before, after) ->
+            val result = engine().analyze(AnalysisRequest(repository.toString(), before, after, rules()))
+            assertEquals(Verdict.PASS, result.verdict, result.toString())
+            assertTrue(result.diagnostics.isEmpty(), result.toString())
+            assertTrue(result.metadata.provedObligations > 0, result.toString())
+            val location = result.reasons.flatMap { it.locations }.single()
+            assertEquals(SourceRange(1, 1), location.column)
+        }
+    }
+
+    @Test
     fun `arithmetic finding points to the changed character not the whole method`() {
         val result = analyze("return x + 1;", "return x - 1;")
         assertEquals(Verdict.FAIL, result.verdict)

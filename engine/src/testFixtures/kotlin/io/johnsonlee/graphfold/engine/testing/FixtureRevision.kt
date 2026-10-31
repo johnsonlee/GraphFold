@@ -1,11 +1,11 @@
-package io.johnsonlee.graphfold.cli
+package io.johnsonlee.graphfold.engine.testing
 
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal data class FixtureRevision(val repository: Path, val base: String, val head: String, val fold: Path)
+data class FixtureRevision(val repository: Path, val base: String, val head: String, val fold: Path)
 
-internal fun createFixture(directory: Path, name: String): FixtureRevision {
+fun createFixture(directory: Path, name: String): FixtureRevision {
     val fixtures = Path.of("../fixtures").toAbsolutePath().normalize()
     val repository = Files.createDirectories(directory.resolve("repository"))
     fun git(vararg args: String): String {

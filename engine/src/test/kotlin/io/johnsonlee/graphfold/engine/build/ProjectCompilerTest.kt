@@ -128,6 +128,11 @@ class ProjectCompilerTest {
             tasks.register('graphFoldCheck') { doLast { throw new GradleException('must not invoke lint') } }
             tasks.named('compileKotlin') {
                 doFirst {
+                    def arguments = compilerOptions.freeCompilerArgs.get()
+                    assert arguments.any { it.startsWith('-Xplugin=') }
+                    ['output=', 'runId=', 'inlineSources='].each { option ->
+                        assert arguments.any { it.startsWith('plugin:io.johnsonlee.graphfold.origin.kotlin:' + option) }
+                    }
                     def deepBuild = project(':deep').layout.buildDirectory.get().asFile.toPath()
                     assert !sourceSets.main.compileClasspath.files.any { it.toPath().startsWith(deepBuild) }
                 }
@@ -274,6 +279,12 @@ class ProjectCompilerTest {
         val result = compiler.compile(source, temporary.resolve("out"))
         assertTrue(Files.exists(result.classes.resolve("example/App.class")))
         assertEquals(listOf(source.resolve("external").toRealPath()), result.dependencies.map { it.toRealPath() })
+        // A failed build may leave unowned outputs; recovery must rebuild instead of poisoning the slot.
+        Files.write(source.resolve("target/classes/Unowned.class"), byteArrayOf(1))
+        Files.writeString(source.resolve("target/graphfold/maven/incomplete"), "interrupted")
+        val recovered = compiler.compile(source, temporary.resolve("recovered"))
+        assertFalse(Files.exists(recovered.classes.resolve("Unowned.class")))
+        assertFalse(Files.exists(source.resolve("target/graphfold/maven/incomplete")))
     }
 
     @Test
@@ -295,6 +306,10 @@ class ProjectCompilerTest {
         Files.writeString(tests.resolve("Test.kt"), "class Test")
         val generated = Files.createDirectories(source.resolve("build/src/main/java"))
         Files.writeString(generated.resolve("Ignored.kt"), "class Ignored")
+        listOf("src/it/fixture", "src/test/resources/fixture", "examples/unlisted").forEach { path ->
+            val fixture = Files.createDirectories(source.resolve("$path/src/main/java"))
+            Files.writeString(fixture.resolve("Broken.java"), "deliberately invalid Java")
+        }
         assertTrue(Files.exists(compiler.compile(source, temporary.resolve("out")).classes.resolve("example/App.class")))
         Files.writeString(source.resolve("build.gradle"), "apply plugin: 'java'")
         assertFailsWith<BuildFailure> { compiler.compile(source, temporary.resolve("out2")) }

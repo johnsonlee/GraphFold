@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.cli
 
+import io.johnsonlee.graphfold.engine.testing.createFixture
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.github.ajalt.clikt.testing.test
 import io.johnsonlee.graphfold.engine.AnalysisReports

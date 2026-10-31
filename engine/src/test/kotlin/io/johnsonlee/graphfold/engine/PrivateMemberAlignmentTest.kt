@@ -153,6 +153,28 @@ class PrivateMemberAlignmentTest {
         assertTrue(PrivateMemberAlignment(before, after).names.isEmpty())
     }
 
+    @Test
+    fun `fixed point pairs a reversed helper chain but leaves mutual recursion and ambiguous leaves unmatched`() {
+        val count = 24
+        val before = (0 until count).map { index ->
+            helper("Example.old$index()I").copy(references =
+                if (index + 1 == count) emptyList() else listOf("Example.old${index + 1}()I"))
+        }
+        val after = (0 until count).map { index ->
+            helper("Example.new$index()I").copy(references =
+                if (index + 1 == count) emptyList() else listOf("Example.new${index + 1}()I"))
+        }
+        val oldCycle = listOf(helper("Cycle.a()I").copy(references = listOf("Cycle.b()I")),
+            helper("Cycle.b()I").copy(references = listOf("Cycle.a()I")))
+        val newCycle = listOf(helper("Cycle.x()I").copy(references = listOf("Cycle.y()I")),
+            helper("Cycle.y()I").copy(references = listOf("Cycle.x()I")))
+        val oldAmbiguous = listOf(helper("Ambiguous.a()I"), helper("Ambiguous.b()I"))
+        val newAmbiguous = listOf(helper("Ambiguous.x()I"), helper("Ambiguous.y()I"))
+        val alignment = PrivateMemberAlignment(snapshot(*(before + oldCycle + oldAmbiguous).toTypedArray()),
+            snapshot(*(after.reversed() + newCycle + newAmbiguous).toTypedArray()))
+        assertEquals(before.indices.associate { after[it].identity to before[it].identity }, alignment.names)
+    }
+
     private fun helper(identity: String) = MethodSnapshot(identity, "body", emptySet(), setOf("PRIVATE"), emptySet())
 
     private fun root(reference: String? = null): MethodSnapshot = MethodSnapshot(

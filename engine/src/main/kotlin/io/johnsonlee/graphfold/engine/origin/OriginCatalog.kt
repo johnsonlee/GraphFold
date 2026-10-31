@@ -103,7 +103,7 @@ private class OriginReader(private val project: CompiledProject, private val roo
         require(compiler == "javac" || kind in setOf("DECLARATION", "ANONYMOUS_OBJECT")) { "Unknown origin kind: $kind" }
         if (compiler == "kotlinc" && kind == "DECLARATION") return
         val match = syntax.singleOrNull { it.range == allocation || allocation in it.aliases }
-        require(match != null) { "Compiler range does not identify one anonymous source expression: $file $allocation" }
+        requireNotNull(match) { "Compiler range does not identify one anonymous source expression: $file $allocation" }
         origins[owner] = SourceOrigin(owner, root.relativize(file).toString(), match)
     }
 
@@ -117,7 +117,7 @@ private class OriginReader(private val project: CompiledProject, private val roo
     private fun verifyMarker(node: ClassNode, record: JsonNode) {
         val marker = (node.invisibleAnnotations.orEmpty() + node.visibleAnnotations.orEmpty())
             .singleOrNull { it.desc == ORIGIN_MARKER }
-        require(marker != null) { "Kotlin compiler origin marker missing: ${node.name}" }
+        requireNotNull(marker) { "Kotlin compiler origin marker missing: ${node.name}" }
         val values = marker.values.orEmpty().chunked(2).associate { it[0].toString() to it[1] }
         require(values["schema"] == 1 && values["runId"] == project.originRunId &&
             values["sourceHash"] == record.path("sourceHash").asText() &&

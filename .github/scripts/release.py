@@ -49,6 +49,19 @@ def verify(repository, release_version):
         raise ValueError("Plugin marker does not reference the released implementation")
 
 
+def compare(expected, actual):
+    """Compare publication payloads; signatures/checksums/metadata are transport sidecars."""
+    def payloads(root):
+        return {path.relative_to(root): path for path in root.rglob("*")
+                if path.is_file() and path.suffix in (".jar", ".pom", ".module")}
+    original, rebuilt = payloads(expected), payloads(actual)
+    if not original or original.keys() != rebuilt.keys():
+        raise ValueError("Publication payload inventory differs from verified release")
+    for name, path in original.items():
+        if hashlib.sha256(path.read_bytes()).digest() != hashlib.sha256(rebuilt[name].read_bytes()).digest():
+            raise ValueError(f"Publication differs from verified release: {name}")
+
+
 def checksums(directory):
     assets = sorted(path for path in directory.iterdir() if path.is_file() and path.name != "SHA256SUMS")
     if not assets:
@@ -83,6 +96,9 @@ if __name__ == "__main__":
     publication = commands.add_parser("verify")
     publication.add_argument("repository", type=Path)
     publication.add_argument("version")
+    comparison = commands.add_parser("compare")
+    comparison.add_argument("expected", type=Path)
+    comparison.add_argument("actual", type=Path)
     commands.add_parser("checksums").add_argument("directory", type=Path)
     distribution = commands.add_parser("smoke")
     distribution.add_argument("directory", type=Path)
@@ -93,6 +109,8 @@ if __name__ == "__main__":
         print(f"version={parsed}\nprerelease={str(prerelease).lower()}")
     elif args.command == "verify":
         verify(args.repository, args.version)
+    elif args.command == "compare":
+        compare(args.expected, args.actual)
     elif args.command == "smoke":
         smoke(args.directory, args.version)
     else:

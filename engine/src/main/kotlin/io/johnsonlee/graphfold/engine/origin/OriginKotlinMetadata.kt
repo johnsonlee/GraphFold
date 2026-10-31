@@ -74,7 +74,7 @@ private fun readOriginMetadata(annotation: AnnotationNode): Metadata {
     }
     return Metadata(kind = values["k"] as? Int ?: 1, metadataVersion = version,
         data1 = metadataStrings(values["d1"]), data2 = metadataStrings(values["d2"]),
-        extraString = values["xs"] as? String ?: "", packageName = values["pn"] as? String ?: "",
+        extraString = (values["xs"] as? String).orEmpty(), packageName = (values["pn"] as? String).orEmpty(),
         extraInt = values["xi"] as? Int ?: 0)
 }
 

@@ -1,11 +1,14 @@
 package io.johnsonlee.graphfold.engine.build
 
 import java.io.File
+import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT
 import java.nio.file.Path
 import java.time.Duration
 
 /** A separate compiler JVM gives cancellation and timeout the same guarantees as external builds. */
-internal class KotlinBuildAdapter(private val timeout: Duration) {
+internal class KotlinBuildAdapter(
+    private val timeout: Duration, private val environmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
+) {
     fun compile(checkout: Path, output: Path, classes: Path, sources: List<Path>): List<Path> {
         val dependencies = listOf(classLocation("kotlin.Unit"), classLocation("org.jetbrains.annotations.NotNull"))
         val compilerClasspath = (COMPILER_CLASSES.map(::classLocation) + dependencies).distinct()
@@ -18,7 +21,7 @@ internal class KotlinBuildAdapter(private val timeout: Duration) {
             "-P", "plugin:io.johnsonlee.graphfold.origin.kotlin:output=${output.resolve("origins")}",
             "-classpath", dependencies.joinToString(File.pathSeparator), "-d", classes.toString(),
         ) + sources.map(Path::toString)
-        runBuild(checkout, output.resolve("kotlin-build.log"), arguments, timeout)
+        runBuild(checkout, output.resolve("kotlin-build.log"), arguments, timeout, environmentAllowlist)
         return dependencies
     }
 

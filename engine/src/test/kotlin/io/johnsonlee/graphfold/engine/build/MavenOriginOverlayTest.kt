@@ -78,6 +78,58 @@ class MavenOriginOverlayTest {
         assertEquals("<project><!-- second --></project>", Files.readString(second))
     }
 
+    @Test
+    fun `default and custom test executions isolate provenance and preserve effective arguments`() {
+        val pom = temporary.resolve("pom.xml")
+        Files.writeString(pom, "<project/>")
+        val model = effective("""
+            <plugin><artifactId>maven-compiler-plugin</artifactId><configuration>
+              <compilerArgs><arg>-parameters</arg></compilerArgs></configuration>
+              <executions><execution><id>custom-java-tests</id><goals><goal>testCompile</goal></goals>
+                <configuration><compilerArgs><arg>-Xlint:unchecked</arg></compilerArgs></configuration>
+              </execution></executions></plugin>
+            <plugin><artifactId>kotlin-maven-plugin</artifactId><configuration>
+              <args><arg>-Xjsr305=strict</arg></args></configuration>
+              <executions><execution><id>custom-kotlin-tests</id><goals><goal>test-compile</goal></goals>
+                <configuration><args><arg>-Xjvm-default=all</arg></args></configuration>
+              </execution></executions></plugin>
+        """.trimIndent())
+        overlay(mapOf(pom to model)).use {
+            val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile())
+            val xpath = javax.xml.xpath.XPathFactory.newInstance().newXPath()
+            listOf("default-testCompile", "custom-java-tests").forEach { id ->
+                val argument = xpath.evaluate("//execution[id='$id']/configuration/compilerArgs/arg[last()]", document)
+                assertEquals(
+                    CompilerOriginPlugin.javacArgument(temporary.resolve("output/test-origins"), temporary, "test-run"), argument,
+                )
+            }
+            listOf("default-test-compile", "custom-kotlin-tests").forEach { id ->
+                val arguments = xpath.evaluate("//execution[id='$id']/configuration/args", document)
+                assertTrue("output=${temporary.resolve("output/test-origins")}" in arguments)
+                assertTrue("-Xplugin=" in arguments)
+            }
+            assertEquals("-parameters", xpath.evaluate("//execution[id='default-testCompile']/configuration/compilerArgs/arg[1]", document))
+            assertEquals("-Xlint:unchecked",
+                xpath.evaluate("//execution[id='custom-java-tests']/configuration/compilerArgs/arg[1]", document))
+            assertEquals("-Xjsr305=strict", xpath.evaluate("//execution[id='default-test-compile']/configuration/args/arg[1]", document))
+            assertEquals("-Xjvm-default=all", xpath.evaluate("//execution[id='custom-kotlin-tests']/configuration/args/arg[1]", document))
+        }
+    }
+
+    @Test
+    fun `mixed production and test goals fail instead of sharing provenance`() {
+        val pom = temporary.resolve("pom.xml")
+        Files.writeString(pom, "<project/>")
+        val model = effective("""
+            <plugin><artifactId>kotlin-maven-plugin</artifactId><executions><execution><id>mixed</id>
+              <goals><goal>compile</goal><goal>test-compile</goal></goals>
+            </execution></executions></plugin>
+        """.trimIndent())
+        val failure = assertFailsWith<BuildFailure> { overlay(mapOf(pom to model)) }
+        assertTrue(requireNotNull(failure.message).contains("Mixed production/test"))
+        assertEquals("<project/>", Files.readString(pom))
+    }
+
     private fun effective(plugins: String): Path = temporary.resolve("effective.xml").also {
         Files.writeString(it, "<project><build><plugins>$plugins</plugins></build></project>")
     }

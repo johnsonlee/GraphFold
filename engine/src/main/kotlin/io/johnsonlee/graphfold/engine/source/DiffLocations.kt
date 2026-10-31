@@ -18,15 +18,20 @@ internal object DiffLocations {
                 val new = block(head, hunk.headStart, hunk.headCount)
                 val prefix = old.commonPrefixWith(new).length
                 val suffix = old.drop(prefix).commonSuffixWith(new.drop(prefix)).length
-                if (old.length > prefix + suffix && change.basePath != null) {
+                if (hasChangedBlock(old, hunk.baseCount, hunk.headCount, prefix + suffix) &&
+                    change.basePath != null) {
                     add(location(old, change.basePath, Revision.BASE, hunk.baseStart, prefix, old.length - suffix))
                 }
-                if (new.length > prefix + suffix && change.headPath != null) {
+                if (hasChangedBlock(new, hunk.headCount, hunk.baseCount, prefix + suffix) &&
+                    change.headPath != null) {
                     add(location(new, change.headPath, Revision.HEAD, hunk.headStart, prefix, new.length - suffix))
                 }
             }
         }
     }
+
+    private fun hasChangedBlock(text: String, lines: Int, otherLines: Int, unchanged: Int): Boolean =
+        if (text.isEmpty()) lines > 0 && otherLines == 0 else text.length > unchanged
 
     private fun block(text: String?, start: Int, count: Int): String =
         if (count == 0) "" else requireNotNull(text).split('\n').drop(start - 1).take(count).joinToString("\n")

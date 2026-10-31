@@ -1,6 +1,7 @@
 import io.gitlab.arturbosch.detekt.Detekt
 import io.gitlab.arturbosch.detekt.extensions.DetektExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
+import org.gradle.external.javadoc.StandardJavadocDocletOptions
 
 plugins {
     base
@@ -35,6 +36,13 @@ subprojects {
         add("testImplementation", platform("org.junit:junit-bom:5.12.1"))
         add("testImplementation", "org.junit.jupiter:junit-jupiter")
         add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
+    }
+    tasks.withType<Javadoc>().configureEach {
+        (options as StandardJavadocDocletOptions).addBooleanOption("notimestamp", true)
+    }
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
     }
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()

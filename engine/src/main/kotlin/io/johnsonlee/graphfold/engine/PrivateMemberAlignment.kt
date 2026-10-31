@@ -9,26 +9,34 @@ internal class PrivateMemberAlignment(private val base: ProgramSnapshot, private
     init {
         val oldFields = base.fields.values.filter { it.renameSafe && it.identity !in head.fields }
         val newFields = head.fields.values.filter { it.renameSafe && it.identity !in base.fields }
-        pair(oldFields.map { it.identity }, newFields.map { it.identity }) { old, new ->
-            val before = base.fields.getValue(old)
-            val after = head.fields.getValue(new)
-            owner(old) == owner(new) && before.declaration == after.declaration && before.constant == after.constant
-        }
+        pair(oldFields.groupBy { listOf(owner(it.identity), it.declaration, it.constant) }
+            .mapValues { (_, fields) -> fields.map { it.identity } },
+            newFields.groupBy { listOf(owner(it.identity), it.declaration, it.constant) }
+                .mapValues { (_, fields) -> fields.map { it.identity } })
         val oldMethods = base.methods.values.filter { "PRIVATE" in it.modifiers && it.identity !in head.methods }
+            .associateBy { it.identity }.toMutableMap()
         val newMethods = head.methods.values.filter { "PRIVATE" in it.modifiers && it.identity !in base.methods }
-        // Iteration admits chains of renamed helpers without guessing an arbitrary mapping for ambiguous cycles.
-        repeat(oldMethods.size) {
-            pair(oldMethods.map { it.identity }, newMethods.map { it.identity }) { old, new ->
-                val before = base.methods.getValue(old)
-                val after = head.methods.getValue(new)
-                val mapping = names + (new to old)
-                owner(old) == owner(new) && old.substringAfter('(') == new.substringAfter('(') &&
-                    base.declarations[old] == head.declarations[new] &&
-                    before.referenceCanonical == after.referenceCanonical &&
-                    before.references == after.references.map { mapping[it] ?: it }
-            }
+            .associateBy { it.identity }.toMutableMap()
+        // A round indexes signatures once. Stop at the fixed point; ambiguous cycles stay unpaired.
+        while (oldMethods.isNotEmpty() && newMethods.isNotEmpty()) {
+            val before = oldMethods.values.groupBy { method ->
+                MethodKey(owner(method.identity), method.identity.substringAfter('('), base.declarations[method.identity],
+                    method.referenceCanonical, method.references.map { if (it == method.identity) null else it })
+            }.mapValues { (_, methods) -> methods.map { it.identity } }
+            val after = newMethods.values.groupBy { method ->
+                MethodKey(owner(method.identity), method.identity.substringAfter('('), head.declarations[method.identity],
+                    method.referenceCanonical, method.references.map { if (it == method.identity) null else names[it] ?: it })
+            }.mapValues { (_, methods) -> methods.map { it.identity } }
+            val matched = pair(before, after)
+            if (matched.isEmpty()) break
+            matched.forEach { (new, old) -> oldMethods.remove(old); newMethods.remove(new) }
         }
     }
+
+    private data class MethodKey(
+        val owner: String, val descriptor: String, val declaration: String?, val canonical: String,
+        val references: List<String?>,
+    )
 
     fun aligned(): ProgramSnapshot = head.copy(
         methods = head.methods.values.associate { method ->
@@ -44,15 +52,14 @@ internal class PrivateMemberAlignment(private val base: ProgramSnapshot, private
         ignoredFields = head.ignoredFields.map { names[it] ?: it }.toSet(),
     )
 
-    private fun pair(old: List<String>, new: List<String>, equivalent: (String, String) -> Boolean) {
-        val candidates = old.filterNot { it in names.values }.associateWith { before ->
-            new.filterNot { it in names }.filter { equivalent(before, it) }
+    private fun <K> pair(old: Map<K, List<String>>, new: Map<K, List<String>>): Map<String, String> {
+        val matched = linkedMapOf<String, String>()
+        old.forEach { (key, before) ->
+            val after = new[key].orEmpty()
+            if (before.size == 1 && after.size == 1) matched[after.single()] = before.single()
         }
-        candidates.forEach { (before, matches) ->
-            if (matches.size == 1 && candidates.values.count { matches.single() in it } == 1) {
-                names[matches.single()] = before
-            }
-        }
+        names.putAll(matched)
+        return matched
     }
 
     private fun owner(identity: String): String = identity.substringBefore('(').substringBefore(':').substringBeforeLast('.')

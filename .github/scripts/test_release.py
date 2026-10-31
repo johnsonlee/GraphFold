@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from release import version, checksums, verify
+from release import version, checksums, verify, compare
 
 
 class VersionTest(unittest.TestCase):
@@ -27,6 +27,27 @@ class AssetsTest(unittest.TestCase):
             self.assertIn("  asset.zip\n", first)
             checksums(root)
             self.assertEqual(first, (root / "SHA256SUMS").read_text())
+
+
+    def test_verified_publication_comparison(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            expected, actual = root / "expected", root / "actual"
+            expected.mkdir()
+            actual.mkdir()
+            with self.assertRaises(ValueError):
+                compare(expected, actual)
+            for name in ("engine.jar", "engine-sources.jar", "engine.pom", "engine.module"):
+                (expected / name).write_bytes(name.encode())
+                (actual / name).write_bytes(name.encode())
+            (actual / "engine.jar.asc").write_bytes(b"signature")
+            compare(expected, actual)
+            (actual / "engine.jar").write_bytes(b"unverified")
+            with self.assertRaisesRegex(ValueError, "differs.*engine.jar"):
+                compare(expected, actual)
+            (actual / "engine.jar").unlink()
+            with self.assertRaisesRegex(ValueError, "inventory"):
+                compare(expected, actual)
 
     def test_empty_assets_fail(self):
         with TemporaryDirectory() as temporary, self.assertRaises(ValueError):
