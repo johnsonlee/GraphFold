@@ -16,6 +16,7 @@ import java.nio.file.StandardCopyOption
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GraphFoldIntegrationTest {
@@ -42,11 +43,17 @@ class GraphFoldIntegrationTest {
         assertEquals(if (passes) "PASS" else "FAIL", report["verdict"].asText())
         assertEquals(fixture.base, report["metadata"]["baseSha"].asText())
         assertEquals(fixture.head, report["metadata"]["headSha"].asText())
-        val auditLines = result.output.lineSequence().filter { it.startsWith("[graphfold.fold]") }.map {
-            mapper.readTree(it.removePrefix("[graphfold.fold]").trim())
-        }.toList()
+        val auditLines = result.output.lineSequence().filter { it.startsWith("[graphfold.fold]") }.toList()
         assertTrue(auditLines.isNotEmpty(), result.output)
-        assertEquals(report["ruleAudits"].toList(), auditLines)
+        val summaries = report["ruleAudits"].map {
+            "[graphfold.fold] ${it["scenario"].asText()}/${it["revision"].asText()}/rule#${it["ruleIndex"].asInt()}: " +
+                "${it["selectionStatus"].asText()} ${it["selectedCount"].asInt()} sites, ${it["matchedCallCount"].asInt()} matched"
+        }
+        assertEquals(summaries, auditLines)
+        assertFalse(result.output.contains("\"selectedNodes\""), result.output)
+        val textReport = fixture.repository.resolve("build/reports/graphfold/report.txt").readText()
+        summaries.forEach { assertTrue(textReport.contains(it), textReport) }
+        assertFalse(textReport.contains("\"selectedNodes\""), textReport)
         if (!passes) {
             val locations = report["findings"][0]["locations"]
             assertEquals(2, locations.size())
@@ -61,9 +68,16 @@ class GraphFoldIntegrationTest {
         }
         assertTrue(report["diagnostics"].isEmpty)
         if (passes) {
-            val repeated = runner.build()
+            assertTrue(report["ruleAudits"].any { !it["selectedNodes"].isEmpty }, report.toString())
+            val repeated = runner.withArguments(runner.arguments + "--info").build()
             assertTrue(repeated.output.contains("Reusing configuration cache"))
             assertEquals(TaskOutcome.SUCCESS, repeated.task(":graphFoldCheck")?.outcome)
+            val detailedAudits = repeated.output.lineSequence().filter { it.startsWith("[graphfold.fold] {") }.map {
+                mapper.readTree(it.removePrefix("[graphfold.fold]").trim())
+            }.toList()
+            val repeatedReport = mapper.readTree(fixture.repository.resolve("build/reports/graphfold/report.json").toFile())
+            assertEquals(repeatedReport["ruleAudits"].toList(), detailedAudits)
+            summaries.forEach { assertTrue(repeated.output.contains(it), repeated.output) }
         }
     }
 

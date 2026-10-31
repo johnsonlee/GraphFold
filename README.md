@@ -102,8 +102,9 @@ graphfold \
   --format json
 ```
 
-Use `--format json > verdict.json` to save the result. Fold audit log lines go to
-stderr, so stdout remains a single JSON document.
+Use `--format json > verdict.json` to save the result. Rule-selection summaries go
+to stderr in JSON mode, so stdout remains a single JSON document. Add `--verbose`
+to log complete selected-node audits to stderr instead of summaries.
 
 `--repository` accepts a local path or a Git URL. `--fold` reads a YAML file. Reports go to stdout; `text` is the default format. Exit codes are `0` for PASS, `1` for a failed analysis gate, `2` for input, Git, or build failures, and `3` for a workspace-capacity timeout that CI can retry. Every nonzero outcome blocks delivery; GraphFold does not retry automatically. A capacity timeout is an operational diagnostic, not a code-change finding.
 
@@ -177,8 +178,12 @@ graph; they are not stable cross-revision identifiers or precise diff locations.
 `SELECTED` result with zero nodes. A later folding failure can preserve successful
 selection evidence while leaving the matched count unknown. Property-match rules
 record candidate call sites; argument predicates may reduce actual matched calls.
-The `[graphfold.fold]` log lines serialize the same audit entries without truncating
-their node lists; the Gradle worker emits them at lifecycle level.
+Default `[graphfold.fold]` lines summarize each scenario/revision/rule with selection
+status and separate selected/matched counts; unavailable counts appear as `unknown`.
+Text reports include these summaries once, without duplicating them on CLI stderr.
+Full node lists remain in JSON reports. CLI `--verbose` emits complete audit JSON
+on stderr; Gradle emits summaries at lifecycle level and complete audit JSON only
+with `--info` (or a more detailed log level).
 
 ## Gradle plugin
 

@@ -57,7 +57,10 @@ abstract class GraphFoldWork : WorkAction<GraphFoldParameters> {
         )
         val result = GraphFoldEngine(parameters.engineConfiguration()).analyze(request)
         val logger = Logging.getLogger(GraphFoldWork::class.java)
-        AnalysisReports.foldSelectionLog(result).forEach(logger::lifecycle)
+        AnalysisReports.foldSelectionSummary(result).forEach(logger::lifecycle)
+        if (logger.isInfoEnabled) {
+            AnalysisReports.foldSelectionLog(result).forEach(logger::info)
+        }
         val json = parameters.jsonReport.get().asFile.toPath()
         val text = parameters.textReport.get().asFile.toPath()
         Files.createDirectories(json.parent)

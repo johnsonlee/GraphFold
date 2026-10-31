@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.core.CliktError
 import com.github.ajalt.clikt.core.parse
 import com.github.ajalt.clikt.parameters.options.check
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
@@ -75,6 +76,8 @@ internal class GraphFoldCommand(
     private val format by option("--format", help = "Report format")
         .choice(ReportFormat.entries.associateBy { it.name.lowercase() }).default(ReportFormat.TEXT)
 
+    private val verbose by option("--verbose", help = "Log complete fold selections to stderr").flag()
+
     private val workspaceSlots by option("--workspace-slots", help = "Maximum concurrent checkout pairs in the shared cache")
         .int().default(DEFAULT_MAXIMUM_WORKSPACE_SLOTS).check("must be positive") { it > 0 }
     private val buildTimeout by option("--build-timeout", help = "Timeout per external build command, in positive integer seconds")
@@ -108,7 +111,12 @@ internal class GraphFoldCommand(
             echo(error.message, err = true)
             throw ProgramResult(INPUT_FAILURE)
         }
-        AnalysisReports.foldSelectionLog(result).forEach { echo(it, err = true) }
+        val selectionLog = when {
+            verbose -> AnalysisReports.foldSelectionLog(result)
+            format == ReportFormat.JSON -> AnalysisReports.foldSelectionSummary(result)
+            else -> emptyList()
+        }
+        selectionLog.forEach { echo(it, err = true) }
         echo(when (format) {
             ReportFormat.JSON -> AnalysisReports.json(result)
             ReportFormat.TEXT -> AnalysisReports.text(result)

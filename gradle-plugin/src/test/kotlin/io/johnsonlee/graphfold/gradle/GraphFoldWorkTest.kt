@@ -1,18 +1,27 @@
 package io.johnsonlee.graphfold.gradle
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT
 import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_TIMEOUT
 import io.johnsonlee.graphfold.engine.DEFAULT_MAXIMUM_WORKSPACE_SLOTS
 import io.johnsonlee.graphfold.engine.defaultWorkspaceLeaseTimeout
 import io.johnsonlee.graphfold.engine.git.GitWorkspaceManager
 import org.gradle.api.GradleException
+import org.gradle.api.logging.Logger
+import org.gradle.api.logging.Logging
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.mockito.Mockito.CALLS_REAL_METHODS
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockStatic
+import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
 import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.assertFailsWith
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class GraphFoldWorkTest {
@@ -51,6 +60,7 @@ class GraphFoldWorkTest {
         }
         work.execute()
         assertTrue(directory.resolve("reports/pass.json").readText().contains("PASS"))
+        assertInfoLogging(work, directory.resolve("reports/pass.json"))
         parameters.workspaceSlots.set(1)
         parameters.leaseTimeout.set(1L)
         GitWorkspaceManager(directory.resolve("cache/git"), maximumWorkspaceSlots = 1).open(repository.path, revision, revision).use {
@@ -58,6 +68,25 @@ class GraphFoldWorkTest {
             assertTrue(failure.message.orEmpty().contains("timed out waiting for workspace capacity"))
             assertTrue(directory.resolve("reports/pass.json").readText().contains("WORKSPACE_CAPACITY_TIMEOUT"))
             assertTrue(directory.resolve("reports/pass.txt").readText().contains("WORKSPACE_CAPACITY_TIMEOUT"))
+        }
+    }
+
+    private fun assertInfoLogging(work: GraphFoldWork, report: Path) {
+        val logger = mock(Logger::class.java)
+        `when`(logger.isInfoEnabled).thenReturn(true)
+        mockStatic(Logging::class.java, CALLS_REAL_METHODS).use { logging ->
+            logging.`when`<Logger> { Logging.getLogger(GraphFoldWork::class.java) }.thenReturn(logger)
+            work.execute()
+        }
+        val mapper = jacksonObjectMapper()
+        val audits = mapper.readTree(report.toFile())["ruleAudits"]
+        assertEquals(2, audits.size())
+        audits.forEach { audit ->
+            verify(logger).info("[graphfold.fold] ${mapper.writeValueAsString(audit)}")
+            verify(logger).lifecycle(
+                "[graphfold.fold] ${audit["scenario"].asText()}/${audit["revision"].asText()}/rule#0: " +
+                    "NOT_EXECUTED unknown sites, unknown matched",
+            )
         }
     }
 

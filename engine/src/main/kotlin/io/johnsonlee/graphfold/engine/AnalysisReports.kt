@@ -22,14 +22,26 @@ object AnalysisReports {
     }
 
     /**
-     * Renders [result] for a terminal, including proof counts, full selection logs, reasons, findings, and diagnostics.
+     * Summarizes each scenario/revision/rule without serializing selected nodes or query text.
+     *
+     * @param result Analysis report containing the available rule audits.
+     * @return One line per audit, with selection status and separate selected/matched counts;
+     *   unavailable counts are shown as `unknown`, not zero. Line size does not grow with the node list.
+     */
+    fun foldSelectionSummary(result: AnalysisResult): List<String> = result.ruleAudits.map {
+        "[graphfold.fold] ${it.scenario}/${it.revision}/rule#${it.ruleIndex}: " +
+            "${it.selectionStatus} ${it.selectedCount ?: "unknown"} sites, ${it.matchedCallCount ?: "unknown"} matched"
+    }
+
+    /**
+     * Renders [result] for a terminal, including proof counts, selection summaries, reasons, findings, and diagnostics.
      *
      * @return Human-readable report without a trailing newline; not a stable machine-readable format.
      */
     fun text(result: AnalysisResult): String = buildString {
         appendLine("GraphFold: ${result.verdict}")
         appendLine("Proved ${result.metadata.provedObligations}/${result.metadata.obligations} change obligations")
-        foldSelectionLog(result).forEach { appendLine(it) }
+        foldSelectionSummary(result).forEach { appendLine(it) }
         result.reasons.forEach { reason ->
             appendLine("${reason.code} [${reason.changes.joinToString()}]: ${reason.message}")
         }

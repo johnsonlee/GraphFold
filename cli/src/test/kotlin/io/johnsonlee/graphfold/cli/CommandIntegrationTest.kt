@@ -37,12 +37,10 @@ class CommandIntegrationTest {
         // Graphite node IDs are scoped to one graph, so separate analyses need not allocate the same IDs.
         assertEquals(withoutNodeIds(mapper.readTree(AnalysisReports.json(expected))), withoutNodeIds(actual))
         assertTrue(actual["diagnostics"].isEmpty)
-        val auditLines = cli.stderr.lineSequence().filter { it.startsWith("[graphfold.fold]") }.map {
-            mapper.readTree(it.removePrefix("[graphfold.fold]").trim())
-        }.toList()
+        val auditLines = cli.stderr.lineSequence().filter { it.startsWith("[graphfold.fold]") }.toList()
         assertTrue(auditLines.isNotEmpty(), cli.output)
-        assertEquals(actual["ruleAudits"].toList(), auditLines)
-        auditLines.forEach { audit ->
+        assertEquals(AnalysisReports.foldSelectionSummary(expected), auditLines)
+        actual["ruleAudits"].forEach { audit ->
             val nodes = audit["selectedNodes"]
             assertTrue(nodes.all { it["nodeId"].isInt })
             assertEquals(nodes.size(), nodes.map { it["nodeId"].asInt() }.distinct().size)

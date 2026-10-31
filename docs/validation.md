@@ -1,8 +1,36 @@
 # Validation record
 
-Date: 2026-10-31. Local environment: macOS, JDK 17. Graphite: 2.12.0.
+Date: 2026-11-01. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
+
+## PR review: audit logging and compile-only SPI annotations (2026-11-01)
+
+The full root check and type-aware detekt checks passed with **677 JUnit tests**,
+zero failures/errors/skips, and the unchanged **95% branch / 90% line** hard gates.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| gfc | 62 | 98.5294% | 95.4082% (187/196) |
+| engine | 558 | 99.2426% | 95.5533% (2858/2991) |
+| cli | 28 | 98.6842% | 97.0588% (33/34) |
+| gradle-plugin | 29 | 100.0000% | 100.0000% (18/18) |
+
+The initial full run caught the new Gradle INFO branch missing from in-process coverage
+(17/18 branches); an added worker assertion covers that path without lowering the gate.
+The final root check reruns the changed plugin suite and reuses unchanged module results.
+
+Regression tests cover broad selectors, unavailable versus zero counts, all four CLI
+format/verbosity combinations, and Gradle default/info logging with configuration-cache
+reuse. Default text and logs retain summaries; JSON and opt-in detailed logs retain
+all selected nodes. A 10,000-node reporting fixture verifies bounded default output;
+this is a correctness check, not performance acceptance.
+
+Local publication validation and ZIP/TAR smoke checks passed. Engine and gfc publish
+no AutoService annotations dependency, CLI distributions omit that JAR, and all four
+generated SPI registrations remain present. No remote release was performed.
+See the [machine-readable record](research/validation/review-logging-validation-2026-11-01.json)
+for the exact command and counters. Earlier sections below are historical baselines.
 
 ## Standalone gfc module and generated SPI (2026-10-31)
 

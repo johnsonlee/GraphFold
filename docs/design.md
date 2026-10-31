@@ -402,7 +402,7 @@ flowchart TD
 
 节点 ID 仅在对应场景/revision 的图内有意义，不能跨版本 join，也不替代 finding 的精确 diff 坐标。非 Cypher 的 `CALL_SITE_MATCH` 规则同样记录原始图上的候选调用点；为此无来源归一化路径也需要物化未折叠图，尚未完成代表性多图负载性能验收。
 
-CLI 将每条完整审计记录以 `[graphfold.fold]` 加紧凑 JSON 写入 stderr，保留 stdout 的单一 JSON 报告；Gradle 使用默认可见的 lifecycle 日志。文本报告也包含同样记录，节点清单不截断。
+默认 `[graphfold.fold]` 日志仅输出每个 scenario/revision/rule 的选择状态、选点数与匹配数，未知计数显示 `unknown`。文本报告包含摘要，CLI 文本模式不再向 stderr 重复输出；JSON 模式将摘要写入 stderr，stdout 保持单一完整 JSON 报告。CLI `--verbose` 用完整审计 JSON 替代 stderr 摘要；Gradle 在 lifecycle 级别输出摘要，仅在 info 级别启用时序列化并输出完整节点清单。JSON 报告始终保留全部 `ruleAudits`，文本报告和默认日志大小不再随选点数量增长。
 
 ### 8.1 折叠语义
 

@@ -102,6 +102,7 @@ class GraphFoldCommandTest {
         val output = GraphFoldCommand { _, _ -> error("Must not analyze") }.test("--help")
         assertEquals(0, output.statusCode)
         assertTrue(output.stdout.contains("--fold"))
+        assertTrue(output.stdout.contains("--verbose"))
         assertEquals(0, executeCli(arrayOf("--help")))
         assertEquals(0, executeCli(arguments("text").toTypedArray(), GraphFoldCommand { _, _ -> result() }))
         assertEquals(2, executeCli(arguments("text").toTypedArray(), GraphFoldCommand { _, _ ->

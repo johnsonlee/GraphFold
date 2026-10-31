@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-    implementation(libs.auto.service.annotations)
+    compileOnly(libs.auto.service.annotations)
     ksp(libs.auto.service.ksp)
     // Compiler APIs and Kotlin runtime come from the host compiler, never from the provider JAR.
     compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20")

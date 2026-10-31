@@ -9,7 +9,7 @@ dependencies {
     implementation(project(":gfc")) {
         attributes { attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR)) }
     }
-    implementation(libs.auto.service.annotations)
+    compileOnly(libs.auto.service.annotations)
     ksp(libs.auto.service.ksp)
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
     implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.8.0.202609011348-r")
