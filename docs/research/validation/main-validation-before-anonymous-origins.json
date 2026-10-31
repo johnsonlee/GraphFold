@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-30",
+  "command": "./gradlew check :engine:detektTest :cli:installDist --console=plain",
+  "exit": 0,
+  "modules": {
+    "engine": {
+      "junit": {
+        "tests": 282,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 1589,
+          "missed": 80,
+          "percent": 95.2067106051528
+        },
+        "line": {
+          "covered": 1855,
+          "missed": 16,
+          "percent": 99.14484233030466
+        }
+      }
+    },
+    "cli": {
+      "junit": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 14,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 38,
+          "missed": 1,
+          "percent": 97.43589743589743
+        }
+      }
+    },
+    "gradle-plugin": {
+      "junit": {
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 4,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 54,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "corpus": {
+    "java": {
+      "filtered": false,
+      "cases": 130,
+      "truePositive": 60,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "kotlin": {
+      "filtered": false,
+      "cases": 186,
+      "truePositive": 84,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  }
+}

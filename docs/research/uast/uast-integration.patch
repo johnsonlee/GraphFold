@@ -1,0 +1,1269 @@
+diff --git a/build.gradle.kts b/build.gradle.kts
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -13,7 +13,7 @@
+ allprojects {
+     group = "io.johnsonlee.graphfold"
+     version = providers.gradleProperty("version").orElse("0.1.0-SNAPSHOT").get()
+-    repositories { mavenCentral() }
++    repositories { google(); mavenCentral() }
+ }
+ 
+ subprojects {
+diff --git a/engine/build.gradle.kts b/engine/build.gradle.kts
+--- a/engine/build.gradle.kts
++++ b/engine/build.gradle.kts
+@@ -7,7 +7,7 @@
+     implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
+     implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.8.0.202609011348-r")
+     implementation("org.jetbrains.kotlin:kotlin-metadata-jvm:2.1.20")
+-    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20")
++    implementation("com.android.tools.lint:lint:31.11.0")
+     implementation("org.soot-oss:sootup.core:3.0.1")
+     implementation("org.soot-oss:sootup.java.core:3.0.1")
+     implementation("org.soot-oss:sootup.java.bytecode.frontend:3.0.1")
+@@ -25,3 +25,34 @@
+     // Gradle isolates test classloaders; java.class.path need not contain the test runtime.
+     systemProperty("graphfold.test.runtimeClasspath", sourceSets.test.get().runtimeClasspath.asPath)
+ }
++
++// The Lint compiler artifact is analysis-only (its JVM backend is stripped).
++// Keep the pinned build compiler out of the engine classloader and launch it in its own JVM.
++val kotlinCompilerRuntime by configurations.creating
++
++dependencies {
++    kotlinCompilerRuntime("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20")
++}
++val stageKotlinCompiler by tasks.registering {
++    val destination = layout.buildDirectory.dir("compiler-resources")
++    inputs.files(kotlinCompilerRuntime)
++    outputs.dir(destination)
++    doLast {
++        val directory = destination.get().dir("io/johnsonlee/graphfold/engine/compiler").asFile
++        directory.deleteRecursively()
++        directory.mkdirs()
++        val files = kotlinCompilerRuntime.files.sortedBy { it.name }
++        files.forEach { it.copyTo(directory.resolve(it.name), overwrite = true) }
++        directory.resolve("classpath.txt").writeText(files.joinToString("\n") { it.name })
++    }
++}
++sourceSets.main { resources.srcDir(stageKotlinCompiler) }
++
++// Embedded compiler JARs are distribution resources, not engine classes under test.
++// Retain every compiled engine class; do not recursively analyze third-party archives.
++tasks.withType<JacocoReport>().configureEach {
++    classDirectories.setFrom(sourceSets.main.get().output.classesDirs)
++}
++tasks.withType<JacocoCoverageVerification>().configureEach {
++    classDirectories.setFrom(sourceSets.main.get().output.classesDirs)
++}
+diff --git a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/build/KotlinBuildAdapter.kt b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/build/KotlinBuildAdapter.kt
+--- a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/build/KotlinBuildAdapter.kt
++++ b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/build/KotlinBuildAdapter.kt
+@@ -1,34 +1,35 @@
+ package io.johnsonlee.graphfold.engine.build
+ 
+ import java.io.File
++import java.nio.file.Files
+ import java.nio.file.Path
+ import java.time.Duration
+ 
+-/** A separate compiler JVM gives cancellation and timeout the same guarantees as external builds. */
++/** Compiler artifacts are isolated from the analysis-only compiler bundled by Lint/UAST. */
+ internal class KotlinBuildAdapter(private val timeout: Duration) {
+     fun compile(checkout: Path, output: Path, classes: Path, sources: List<Path>): List<Path> {
+-        val dependencies = listOf(classLocation("kotlin.Unit"), classLocation("org.jetbrains.annotations.NotNull"))
+-        val compilerClasspath = (COMPILER_CLASSES.map(::classLocation) + dependencies).distinct()
++        val compilerDirectory = Files.createDirectories(output.resolve("kotlin-compiler"))
++        val names = resource("classpath.txt").bufferedReader().use { it.readLines() }
++        val compilerClasspath = names.map { name ->
++            val destination = compilerDirectory.resolve(name)
++            resource(name).use { input -> Files.copy(input, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
++            destination
++        }
++        val dependencies = compilerClasspath.filter {
++            it.fileName.toString().startsWith("kotlin-stdlib-") || it.fileName.toString().startsWith("annotations-")
++        }
+         val arguments = listOf(
+             Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+             "-cp", compilerClasspath.joinToString(File.pathSeparator), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+             "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-java-parameters",
++            "-language-version", "2.1", "-api-version", "2.1",
+             "-classpath", dependencies.joinToString(File.pathSeparator), "-d", classes.toString(),
+         ) + sources.map(Path::toString)
+         runBuild(checkout, output.resolve("kotlin-build.log"), arguments, timeout)
+         return dependencies
+     }
+ 
+-    private fun classLocation(name: String): Path =
+-        Path.of(Class.forName(name).protectionDomain.codeSource.location.toURI())
+-
+-    private companion object {
+-        val COMPILER_CLASSES = listOf(
+-            "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+-            "kotlin.reflect.jvm.internal.ReflectionFactoryImpl",
+-            "kotlin.script.templates.standard.ScriptTemplateWithArgs",
+-            "gnu.trove.THashMap",
+-            "kotlinx.coroutines.CoroutineScope",
+-        )
+-    }
++    private fun resource(name: String) = requireNotNull(javaClass.getResourceAsStream(
++        "/io/johnsonlee/graphfold/engine/compiler/$name",
++    )) { "Missing isolated Kotlin compiler artifact: $name" }
+ }
+diff --git a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/AstClassifier.kt b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/AstClassifier.kt
+new file mode 100644
+--- /dev/null
++++ b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/AstClassifier.kt
+@@ -0,0 +1,159 @@
++package io.johnsonlee.graphfold.engine.source
++
++import com.intellij.psi.PsiClass
++import com.intellij.psi.PsiComment
++import com.intellij.psi.PsiElement
++import com.intellij.psi.PsiErrorElement
++import com.intellij.psi.PsiMethod
++import com.intellij.psi.PsiNameIdentifierOwner
++import com.intellij.psi.PsiWhiteSpace
++import com.intellij.psi.util.PsiTreeUtil
++import org.jetbrains.kotlin.psi.KtAnonymousInitializer
++import org.jetbrains.kotlin.psi.KtClassOrObject
++import org.jetbrains.kotlin.psi.KtFile
++import org.jetbrains.kotlin.psi.KtNamedDeclaration
++import org.jetbrains.kotlin.psi.KtNamedFunction
++import org.jetbrains.kotlin.psi.KtObjectDeclaration
++import org.jetbrains.kotlin.psi.KtProperty
++import org.jetbrains.uast.UCallExpression
++import org.jetbrains.uast.UClass
++import org.jetbrains.uast.UClassInitializer
++import org.jetbrains.uast.UDeclaration
++import org.jetbrains.uast.UDoWhileExpression
++import org.jetbrains.uast.UElement
++import org.jetbrains.uast.UExpression
++import org.jetbrains.uast.UField
++import org.jetbrains.uast.UForExpression
++import org.jetbrains.uast.UIfExpression
++import org.jetbrains.uast.UMethod
++import org.jetbrains.uast.UPolyadicExpression
++import org.jetbrains.uast.USwitchClauseExpression
++import org.jetbrains.uast.USwitchExpression
++import org.jetbrains.uast.UWhileExpression
++import org.jetbrains.uast.UastBinaryOperator
++import org.jetbrains.uast.visitor.AbstractUastVisitor
++
++/** Shared semantic traversal; physical PSI is used only for syntax identity and exact source spans. */
++internal class AstClassifier {
++    fun facts(source: IndexedSource): List<Fact> = withParsedSource(source.text, source.path) { file ->
++        if (PsiTreeUtil.findChildOfType(file.sourcePsi, PsiErrorElement::class.java) != null) return@withParsedSource emptyList()
++        val facts = mutableListOf<Fact>()
++        val seen = mutableSetOf<String>()
++        file.accept(object : AbstractUastVisitor() {
++            override fun visitElement(node: UElement): Boolean {
++                val psi = node.sourcePsi ?: return false
++                fun add(kind: Kind, name: String, content: String, shape: String = content,
++                    initializer: String? = null, terms: Int = 1, span: PsiElement = psi) {
++                    val key = "$kind:${scope(node)}:$name"
++                    val range = span.textRange
++                    if (seen.add("$key:${range.startOffset}:${range.endOffset}")) {
++                        facts += Fact(kind, key, content, shape, initializer, terms, range.startOffset, range.endOffset)
++                    }
++                }
++                when (node) {
++                    is UField -> {
++                        add(Kind.FIELD, node.name, tokenText(psi), shape(psi), node.uastInitializer?.sourcePsi?.let(::tokenText))
++                        if (isStatic(node, psi)) node.uastInitializer?.sourcePsi?.let {
++                            add(Kind.INITIALIZER, node.name, tokenText(it))
++                        }
++                    }
++                    is UMethod -> if (!node.isConstructor && (psi is PsiMethod || psi is KtNamedFunction)) {
++                        add(Kind.METHOD, signature(node), header(psi), shape(psi))
++                    }
++                    is UClass -> if (psi !is KtFile) add(Kind.TYPE, node.name.orEmpty(), header(psi))
++                    is UClassInitializer -> if (isStatic(node, psi)) {
++                        add(Kind.INITIALIZER, facts.count { it.kind == Kind.INITIALIZER }.toString(), tokenText(psi))
++                    }
++                    is UCallExpression -> add(Kind.CALL, facts.count { it.kind == Kind.CALL }.toString(), tokenText(psi))
++                    else -> conditions(node).forEach { condition ->
++                        condition.sourcePsi?.let {
++                            add(Kind.CONDITION, facts.count { it.kind == Kind.CONDITION }.toString(), tokenText(it),
++                                terms = terms(condition))
++                        }
++                    }
++                }
++                // Kotlin object init blocks are lowered into constructor bodies, not UClassInitializer.
++                val initializer = (psi as? KtAnonymousInitializer) ?: (psi.parent as? KtAnonymousInitializer)
++                if (initializer != null && isStatic(null, initializer)) {
++                    add(Kind.INITIALIZER, "init@${initializer.textRange.startOffset}", tokenText(initializer), span = initializer)
++                }
++                return false
++            }
++        })
++        facts
++    }
++
++    fun canonical(source: IndexedSource): String? = withParsedSource(source.text, source.path) { file ->
++        if (PsiTreeUtil.findChildOfType(file.sourcePsi, PsiErrorElement::class.java) == null) tokenText(file.sourcePsi) else null
++    }
++
++    private fun scope(node: UElement): String = generateSequence(node.uastParent) { it.uastParent }.mapNotNull {
++        when (it) {
++            is UMethod -> if (it.isConstructor) null else signature(it)
++            is UClass -> if (it.sourcePsi is KtFile) null else it.name
++            else -> null
++        }
++    }.toList().reversed().joinToString(".")
++
++    private fun signature(method: UMethod): String = method.name + method.uastParameters.joinToString(
++        prefix = "(", postfix = ")",
++    ) { it.type.canonicalText }
++
++    private fun conditions(node: UElement): List<UExpression> = when (node) {
++        is UIfExpression -> listOf(node.condition)
++        is UWhileExpression -> listOf(node.condition)
++        is UDoWhileExpression -> listOf(node.condition)
++        is UForExpression -> listOfNotNull(node.condition)
++        is USwitchExpression -> listOfNotNull(node.expression)
++        is USwitchClauseExpression -> node.caseValues
++        else -> emptyList()
++    }
++
++    private fun terms(condition: UExpression): Int {
++        var count = 1
++        condition.accept(object : AbstractUastVisitor() {
++            override fun visitElement(node: UElement): Boolean {
++                if (node is UPolyadicExpression &&
++                    (node.operator == UastBinaryOperator.LOGICAL_AND || node.operator == UastBinaryOperator.LOGICAL_OR)) {
++                    count += node.operands.size - 1
++                }
++                return false
++            }
++        })
++        return count
++    }
++
++    private fun isStatic(declaration: UDeclaration?, psi: PsiElement): Boolean = when (psi) {
++        is KtProperty, is KtAnonymousInitializer -> psi.parent is KtFile ||
++            PsiTreeUtil.getParentOfType(psi, KtClassOrObject::class.java) is KtObjectDeclaration
++        else -> declaration?.isStatic == true
++    }
++
++    private fun shape(psi: PsiElement): String {
++        val name = when (psi) {
++            is KtNamedDeclaration -> psi.nameIdentifier
++            is PsiNameIdentifierOwner -> psi.nameIdentifier
++            else -> null
++        }
++        return tokenText(psi, name)
++    }
++
++    private fun header(psi: PsiElement): String {
++        val omitted = when (psi) {
++            is KtNamedFunction -> listOfNotNull(psi.bodyExpression)
++            is KtClassOrObject -> listOfNotNull(psi.body)
++            is PsiMethod -> listOfNotNull(psi.body)
++            is PsiClass -> psi.fields.toList() + psi.methods + psi.innerClasses + psi.initializers
++            else -> emptyList()
++        }.toSet()
++        return tokenText(psi, omitted = omitted)
++    }
++}
++
++private fun tokenText(element: PsiElement, renamed: PsiElement? = null, omitted: Set<PsiElement> = emptySet()): String = when {
++    element is PsiComment || element is PsiWhiteSpace || element in omitted -> ""
++    element === renamed -> "__name"
++    element.firstChild == null -> element.text
++    else -> generateSequence(element.firstChild) { it.nextSibling }.map { tokenText(it, renamed, omitted) }
++        .filter { it.isNotEmpty() }.joinToString(" ")
++}
+diff --git a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/ChangeClassifier.kt b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/ChangeClassifier.kt
+--- a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/ChangeClassifier.kt
++++ b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/ChangeClassifier.kt
+@@ -1,47 +1,8 @@
+ package io.johnsonlee.graphfold.engine.source
+ 
+-import com.github.javaparser.ParserConfiguration
+-import com.github.javaparser.JavaParser
+-import com.github.javaparser.ast.Node
+-import com.github.javaparser.ast.body.InitializerDeclaration
+-import com.github.javaparser.ast.body.FieldDeclaration
+-import com.github.javaparser.ast.body.MethodDeclaration
+-import com.github.javaparser.ast.body.TypeDeclaration
+-import com.github.javaparser.ast.expr.ConditionalExpr
+-import com.github.javaparser.ast.expr.SwitchExpr
+-import com.github.javaparser.ast.stmt.SwitchStmt
+-import com.github.javaparser.ast.expr.BinaryExpr
+-import com.github.javaparser.ast.expr.MethodCallExpr
+-import com.github.javaparser.ast.stmt.IfStmt
+-import com.github.javaparser.ast.stmt.WhileStmt
+-import com.github.javaparser.ast.stmt.DoStmt
+-import com.github.javaparser.ast.stmt.ForStmt
+ import io.johnsonlee.graphfold.engine.ChangeKind
+ import io.johnsonlee.graphfold.engine.Revision
+ import io.johnsonlee.graphfold.engine.SourceLocation
+-import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
+-import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
+-import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
+-import org.jetbrains.kotlin.com.intellij.psi.PsiComment
+-import org.jetbrains.kotlin.com.intellij.psi.PsiErrorElement
+-import org.jetbrains.kotlin.com.intellij.psi.PsiElement
+-import org.jetbrains.kotlin.com.intellij.psi.PsiWhiteSpace
+-import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
+-import org.jetbrains.kotlin.config.CompilerConfiguration
+-import org.jetbrains.kotlin.psi.KtAnonymousInitializer
+-import org.jetbrains.kotlin.psi.KtObjectDeclaration
+-import org.jetbrains.kotlin.psi.KtFile
+-import org.jetbrains.kotlin.psi.KtCallExpression
+-import org.jetbrains.kotlin.psi.KtClassOrObject
+-import org.jetbrains.kotlin.psi.KtIfExpression
+-import org.jetbrains.kotlin.psi.KtNamedDeclaration
+-import org.jetbrains.kotlin.psi.KtNamedFunction
+-import org.jetbrains.kotlin.psi.KtProperty
+-import org.jetbrains.kotlin.psi.KtPsiFactory
+-import org.jetbrains.kotlin.psi.KtWhenCondition
+-import org.jetbrains.kotlin.psi.KtWhileExpressionBase
+-import org.jetbrains.kotlin.psi.KtBinaryExpression
+-import org.jetbrains.kotlin.lexer.KtTokens
+ 
+ /** Descriptive AST change labels only: these never establish behavioral equivalence or a verdict. */
+ internal object ChangeClassifier {
+@@ -136,187 +97,14 @@
+ 
+ }
+ 
+-private class AstClassifier {
+-    private val javaParser = JavaParser(ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17))
+-
+-    fun facts(source: IndexedSource): List<Fact> = if (source.path.endsWith(".kt")) kotlinFacts(source.text)
+-        else javaFacts(source.text)
+-
+-    private fun javaFacts(text: String): List<Fact> {
+-        val root = javaParser.parse(text).takeIf { it.isSuccessful }?.result?.orElse(null) ?: return emptyList()
+-        val result = mutableListOf<Fact>()
+-        root.walk { node ->
+-            fun add(kind: Kind, name: String, content: String, shape: String = content, initializer: String? = null, terms: Int = 1) {
+-                val range = node.range.orElseThrow()
+-                result += Fact(kind, "$kind:${javaScope(node)}:$name", content, shape, initializer, terms,
+-                    offset(text, range.begin.line, range.begin.column), offset(text, range.end.line, range.end.column) + 1)
+-            }
+-            when (node) {
+-                is FieldDeclaration -> node.variables.forEach { variable ->
+-                    val shape = javaFieldShape(node)
+-                    add(Kind.FIELD, variable.nameAsString, javaText(node), javaText(shape),
+-                        variable.initializer.map(::javaText).orElse(null))
+-                    if (hasStaticInitializer(node, variable)) {
+-                        add(Kind.INITIALIZER, variable.nameAsString, javaText(variable.initializer.orElseThrow()))
+-                    }
+-                }
+-                is InitializerDeclaration -> if (node.isStatic) {
+-                    add(Kind.INITIALIZER, result.count { it.kind == Kind.INITIALIZER }.toString(), javaText(node))
+-                }
+-                is MethodDeclaration -> {
+-                    val shape = javaText(node.clone().setName("__name"))
+-                    add(Kind.METHOD, node.signature.asString(), javaText(node.clone().removeBody()), shape)
+-                }
+-                is TypeDeclaration<*> -> add(Kind.TYPE, node.nameAsString, javaText(node.clone().also { it.members.clear() }))
+-                is MethodCallExpr -> add(Kind.CALL, result.count { it.kind == Kind.CALL }.toString(), javaText(node))
+-                else -> javaCondition(node)?.let { condition ->
+-                    val terms = javaTerms(condition)
+-                    add(Kind.CONDITION, result.count { it.kind == Kind.CONDITION }.toString(), javaText(condition), terms = terms)
+-                }
+-            }
+-        }
+-        return result
+-    }
+-
+-    private fun javaFieldShape(node: FieldDeclaration): FieldDeclaration =
+-        node.clone().also { copy -> copy.variables.forEach { it.setName("__name") } }
+-
+-    private fun hasStaticInitializer(field: FieldDeclaration, variable: com.github.javaparser.ast.body.VariableDeclarator): Boolean =
+-        field.isStatic && variable.initializer.isPresent
+-
+-    private fun javaTerms(condition: Node): Int = 1 + condition.findAll(BinaryExpr::class.java).count {
+-        it.operator == BinaryExpr.Operator.AND || it.operator == BinaryExpr.Operator.OR
+-    }
+-
+-    private fun javaCondition(node: Node): Node? = when (node) {
+-        is IfStmt -> node.condition
+-        is WhileStmt -> node.condition
+-        is DoStmt -> node.condition
+-        is ForStmt -> node.compare.orElse(null)
+-        is ConditionalExpr -> node.condition
+-        is SwitchStmt -> node.selector
+-        is SwitchExpr -> node.selector
+-        else -> null
+-    }
+-
+-    private fun javaScope(node: Node): String = generateSequence(node.parentNode.orElse(null)) { it.parentNode.orElse(null) }
+-        .mapNotNull {
+-            when (it) {
+-                is TypeDeclaration<*> -> it.nameAsString
+-                is MethodDeclaration -> it.signature.asString()
+-                else -> null
+-            }
+-        }.toList().reversed().joinToString(".")
+-
+-    private fun javaText(node: Node): String = node.clone().also { copy ->
+-        copy.allContainedComments.forEach { it.remove() }
+-        copy.removeComment()
+-    }.toString()
+-
+-    private fun kotlinFacts(text: String): List<Fact> = withKotlin(text) { root ->
+-        val result = mutableListOf<Fact>()
+-        PsiTreeUtil.collectElements(root, ::interestingKotlinNode).forEach { node ->
+-            fun add(kind: Kind, name: String, content: String, shape: String = content, initializer: String? = null, terms: Int = 1) {
+-                val scope = kotlinScope(node)
+-                result += Fact(kind, "$kind:$scope:$name", content, shape, initializer, terms,
+-                    node.textRange.startOffset, node.textRange.endOffset)
+-            }
+-            when (node) {
+-                is KtProperty -> if (!node.isLocal) {
+-                    add(Kind.FIELD, node.name.orEmpty(), kotlinText(node), kotlinShape(node), node.initializer?.let(::kotlinText))
+-                    node.initializer?.takeIf { isKotlinStatic(node) }?.let { initializer ->
+-                        add(Kind.INITIALIZER, node.name.orEmpty(), kotlinText(initializer))
+-                    }
+-                }
+-                is KtAnonymousInitializer -> if (isKotlinStatic(node)) {
+-                    add(Kind.INITIALIZER, result.count { it.kind == Kind.INITIALIZER }.toString(), kotlinText(node))
+-                }
+-                is KtNamedFunction -> {
+-                    val signature = node.name + node.valueParameters.joinToString { it.typeReference?.text.orEmpty() }
+-                    val header = node.children.filter { it != node.bodyExpression }.map(::kotlinText)
+-                        .filter { it.isNotEmpty() }.joinToString(" ")
+-                    add(Kind.METHOD, signature, header, kotlinShape(node))
+-                }
+-                is KtClassOrObject -> add(Kind.TYPE, node.name.orEmpty(),
+-                    node.children.filter { it != node.body }.map(::kotlinText).filter { it.isNotEmpty() }.joinToString(" "))
+-                is KtCallExpression -> add(Kind.CALL, result.count { it.kind == Kind.CALL }.toString(), kotlinText(node))
+-                else -> {
+-                    val condition = kotlinCondition(node)
+-                    if (condition != null) {
+-                        val terms = kotlinTerms(condition)
+-                        add(Kind.CONDITION, result.count { it.kind == Kind.CONDITION }.toString(), kotlinText(condition), terms = terms)
+-                    }
+-                }
+-            }
+-        }
+-        result
+-    }
+-
+-    private fun kotlinScope(node: PsiElement): String = generateSequence(node.parent) { it.parent }.mapNotNull {
+-        when (it) {
+-            is KtClassOrObject -> it.name
+-            is KtNamedFunction -> it.name + it.valueParameters.joinToString { parameter -> parameter.typeReference?.text.orEmpty() }
+-            else -> null
+-        }
+-    }.toList().reversed().joinToString(".")
+-
+-    private fun kotlinCondition(node: PsiElement): PsiElement? = when (node) {
+-        is KtIfExpression -> node.condition
+-        is KtWhileExpressionBase -> node.condition
+-        is KtWhenCondition -> node
+-        else -> null
+-    }
+-
+-    private fun interestingKotlinNode(node: PsiElement): Boolean = node is KtNamedDeclaration || node is KtCallExpression ||
+-        node is KtIfExpression || node is KtWhileExpressionBase || node is KtAnonymousInitializer || node is KtWhenCondition
+-
+-    private fun kotlinTerms(condition: PsiElement): Int =
+-        1 + PsiTreeUtil.collectElementsOfType(condition, KtBinaryExpression::class.java).count {
+-            it.operationToken == KtTokens.ANDAND || it.operationToken == KtTokens.OROR
+-        }
+-
+-    private fun isKotlinStatic(node: PsiElement): Boolean = node.parent is KtFile ||
+-        PsiTreeUtil.getParentOfType(node, KtClassOrObject::class.java) is KtObjectDeclaration
+-
+-    private fun kotlinShape(node: KtNamedDeclaration): String = kotlinTokenText(node, node.nameIdentifier)
+-
+-    private fun kotlinText(element: PsiElement): String = kotlinTokenText(element, null)
+-
+-    fun canonical(source: IndexedSource): String? = if (source.path.endsWith(".kt")) withKotlin(source.text) { root ->
+-        if (PsiTreeUtil.findChildOfType(root, PsiErrorElement::class.java) == null) kotlinText(root) else null
+-    } else javaParser.parse(source.text).takeIf { it.isSuccessful }?.result?.orElse(null)?.let(::javaText)
+-
+-    private fun <T> withKotlin(text: String, block: (PsiElement) -> T): T {
+-        val disposable = Disposer.newDisposable("graphfold-change-classifier")
+-        return try {
+-            val environment = KotlinCoreEnvironment.createForProduction(
+-                disposable, CompilerConfiguration(), EnvironmentConfigFiles.JVM_CONFIG_FILES,
+-            )
+-            block(KtPsiFactory(environment.project, false).createFile(text))
+-        } finally {
+-            Disposer.dispose(disposable)
+-        }
+-    }
+-
+-}
+-
+-/** Read PSI tokens without copy/replace operations that require unavailable IDE extension points. */
+-private fun kotlinTokenText(element: PsiElement, renamed: PsiElement?): String = when {
+-    element is PsiComment || element is PsiWhiteSpace -> ""
+-    element === renamed -> "__name"
+-    element.firstChild == null -> element.text
+-    else -> generateSequence(element.firstChild) { it.nextSibling }.map { kotlinTokenText(it, renamed) }
+-        .filter { it.isNotEmpty() }.joinToString(" ")
+-}
+-
+ private fun offset(text: String, line: Int, column: Int): Int {
+     var cursor = 0
+     repeat(line - 1) { cursor = text.indexOf('\n', cursor).let { if (it < 0) text.length else it + 1 } }
+     return (cursor + column - 1).coerceAtMost(text.length)
+ }
+ 
+-private enum class Kind { FIELD, METHOD, TYPE, CONDITION, CALL, INITIALIZER }
+-private data class Fact(
++internal enum class Kind { FIELD, METHOD, TYPE, CONDITION, CALL, INITIALIZER }
++internal data class Fact(
+     val kind: Kind, val key: String, val content: String, val shape: String, val initializer: String?,
+     val terms: Int, val start: Int, val end: Int,
+ )
+diff --git a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndex.kt b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndex.kt
+--- a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndex.kt
++++ b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndex.kt
+@@ -1,146 +1,131 @@
+ package io.johnsonlee.graphfold.engine.source
+ 
+-import com.github.javaparser.JavaParser
+-import com.github.javaparser.ParserConfiguration
+-import com.github.javaparser.ast.Node
+-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
+-import com.github.javaparser.ast.body.EnumDeclaration
+-import com.github.javaparser.ast.body.RecordDeclaration
+-import com.github.javaparser.ast.body.ConstructorDeclaration
+-import com.github.javaparser.ast.body.BodyDeclaration
+-import com.github.javaparser.ast.body.FieldDeclaration
+-import com.github.javaparser.ast.body.MethodDeclaration
+-import com.github.javaparser.ast.body.TypeDeclaration
+-import com.github.javaparser.symbolsolver.JavaSymbolSolver
+-import com.github.javaparser.symbolsolver.resolution.typesolvers.ClassLoaderTypeSolver
+-import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver
+-import com.github.javaparser.symbolsolver.resolution.typesolvers.JarTypeSolver
+-import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver
+-import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
+-import com.github.javaparser.resolution.UnsolvedSymbolException
++import com.intellij.psi.PsiAnonymousClass
++import com.intellij.psi.PsiArrayType
++import com.intellij.psi.PsiClass
++import com.intellij.psi.PsiClassType
++import com.intellij.psi.PsiElement
++import com.intellij.psi.PsiField
++import com.intellij.psi.PsiErrorElement
++import com.intellij.psi.PsiModifier
++import com.intellij.psi.PsiPrimitiveType
++import com.intellij.psi.PsiType
++import com.intellij.psi.util.PsiTreeUtil
++import com.intellij.psi.util.TypeConversionUtil
+ import io.johnsonlee.graphfold.engine.Revision
+ import io.johnsonlee.graphfold.engine.SourceLocation
+ import io.johnsonlee.graphfold.engine.SourceRange
++import org.jetbrains.uast.UClass
++import org.jetbrains.uast.UField
++import org.jetbrains.uast.UMethod
++import org.jetbrains.uast.visitor.AbstractUastVisitor
+ import java.nio.file.Path
+ import java.nio.file.Files
+-import java.net.URLClassLoader
+ 
+ enum class SymbolKind { CLASS, FIELD, METHOD }
+-
+ data class SourceSymbol(val identity: String, val owner: String, val kind: SymbolKind, val location: SourceLocation)
+-
+ data class IndexedSource(val path: String, val text: String, val symbols: List<SourceSymbol>, val diagnostics: List<String>)
+ 
+-/** Java-only source adapter. Unsupported languages remain unresolved obligations in the engine. */
+-class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoCloseable {
+-    private val dependencyLoader = URLClassLoader(
+-        dependencies.filter(Files::isDirectory).map { it.toUri().toURL() }.toTypedArray(), ClassLoader.getPlatformClassLoader(),
+-    )
+-    private val parser: JavaParser
+-
+-    init {
+-        val solver = CombinedTypeSolver()
+-        solver.add(ReflectionTypeSolver())
+-        sourceRoots.forEach { solver.add(JavaParserTypeSolver(it)) }
+-        dependencies.filterNot(Files::isDirectory).forEach { solver.add(JarTypeSolver(it)) }
+-        solver.add(ClassLoaderTypeSolver(dependencyLoader))
+-        parser = JavaParser(
+-            ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17)
+-                .setSymbolResolver(JavaSymbolSolver(solver)),
+-        )
+-    }
+-
+-    override fun close() {
+-        dependencyLoader.close()
+-    }
++/** UAST declarations provide physical anchors; resolved Java PSI supplies erased JVM signatures. */
++class JavaSourceIndex(private val sourceRoots: List<Path>, private val dependencies: List<Path>) : AutoCloseable {
++    override fun close() = Unit
+ 
+     fun index(root: Path, relativePath: String, revision: Revision): IndexedSource {
+         val file = root.resolve(relativePath)
+-        val text = java.nio.file.Files.readString(file)
+-        val result = parser.parse(file)
+-        if (!result.isSuccessful) {
+-            return IndexedSource(relativePath, text, emptyList(), result.problems.map { it.message })
+-        }
+-        val unit = result.result.orElseThrow()
+-        val symbols = mutableListOf<SourceSymbol>()
+-        val diagnostics = mutableListOf<String>()
+-        val packageName = unit.packageDeclaration.map { it.nameAsString }.orElse("")
+-        unit.findAll(TypeDeclaration::class.java).forEach { declaration ->
+-            symbols += resolveType(declaration, packageName, relativePath, revision, diagnostics)
+-        }
+-        return IndexedSource(relativePath, text, symbols, diagnostics)
+-    }
++        val text = Files.readString(file)
++        return UastSession(sourceRoots.ifEmpty { listOf(file.parent) }, dependencies).use { session ->
++            val unit = session.file(file)
++            val psi = requireNotNull(unit.sourcePsi)
++            val errors = PsiTreeUtil.collectElementsOfType(psi, PsiErrorElement::class.java)
++            if (errors.isNotEmpty()) {
++                return@use IndexedSource(relativePath, text, emptyList(), errors.map { it.errorDescription })
++            }
++            val symbols = mutableListOf<SourceSymbol>()
++            val diagnostics = mutableListOf<String>()
++            fun symbol(identity: String, owner: String, kind: SymbolKind, source: PsiElement) {
++                symbols += SourceSymbol(identity, owner, kind, sourceLocation(text, source, relativePath, revision))
++            }
++            unit.accept(object : AbstractUastVisitor() {
++                override fun visitClass(node: UClass): Boolean {
++                    val declaration = node.javaPsi
++                    val owner = binaryName(declaration)
++                    val anchored = generateSequence(declaration.parent) { it.parent }.filterIsInstance<PsiClass>()
++                        .mapNotNull(::binaryName).any { enclosing -> symbols.any { it.identity == enclosing } }
++                    if (owner != null) {
++                        node.sourcePsi?.let { symbol(owner, owner, SymbolKind.CLASS, it) }
++                    } else if (declaration !is PsiAnonymousClass || !anchored) {
++                        diagnostics += "Local type requires compiler-generated binary identity in $relativePath: ${node.name}"
++                        return true
++                    }
++                    // Anonymous bodies stay inside the enclosing source obligation. Compiled nested
++                    // dependencies prove their behavior; do not invent a binary name for this UAST view.
++                    return false
++                }
+ 
+-    private fun resolveType(
+-        declaration: TypeDeclaration<*>, packageName: String, path: String,
+-        revision: Revision, diagnostics: MutableList<String>,
+-    ): List<SourceSymbol> {
+-        if (!declaration.isTopLevelType && declaration.parentNode.orElse(null) !is TypeDeclaration<*>) {
+-            diagnostics += "Local type requires compiler-generated binary identity in $path: ${declaration.nameAsString}"
+-            return emptyList()
+-        }
+-        val owner = binaryName(declaration, packageName)
+-        val declarationSymbol = SourceSymbol(owner, owner, SymbolKind.CLASS, location(declaration, path, revision))
+-        return listOf(declarationSymbol) + declaration.members.flatMap { member ->
+-            resolveMember(member, owner, path, revision, diagnostics)
++                override fun visitMethod(node: UMethod): Boolean {
++                    val source = node.sourcePsi
++                    val method = node.javaPsi
++                    val owner = method.containingClass?.let(::binaryName)
++                    if (source == null || owner == null) return false
++                    try {
++                        val arguments = method.parameterList.parameters.joinToString("") { descriptor(it.type) }
++                        val result = if (method.isConstructor) "V" else descriptor(requireNotNull(method.returnType))
++                        val prefix = if (method.isConstructor) constructorPrefix(requireNotNull(method.containingClass)) else ""
++                        val name = if (method.isConstructor) "<init>" else method.name
++                        symbol("$owner.$name($prefix$arguments)$result", owner, SymbolKind.METHOD, source)
++                    } catch (failure: IllegalArgumentException) {
++                        diagnostics += "Cannot resolve declaration in $relativePath: ${failure.message}"
++                    }
++                    return false
++                }
++
++                override fun visitField(node: UField): Boolean {
++                    val field = node.javaPsi as? PsiField
++                    val owner = field?.containingClass?.let(::binaryName) ?: return false
++                    node.sourcePsi?.let { symbol("$owner.${node.name}", owner, SymbolKind.FIELD, it) }
++                    return false
++                }
++            })
++            IndexedSource(relativePath, text, symbols.distinct(), diagnostics)
+         }
+     }
+ 
+-    private fun resolveMember(
+-        member: BodyDeclaration<*>, owner: String, path: String, revision: Revision, diagnostics: MutableList<String>,
+-    ): List<SourceSymbol> = try {
+-        memberSymbols(member, owner, path, revision)
+-    } catch (failure: UnsolvedSymbolException) {
+-        diagnostics += "Cannot resolve declaration in $path: ${failure.message}"
+-        emptyList()
+-    } catch (failure: UnsupportedOperationException) {
+-        diagnostics += "Unsupported declaration in $path: ${failure.message}"
+-        emptyList()
++    private fun descriptor(type: PsiType): String = when (val erased = TypeConversionUtil.erasure(type)) {
++        is PsiArrayType -> "[" + descriptor(erased.componentType)
++        is PsiPrimitiveType -> requireNotNull(PRIMITIVES[erased.canonicalText]) { "Unknown primitive: $erased" }
++        is PsiClassType -> {
++            val resolved = requireNotNull(erased.resolve()) { "Unresolved type: ${erased.canonicalText}" }
++            "L" + requireNotNull(binaryName(resolved)) { "Local type: ${erased.canonicalText}" }.replace('.', '/') + ";"
++        }
++        else -> throw IllegalArgumentException("Unsupported type: ${erased.canonicalText}")
+     }
+ 
+-    private fun memberSymbols(member: BodyDeclaration<*>, owner: String, path: String, revision: Revision): List<SourceSymbol> {
+-        val position = location(member, path, revision)
+-        return when (member) {
+-            is MethodDeclaration -> listOf(SourceSymbol(
+-                "$owner.${member.nameAsString}${member.resolve().toDescriptor()}", owner, SymbolKind.METHOD, position,
+-            ))
+-            is ConstructorDeclaration -> {
+-                val resolved = member.resolve()
+-                val descriptor = (0 until resolved.numberOfParams).joinToString("", "(" + constructorPrefix(member), ")V") {
+-                    resolved.getParam(it).type.erasure().toDescriptor()
+-                }
+-                listOf(SourceSymbol("$owner.<init>$descriptor", owner, SymbolKind.METHOD, position))
+-            }
+-            is FieldDeclaration -> member.variables.map { variable ->
+-                SourceSymbol("$owner.${variable.nameAsString}", owner, SymbolKind.FIELD, position)
+-            }
+-            else -> emptyList()
++    private fun constructorPrefix(type: PsiClass): String {
++        val enclosing = type.containingClass
++        return when {
++            type.isEnum -> "Ljava/lang/String;I"
++            enclosing != null && !type.hasModifierProperty(PsiModifier.STATIC) && !type.isRecord && !enclosing.isInterface ->
++                "L" + requireNotNull(binaryName(enclosing)).replace('.', '/') + ";"
++            else -> ""
+         }
+     }
+ 
+-    private fun constructorPrefix(constructor: ConstructorDeclaration): String {
+-        val type = constructor.findAncestor(TypeDeclaration::class.java).orElseThrow()
+-        if (type is EnumDeclaration) return "Ljava/lang/String;I"
+-        val enclosing = type.findAncestor(TypeDeclaration::class.java).orElse(null)
+-        val implicitlyStatic = type is RecordDeclaration ||
+-            (enclosing is ClassOrInterfaceDeclaration && enclosing.isInterface)
+-        return if (enclosing != null && !type.isStatic && !implicitlyStatic) {
+-            val packageName = type.findCompilationUnit().orElseThrow().packageDeclaration.map { it.nameAsString }.orElse("")
+-            "L" + binaryName(enclosing, packageName).replace('.', '/') + ";"
+-        } else ""
++    private fun binaryName(type: PsiClass): String? {
++        if (type.qualifiedName == null) return null
++        val parent = type.containingClass
++        return if (parent == null) type.qualifiedName else binaryName(parent)?.let { "$it$${type.name}" }
+     }
+ 
+-    private fun binaryName(type: TypeDeclaration<*>, packageName: String): String {
+-        val parent = type.findAncestor(TypeDeclaration::class.java)
+-        return if (parent.isPresent) binaryName(parent.get(), packageName) + "$" + type.nameAsString
+-        else listOf(packageName, type.nameAsString).filter { it.isNotEmpty() }.joinToString(".")
+-    }
+-
+-    private fun location(node: Node, path: String, revision: Revision): SourceLocation {
+-        val range = node.range.orElseThrow()
+-        return SourceLocation(
+-            revision, path, SourceRange(range.begin.line, range.end.line),
+-            SourceRange(range.begin.column, range.end.column + 1),
+-        )
++    private companion object {
++        val PRIMITIVES = mapOf("void" to "V", "boolean" to "Z", "byte" to "B", "char" to "C", "short" to "S",
++            "int" to "I", "long" to "J", "float" to "F", "double" to "D")
+     }
+ }
++
++internal fun sourceLocation(text: String, element: PsiElement, path: String, revision: Revision): SourceLocation {
++    val start = element.textRange.startOffset
++    val end = element.textRange.endOffset
++    return SourceLocation(revision, path,
++        SourceRange(text.take(start).count { it == '\n' } + 1, text.take(end).count { it == '\n' } + 1),
++        SourceRange(start - text.lastIndexOf('\n', start - 1), end - text.lastIndexOf('\n', end - 1)))
++}
+diff --git a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndex.kt b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndex.kt
+--- a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndex.kt
++++ b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndex.kt
+@@ -2,27 +2,24 @@
+ 
+ import io.johnsonlee.graphfold.engine.Revision
+ import io.johnsonlee.graphfold.engine.SourceLocation
+-import io.johnsonlee.graphfold.engine.SourceRange
+ import java.nio.file.Files
+ import java.nio.file.Path
+-import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
+-import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
+-import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
+-import org.jetbrains.kotlin.com.intellij.psi.PsiErrorElement
+-import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
+-import org.jetbrains.kotlin.config.CompilerConfiguration
+-import org.jetbrains.kotlin.psi.KtPsiFactory
+-import org.jetbrains.kotlin.psi.KtFile
++import com.intellij.psi.PsiErrorElement
++import com.intellij.psi.util.PsiTreeUtil
++import com.intellij.psi.PsiElement
+ import org.jetbrains.kotlin.psi.KtNamedFunction
+ import org.jetbrains.kotlin.psi.KtProperty
+ import org.jetbrains.kotlin.psi.KtClassOrObject
+-import org.jetbrains.kotlin.com.intellij.psi.PsiElement
++import org.jetbrains.uast.UFile
++import org.jetbrains.uast.UField
++import org.jetbrains.uast.UMethod
++import org.jetbrains.uast.visitor.AbstractUastVisitor
+ import org.objectweb.asm.tree.LineNumberNode
+ import org.objectweb.asm.ClassReader
+ import org.objectweb.asm.tree.ClassNode
+ 
+ /**
+- * PSI supplies source syntax and UTF16 ranges; emitted class files supply actual JVM ownership.
++ * UAST declarations supply physical source anchors; emitted class files supply actual JVM ownership.
+  *
+  * Callable declarations resolve against emitted method names and line tables, never guessed descriptors.
+  * Properties map to emitted fields. Generated or ambiguous declarations retain CLASS obligations.
+@@ -30,66 +27,73 @@
+  * Exact diff fragments, rather than these enclosing ranges, remain the reported finding locations.
+  */
+ class KotlinSourceIndex(classes: Path) : AutoCloseable {
+-    private val disposable = Disposer.newDisposable("graphfold-kotlin-source")
+-    private val environment = KotlinCoreEnvironment.createForProduction(
+-        disposable, CompilerConfiguration(), EnvironmentConfigFiles.JVM_CONFIG_FILES,
+-    )
+-    private val factory = KtPsiFactory(environment.project, false)
++    private val classpath = classes
+     private val inventory: List<Owner> = readOwners(classes)
+ 
+-    override fun close() {
+-        Disposer.dispose(disposable)
+-    }
++    override fun close() = Unit
+ 
+     fun index(root: Path, relativePath: String, revision: Revision): IndexedSource {
+         val source = root.resolve(relativePath)
+         val text = Files.readString(source)
+-        val file = factory.createFile(source.fileName.toString(), text)
+-        val errors = PsiTreeUtil.collectElementsOfType(file, PsiErrorElement::class.java)
+-        if (errors.isNotEmpty()) {
+-            return IndexedSource(relativePath, text, emptyList(), errors.map { it.errorDescription })
++        return UastSession(listOf(source.parent), listOf(classpath)).use { session ->
++            val file = session.file(source)
++            val physical = requireNotNull(file.sourcePsi)
++            val errors = PsiTreeUtil.collectElementsOfType(physical, PsiErrorElement::class.java)
++            if (errors.isNotEmpty()) {
++                return@use IndexedSource(relativePath, text, emptyList(), errors.map { it.errorDescription })
++            }
++            val packageName = file.packageName
++            val owners = inventory.filter { it.source == source.fileName.toString() && it.packageName == packageName }
++            val diagnostics = mutableListOf<String>().apply {
++                if (owners.isEmpty()) add("No emitted JVM owner for Kotlin source $relativePath")
++                if (inventory.any { it.kotlin && it.source == null }) {
++                    add("Kotlin bytecode without SourceFile prevents complete source ownership for $relativePath")
++                }
++            }
++            fun location(element: PsiElement): SourceLocation = sourceLocation(text, element, relativePath, revision)
++            val symbols = owners.map { SourceSymbol(it.name, it.name, SymbolKind.CLASS, location(physical)) }.toMutableList()
++            symbols += memberSymbols(file, owners, ::location)
++            IndexedSource(relativePath, text, symbols, diagnostics)
+         }
+-        val packageName = file.packageFqName.asString()
+-        val owners = inventory.filter { it.source == source.fileName.toString() && it.packageName == packageName }
+-        val diagnostics = mutableListOf<String>().apply {
+-            if (owners.isEmpty()) add("No emitted JVM owner for Kotlin source $relativePath")
+-            if (inventory.any { it.kotlin && it.source == null }) {
+-                add("Kotlin bytecode without SourceFile prevents complete source ownership for $relativePath")
+-            }
+-        }
+-        fun location(element: PsiElement): SourceLocation = location(text, element, relativePath, revision)
+-        val symbols = owners.map { SourceSymbol(it.name, it.name, SymbolKind.CLASS, location(file)) }.toMutableList()
+-        symbols += memberSymbols(file, owners, ::location)
+-        return IndexedSource(relativePath, text, symbols, diagnostics)
+     }
+ 
+-    private fun memberSymbols(file: KtFile, owners: List<Owner>, location: (PsiElement) -> SourceLocation): List<SourceSymbol> {
++    private fun memberSymbols(file: UFile, owners: List<Owner>, location: (PsiElement) -> SourceLocation): List<SourceSymbol> {
+         val result = mutableListOf<SourceSymbol>()
+-        PsiTreeUtil.collectElementsOfType(file, KtNamedFunction::class.java).filterNot(::isLocal).forEach { function ->
+-            val position = location(function)
+-            val matches = owners.flatMap { owner ->
+-                owner.methods.filter { method ->
+-                    method.name.substringBefore('-') == function.name &&
+-                        method.lines.any { it in position.line.start..position.line.end }
+-                }.map { owner to it }
++        file.accept(object : AbstractUastVisitor() {
++            override fun visitMethod(node: UMethod): Boolean {
++                val function = node.sourcePsi as? KtNamedFunction
++                if (function == null || isLocal(function)) return false
++                val position = location(function)
++                val matches = owners.flatMap { owner ->
++                    owner.methods.filter { method ->
++                        method.name.substringBefore('-') == function.name &&
++                            method.lines.any { it in position.line.start..position.line.end }
++                    }.map { owner to it }
++                }
++                if (matches.size == 1) {
++                    val (owner, method) = matches.single()
++                    result += SourceSymbol("${owner.name}.${method.name}${method.descriptor}",
++                        owner.name, SymbolKind.METHOD, position)
++                }
++                return false
+             }
+-            if (matches.size == 1) {
+-                val (owner, method) = matches.single()
+-                result += SourceSymbol("${owner.name}.${method.name}${method.descriptor}", owner.name, SymbolKind.METHOD, position)
++
++            override fun visitField(node: UField): Boolean {
++                val property = node.sourcePsi as? KtProperty
++                if (property == null || isLocal(property)) return false
++                val declaringClass = PsiTreeUtil.getParentOfType(property, KtClassOrObject::class.java)
++                val matches = owners.filter { owner ->
++                    property.name in owner.fields && (declaringClass == null || owner.name.substringAfterLast('$')
++                        .substringAfterLast('.') == declaringClass.name)
++                }
++                if (matches.size == 1) {
++                    val owner = matches.single().name
++                    result += SourceSymbol("$owner.${property.name}", owner, SymbolKind.FIELD, location(property))
++                }
++                return false
+             }
+-        }
+-        PsiTreeUtil.collectElementsOfType(file, KtProperty::class.java).filterNot(::isLocal).forEach { property ->
+-            val declaringClass = PsiTreeUtil.getParentOfType(property, KtClassOrObject::class.java)
+-            val matches = owners.filter { owner ->
+-                property.name in owner.fields && (declaringClass == null || owner.name.substringAfterLast('$')
+-                    .substringAfterLast('.') == declaringClass.name)
+-            }
+-            if (matches.size == 1) {
+-                val owner = matches.single().name
+-                result += SourceSymbol("$owner.${property.name}", owner, SymbolKind.FIELD, location(property))
+-            }
+-        }
+-        return result
++        })
++        return result.distinct()
+     }
+ 
+     private fun readOwners(classes: Path): List<Owner> = Files.walk(classes).use { files ->
+@@ -108,14 +112,6 @@
+     private fun isLocal(element: PsiElement): Boolean =
+         PsiTreeUtil.getParentOfType(element, KtNamedFunction::class.java) != null
+ 
+-    private fun location(text: String, element: PsiElement, path: String, revision: Revision): SourceLocation {
+-        val start = element.textRange.startOffset
+-        val end = element.textRange.endOffset
+-        return SourceLocation(revision, path,
+-            SourceRange(text.take(start).count { it == '\n' } + 1, text.take(end).count { it == '\n' } + 1),
+-            SourceRange(start - text.lastIndexOf('\n', start - 1), end - text.lastIndexOf('\n', end - 1)))
+-    }
+-
+     private data class Method(val name: String, val descriptor: String, val lines: Set<Int>)
+     private data class Owner(
+         val name: String, val packageName: String, val source: String?, val kotlin: Boolean,
+diff --git a/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/UastSession.kt b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/UastSession.kt
+new file mode 100644
+--- /dev/null
++++ b/engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/UastSession.kt
+@@ -0,0 +1,118 @@
++package io.johnsonlee.graphfold.engine.source
++
++import com.android.tools.lint.LintCliClient
++import com.android.tools.lint.UastEnvironment
++import com.android.tools.lint.detector.api.Project
++import com.intellij.pom.java.LanguageLevel
++import com.intellij.psi.PsiManager
++import org.jetbrains.kotlin.config.ApiVersion
++import org.jetbrains.kotlin.config.JVMConfigurationKeys
++import org.jetbrains.kotlin.config.LanguageVersion
++import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl
++import org.jetbrains.uast.UFile
++import org.jetbrains.uast.UastFacade
++import java.io.File
++import java.nio.file.Files
++import java.nio.file.Path
++import java.util.concurrent.locks.ReentrantLock
++
++/** Owns a headless module and its physical PSI for the duration of a source analysis. */
++internal class UastSession(sourceRoots: List<Path>, dependencies: List<Path> = emptyList()) : AutoCloseable {
++    private val environment: UastEnvironment
++    private var closed = false
++
++    init {
++        // Lint owns a process-wide IntelliJ application. Serialize access and dispose only our project;
++        // disposing the application here would invalidate other users of Lint in a Gradle daemon.
++        lock.lockInterruptibly()
++        var ready = false
++        var created: UastEnvironment? = null
++        try {
++            val roots = sourceRoots.map { it.toAbsolutePath().normalize().toFile() }.distinct()
++            val stdlib = Path.of(kotlin.Unit::class.java.protectionDomain.codeSource.location.toURI())
++            val classpath = (dependencies + stdlib).map { it.toAbsolutePath().normalize().toFile() }.distinct()
++            val jdk = File(System.getProperty("java.home"))
++            val configuration = UastEnvironment.Configuration.create(false)
++            configuration.javaLanguageLevel = LanguageLevel.JDK_17
++            configuration.kotlinLanguageLevel = language
++            configuration.kotlinCompilerConfig.put(JVMConfigurationKeys.JDK_HOME, jdk)
++            val project = SourceProject(roots, classpath)
++            configuration.addModules(listOf(UastEnvironment.Module(project, jdk, false, false, false)), emptyList())
++            environment = UastEnvironment.create(configuration)
++            created = environment
++            val kotlinFiles = roots.flatMap { root ->
++                if (root.isFile) listOf(root) else root.walkTopDown().filter { it.isFile }.toList()
++            }.filter { it.extension == "kt" }.distinct()
++            environment.analyzeFiles(kotlinFiles)
++            ready = true
++        } finally {
++            if (!ready) {
++                try {
++                    created?.dispose()
++                } finally {
++                    lock.unlock()
++                }
++            }
++        }
++    }
++
++    fun file(path: Path): UFile {
++        check(!closed) { "UAST session is closed" }
++        val virtual = requireNotNull(environment.coreAppEnv.localFileSystem.findFileByPath(
++            path.toAbsolutePath().normalize().toString(),
++        )) { "Source file does not exist: $path" }
++        val psi = requireNotNull(PsiManager.getInstance(environment.ideaProject).findFile(virtual)) {
++            "No PSI for source file: $path"
++        }
++        return requireNotNull(UastFacade.convertElementWithParent(psi, UFile::class.java) as? UFile) {
++            "No UAST for source file: $path"
++        }
++    }
++
++    override fun close() {
++        if (closed) return
++        closed = true
++        try {
++            environment.dispose()
++        } finally {
++            lock.unlock()
++        }
++    }
++
++    private class SourceProject(roots: List<File>, classpath: List<File>) : Project(
++        LintCliClient("graphfold"), roots.first(), roots.first(),
++    ) {
++        init {
++            javaSourceFolders = roots
++            javaLibraries = classpath
++            nonProvidedJavaLibraries = classpath
++            javaClassFolders = emptyList()
++            testSourceFolders = emptyList()
++            testLibraries = emptyList()
++            directLibraries = emptyList()
++            allLibraries = emptyList()
++            name = "graphfold-source"
++            javaLanguageLevel = LanguageLevel.JDK_17
++            kotlinLanguageLevel = language
++        }
++        override fun isAndroidProject(): Boolean = false
++        override fun isGradleProject(): Boolean = false
++    }
++
++    private companion object {
++        val lock = ReentrantLock()
++        val language = LanguageVersionSettingsImpl(LanguageVersion.KOTLIN_2_1, ApiVersion.KOTLIN_2_1)
++    }
++}
++
++/** The callback must consume UAST before returning; no PSI object may outlive its session. */
++internal fun <T> withParsedSource(text: String, name: String, action: (UFile) -> T): T {
++    val directory = Files.createTempDirectory("graphfold-uast-")
++    try {
++        val source = directory.resolve(Path.of(name).fileName)
++        Files.writeString(source, text)
++        return UastSession(listOf(directory)).use { action(it.file(source)) }
++    } finally {
++        directory.toFile().deleteRecursively()
++    }
++}
+diff --git a/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/graphite/KotlinMetadataShapeTest.kt b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/graphite/KotlinMetadataShapeTest.kt
+--- a/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/graphite/KotlinMetadataShapeTest.kt
++++ b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/graphite/KotlinMetadataShapeTest.kt
+@@ -1,11 +1,8 @@
+ package io.johnsonlee.graphfold.engine.graphite
+ 
+-import java.io.ByteArrayOutputStream
+-import java.io.PrintStream
++import io.johnsonlee.graphfold.engine.source.compileKotlinFixture
+ import java.nio.file.Files
+ import java.nio.file.Path
+-import org.jetbrains.kotlin.cli.common.ExitCode
+-import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
+ import org.junit.jupiter.api.Test
+ import org.junit.jupiter.api.io.TempDir
+ import org.objectweb.asm.ClassReader
+@@ -158,13 +155,7 @@
+         val file = directory.resolve("Example.kt")
+         Files.writeString(file, source)
+         val classes = Files.createDirectory(directory.resolve("classes"))
+-        val library = Path.of(Unit::class.java.protectionDomain.codeSource.location.toURI()).toString()
+-        val output = ByteArrayOutputStream()
+-        val result = PrintStream(output).use { stream ->
+-            K2JVMCompiler().exec(stream, "-no-stdlib", "-no-reflect", "-classpath", library,
+-                "-jvm-target", "17", "-d", classes.toString(), file.toString())
+-        }
+-        assertEquals(ExitCode.OK, result, output.toString())
++        compileKotlinFixture(file, classes)
+         val node = ClassNode()
+         ClassReader(Files.readAllBytes(classes.resolve("$owner.class"))).accept(node, ClassReader.SKIP_CODE)
+         return node.visibleAnnotations.single { it.desc == "Lkotlin/Metadata;" }
+diff --git a/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndexTest.kt b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndexTest.kt
+--- a/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndexTest.kt
++++ b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndexTest.kt
+@@ -12,6 +12,20 @@
+ class JavaSourceIndexTest {
+     @TempDir
+     lateinit var temporary: Path
++
++    @Test
++    fun `anonymous callback remains covered by containing method without invented binary identity`() {
++        val indexed = index("class Example { void entry() { new Runnable() { public void run() {} }.run(); } }")
++        assertTrue(indexed.diagnostics.isEmpty(), indexed.diagnostics.toString())
++        assertTrue(indexed.symbols.any { it.identity == "Example.entry()V" })
++        assertTrue(indexed.symbols.none { it.identity.contains("null") })
++    }
++
++    @Test
++    fun `named local inside anonymous callback still requires an explicit binary identity`() {
++        val indexed = index("class Example { void entry() { new Runnable() { public void run() { class Local {} } }.run(); } }")
++        assertTrue(indexed.diagnostics.any { it.contains("Local type") }, indexed.toString())
++    }
+ 
+     @Test
+     fun `nested types constructors arrays overloads and fields use JVM identities`() {
+diff --git a/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndexTest.kt b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndexTest.kt
+--- a/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndexTest.kt
++++ b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndexTest.kt
+@@ -2,12 +2,8 @@
+ 
+ import io.johnsonlee.graphfold.engine.Revision
+ import io.johnsonlee.graphfold.engine.SourceRange
+-import java.io.ByteArrayOutputStream
+-import java.io.PrintStream
+ import java.nio.file.Files
+ import java.nio.file.Path
+-import org.jetbrains.kotlin.cli.common.ExitCode
+-import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
+ import org.junit.jupiter.api.Test
+ import org.junit.jupiter.api.io.TempDir
+ import org.objectweb.asm.ClassWriter
+@@ -165,13 +161,36 @@
+         val sourceFile = temporary.resolve("Example.kt")
+         Files.writeString(sourceFile, source)
+         val classes = Files.createDirectories(temporary.resolve("classes"))
+-        val library = Path.of(Unit::class.java.protectionDomain.codeSource.location.toURI()).toString()
+-        val output = ByteArrayOutputStream()
+-        val result = PrintStream(output).use { stream ->
+-            K2JVMCompiler().exec(stream, "-no-stdlib", "-no-reflect", "-classpath", library,
+-                "-jvm-target", "17", "-Xlambdas=class", "-d", classes.toString(), sourceFile.toString())
+-        }
+-        assertEquals(ExitCode.OK, result, output.toString())
++        compileKotlinFixture(sourceFile, classes, listOf("-Xlambdas=class"))
+         return classes
+     }
+ }
++
++/** Test compilation uses the same pinned, isolated backend as the engine, never Lint's analysis-only compiler. */
++internal fun compileKotlinFixture(source: Path, classes: Path, extraArguments: List<String> = emptyList()) {
++    val compilerDirectory = Files.createDirectories(classes.parent.resolve("fixture-compiler"))
++    val resourceRoot = "/io/johnsonlee/graphfold/engine/compiler/"
++    fun resource(name: String) = requireNotNull(KotlinSourceIndexTest::class.java.getResourceAsStream(resourceRoot + name))
++    val names = resource("classpath.txt").bufferedReader().use { it.readLines() }
++    val classpath = names.map { name ->
++        compilerDirectory.resolve(name).also { destination ->
++            resource(name).use { Files.copy(it, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
++        }
++    }
++    val dependencies = classpath.filter {
++        it.fileName.toString().startsWith("kotlin-stdlib-") || it.fileName.toString().startsWith("annotations-")
++    }
++    val command = listOf(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
++        "-cp", classpath.joinToString(java.io.File.pathSeparator), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
++        "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-language-version", "2.1", "-api-version", "2.1",
++        "-classpath", dependencies.joinToString(java.io.File.pathSeparator), "-d", classes.toString()) +
++        extraArguments + source.toString()
++    val log = compilerDirectory.resolve("compile.log")
++    val process = ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start()
++    try {
++        assertTrue(process.waitFor(120, java.util.concurrent.TimeUnit.SECONDS), "Fixture compiler timed out")
++        assertEquals(0, process.exitValue(), Files.readString(log))
++    } finally {
++        if (process.isAlive) process.destroyForcibly()
++    }
++}
+diff --git a/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/UastSessionTest.kt b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/UastSessionTest.kt
+new file mode 100644
+--- /dev/null
++++ b/engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/UastSessionTest.kt
+@@ -0,0 +1,79 @@
++package io.johnsonlee.graphfold.engine.source
++
++import org.jetbrains.uast.UCallExpression
++import org.jetbrains.uast.visitor.AbstractUastVisitor
++import org.junit.jupiter.api.Test
++import org.junit.jupiter.api.io.TempDir
++import java.nio.file.Files
++import java.nio.file.Path
++import java.util.concurrent.Executors
++import java.util.concurrent.TimeUnit
++import kotlin.test.assertEquals
++import kotlin.test.assertFailsWith
++import kotlin.test.assertNotNull
++import kotlin.test.assertTrue
++
++class UastSessionTest {
++    @TempDir lateinit var root: Path
++
++    @Test fun `module resolves Kotlin calls into Java and retains physical source ranges`() {
++        Files.writeString(root.resolve("Helper.java"), "public class Helper { public static int twice(int x) { return x * 2; } }")
++        val text = "class Consumer { fun apply(x: Int): Int = Helper.twice(x) }"
++        val source = root.resolve("Consumer.kt")
++        Files.writeString(source, text)
++        UastSession(listOf(root)).use { session ->
++            var resolved = false
++            session.file(source).accept(object : AbstractUastVisitor() {
++                override fun visitCallExpression(node: UCallExpression): Boolean {
++                    if (node.methodName == "twice") {
++                        val method = assertNotNull(node.resolve())
++                        assertEquals("Helper", method.containingClass?.qualifiedName)
++                        val psi = assertNotNull(node.sourcePsi)
++                        assertEquals(psi.text, text.substring(psi.textRange.startOffset, psi.textRange.endOffset))
++                        resolved = true
++                    }
++                    return false
++                }
++            })
++            assertTrue(resolved)
++            assertNotNull(session.file(root.resolve("Helper.java")))
++        }
++    }
++
++    @Test fun `closing one session preserves later sessions and prevents stale access`() {
++        val source = root.resolve("Sample.java")
++        Files.writeString(source, "class Sample {}")
++        val session = UastSession(listOf(root))
++        session.file(source)
++        session.close()
++        session.close()
++        assertFailsWith<IllegalStateException> { session.file(source) }
++        UastSession(listOf(root)).use { assertNotNull(it.file(source)) }
++    }
++
++    @Test fun `invalid module initialization releases ownership for a later valid module`() {
++        assertFailsWith<NoSuchElementException> { UastSession(emptyList()) }
++        withParsedSource("class Valid {}", "Valid.java") { assertEquals("Valid", it.classes.single().name) }
++    }
++
++    @Test fun `missing file does not prevent subsequent valid lookup`() {
++        val source = root.resolve("Valid.java")
++        Files.writeString(source, "class Valid {}")
++        UastSession(listOf(root)).use { session ->
++            assertFailsWith<IllegalArgumentException> { session.file(root.resolve("Missing.java")) }
++            assertNotNull(session.file(source))
++        }
++    }
++
++    @Test fun `parallel analyses serialize environment ownership without disposing shared application`() {
++        val executor = Executors.newFixedThreadPool(2)
++        try {
++            val jobs = (1..2).map { n -> executor.submit<String> {
++                withParsedSource("class Sample$n {}", "Sample$n.java") { it.classes.single().name.orEmpty() }
++            } }
++            assertEquals(listOf("Sample1", "Sample2"), jobs.map { it.get(30, TimeUnit.SECONDS) })
++        } finally {
++            executor.shutdownNow()
++        }
++    }
++}

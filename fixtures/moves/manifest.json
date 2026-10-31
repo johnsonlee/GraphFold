@@ -1,0 +1,50 @@
+[
+  {
+    "id": "java_directory_move",
+    "before": "src/main/java/sample/Example.java",
+    "after": "src/main/java/relocated/Example.java",
+    "verdict": "PASS",
+    "kind": "FILE_MOVED",
+    "diagnostic": null
+  },
+  {
+    "id": "kotlin_directory_move",
+    "before": "src/main/kotlin/sample/Example.kt",
+    "after": "src/main/kotlin/relocated/Example.kt",
+    "verdict": "PASS",
+    "kind": "FILE_MOVED",
+    "diagnostic": null
+  },
+  {
+    "id": "kotlin_facade_rename",
+    "before": "src/main/kotlin/sample/Example.kt",
+    "after": "src/main/kotlin/sample/Renamed.kt",
+    "verdict": "FAIL",
+    "kind": "FILE_RENAMED",
+    "diagnostic": "UNLOCATED_MOVE_DIFFERENCE"
+  },
+  {
+    "id": "kotlin_stable_facade_rename",
+    "before": "src/main/kotlin/sample/Example.kt",
+    "after": "src/main/kotlin/sample/Renamed.kt",
+    "verdict": "PASS",
+    "kind": "FILE_RENAMED",
+    "diagnostic": null
+  },
+  {
+    "id": "java_move_behavior_change",
+    "before": "src/main/java/sample/Example.java",
+    "after": "src/main/java/relocated/Example.java",
+    "verdict": "FAIL",
+    "kind": "FILE_MOVED",
+    "diagnostic": null
+  },
+  {
+    "id": "kotlin_move_behavior_change",
+    "before": "src/main/kotlin/sample/Example.kt",
+    "after": "src/main/kotlin/relocated/Example.kt",
+    "verdict": "FAIL",
+    "kind": "FILE_MOVED",
+    "diagnostic": null
+  }
+]

@@ -1,0 +1,522 @@
+[
+  {
+    "id": "gated_return",
+    "violation": false
+  },
+  {
+    "id": "gated_private_helper",
+    "violation": false
+  },
+  {
+    "id": "gated_throw",
+    "violation": false
+  },
+  {
+    "id": "gated_array",
+    "violation": false
+  },
+  {
+    "id": "early_return",
+    "violation": false
+  },
+  {
+    "id": "treatment_iteration",
+    "violation": false
+  },
+  {
+    "id": "gated_call",
+    "violation": false
+  },
+  {
+    "id": "comments",
+    "violation": false
+  },
+  {
+    "id": "local_rename",
+    "violation": false
+  },
+  {
+    "id": "gated_loop",
+    "violation": false
+  },
+  {
+    "id": "arithmetic",
+    "violation": true
+  },
+  {
+    "id": "inverted_gate",
+    "violation": true
+  },
+  {
+    "id": "widened_gate",
+    "violation": true
+  },
+  {
+    "id": "else_mutation",
+    "violation": true
+  },
+  {
+    "id": "shared_helper",
+    "violation": true
+  },
+  {
+    "id": "field_constant",
+    "violation": true
+  },
+  {
+    "id": "array_index",
+    "violation": true
+  },
+  {
+    "id": "new_precondition",
+    "violation": true
+  },
+  {
+    "id": "synchronized",
+    "violation": true
+  },
+  {
+    "id": "new_public_method",
+    "violation": false
+  },
+  {
+    "id": "anonymous_callback",
+    "violation": true
+  },
+  {
+    "id": "disjoint_class_headers",
+    "violation": true
+  },
+  {
+    "id": "stream_intermediate_call",
+    "violation": true
+  },
+  {
+    "id": "gated_stream_intermediate_call",
+    "violation": false
+  },
+  {
+    "id": "stream_add_filter",
+    "violation": true
+  },
+  {
+    "id": "gated_stream_add_filter",
+    "violation": false
+  },
+  {
+    "id": "stream_remove_filter",
+    "violation": true
+  },
+  {
+    "id": "gated_stream_remove_filter",
+    "violation": false
+  },
+  {
+    "id": "stream_lambda_body",
+    "violation": true
+  },
+  {
+    "id": "gated_stream_lambda_body",
+    "violation": false
+  },
+  {
+    "id": "stream_add_predicate",
+    "violation": true
+  },
+  {
+    "id": "gated_stream_add_predicate",
+    "violation": false
+  },
+  {
+    "id": "stream_remove_predicate",
+    "violation": true
+  },
+  {
+    "id": "gated_stream_remove_predicate",
+    "violation": false
+  },
+  {
+    "id": "condition_if_else",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_if_else",
+    "violation": false
+  },
+  {
+    "id": "condition_else_if",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_else_if",
+    "violation": false
+  },
+  {
+    "id": "condition_ternary",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_ternary",
+    "violation": false
+  },
+  {
+    "id": "condition_switch",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_switch",
+    "violation": false
+  },
+  {
+    "id": "condition_switch_expression",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_switch_expression",
+    "violation": false
+  },
+  {
+    "id": "condition_and_add",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_and_add",
+    "violation": false
+  },
+  {
+    "id": "condition_and_remove",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_and_remove",
+    "violation": false
+  },
+  {
+    "id": "condition_or_add",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_or_add",
+    "violation": false
+  },
+  {
+    "id": "condition_or_remove",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_or_remove",
+    "violation": false
+  },
+  {
+    "id": "condition_not",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_not",
+    "violation": false
+  },
+  {
+    "id": "condition_for",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_for",
+    "violation": false
+  },
+  {
+    "id": "condition_enhanced_for",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_enhanced_for",
+    "violation": false
+  },
+  {
+    "id": "condition_while",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_while",
+    "violation": false
+  },
+  {
+    "id": "condition_do_while",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_do_while",
+    "violation": false
+  },
+  {
+    "id": "condition_break",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_break",
+    "violation": false
+  },
+  {
+    "id": "condition_continue",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_continue",
+    "violation": false
+  },
+  {
+    "id": "condition_labeled_break",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_labeled_break",
+    "violation": false
+  },
+  {
+    "id": "condition_early_return",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_early_return",
+    "violation": false
+  },
+  {
+    "id": "condition_throw",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_throw",
+    "violation": false
+  },
+  {
+    "id": "condition_try_catch",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_try_catch",
+    "violation": false
+  },
+  {
+    "id": "condition_finally",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_finally",
+    "violation": false
+  },
+  {
+    "id": "callback_lambda",
+    "violation": true
+  },
+  {
+    "id": "gated_callback_lambda",
+    "violation": false
+  },
+  {
+    "id": "callback_captured_lambda",
+    "violation": true
+  },
+  {
+    "id": "gated_callback_captured_lambda",
+    "violation": false
+  },
+  {
+    "id": "callback_method_reference",
+    "violation": true
+  },
+  {
+    "id": "gated_callback_method_reference",
+    "violation": false
+  },
+  {
+    "id": "callback_anonymous",
+    "violation": true
+  },
+  {
+    "id": "gated_callback_anonymous",
+    "violation": false
+  },
+  {
+    "id": "callback_foreach",
+    "violation": true
+  },
+  {
+    "id": "gated_callback_foreach",
+    "violation": false
+  },
+  {
+    "id": "callback_future",
+    "violation": true
+  },
+  {
+    "id": "gated_callback_future",
+    "violation": false
+  },
+  {
+    "id": "callback_optional",
+    "violation": true
+  },
+  {
+    "id": "gated_callback_optional",
+    "violation": false
+  },
+  {
+    "id": "new_called_public_method",
+    "violation": true
+  },
+  {
+    "id": "new_unused_class",
+    "violation": false
+  },
+  {
+    "id": "new_referenced_class",
+    "violation": true
+  },
+  {
+    "id": "condition_labeled_continue",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_labeled_continue",
+    "violation": false
+  },
+  {
+    "id": "condition_synchronized",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_synchronized",
+    "violation": false
+  },
+  {
+    "id": "condition_resource_scope",
+    "violation": true
+  },
+  {
+    "id": "gated_condition_resource_scope",
+    "violation": false
+  },
+  {
+    "id": "unused_existing_field",
+    "violation": false
+  },
+  {
+    "id": "referenced_existing_field",
+    "violation": true
+  },
+  {
+    "id": "unused_new_field",
+    "violation": false
+  },
+  {
+    "id": "effectful_new_field",
+    "violation": true
+  },
+  {
+    "id": "private_field_rename",
+    "violation": false
+  },
+  {
+    "id": "private_field_rename_value_change",
+    "violation": true
+  },
+  {
+    "id": "private_method_rename",
+    "violation": false
+  },
+  {
+    "id": "private_method_rename_body_change",
+    "violation": true
+  },
+  {
+    "id": "public_method_rename",
+    "violation": true
+  },
+  {
+    "id": "static_block_effect",
+    "violation": true
+  },
+  {
+    "id": "gated_static_block_effect",
+    "violation": false
+  },
+  {
+    "id": "new_unreferenced_static_block",
+    "violation": false
+  },
+  {
+    "id": "new_referenced_static_block",
+    "violation": true
+  },
+  {
+    "id": "static_field_initializer_effect",
+    "violation": true
+  },
+  {
+    "id": "gated_static_field_initializer_effect",
+    "violation": false
+  },
+  {
+    "id": "static_initializer_throws",
+    "violation": true
+  },
+  {
+    "id": "gated_static_initializer_throws",
+    "violation": false
+  },
+  {
+    "id": "constant_reference_static_block",
+    "violation": false
+  },
+  {
+    "id": "new_inherited_override",
+    "violation": true
+  },
+  {
+    "id": "negative_local_stream_filter",
+    "violation": false
+  },
+  {
+    "id": "negative_local_stream_map",
+    "violation": false
+  },
+  {
+    "id": "negative_local_stream_condition_added",
+    "violation": false
+  },
+  {
+    "id": "negative_local_stream_condition_removed",
+    "violation": false
+  },
+  {
+    "id": "negative_local_direct_callback",
+    "violation": false
+  },
+  {
+    "id": "negative_local_captured_callback",
+    "violation": false
+  },
+  {
+    "id": "negative_local_optional_map",
+    "violation": false
+  },
+  {
+    "id": "negative_local_shared_helper",
+    "violation": false
+  },
+  {
+    "id": "negative_local_sideeffect_order",
+    "violation": false
+  },
+  {
+    "id": "negative_local_finally",
+    "violation": false
+  },
+  {
+    "id": "negative_local_loop_mutation",
+    "violation": false
+  },
+  {
+    "id": "negative_local_stream_reduce",
+    "violation": false
+  }
+]

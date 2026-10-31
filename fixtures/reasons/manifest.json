@@ -1,0 +1,7 @@
+[
+  {"caseId":"referenced_existing_field","verdict":"FAIL","code":"SURVIVING_DIFFERENCE","change":"FIELD_INITIALIZER_CHANGED","line":3,"baseStart":31,"baseEnd":32,"headStart":31,"headEnd":32},
+  {"caseId":"private_method_rename","verdict":"PASS","code":"FOLDED_EQUIVALENT","change":"METHOD_RENAMED"},
+  {"caseId":"new_public_method","verdict":"PASS","code":"UNREACHABLE","change":"METHOD_ADDED"},
+  {"caseId":"static_block_effect","verdict":"FAIL","code":"SURVIVING_DIFFERENCE","change":"CLASS_INITIALIZATION_CHANGED"},
+  {"caseId":"gated_return","verdict":"PASS","code":"FOLDED_EQUIVALENT","change":"CONDITION_ADDED"}
+]

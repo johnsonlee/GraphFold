@@ -1,0 +1,8 @@
+version: 1
+folds:
+  - select: |
+      MATCH (cs:CallSite {callee_class: "sample.Ab", callee_name: "enabled"})
+      RETURN cs
+    args:
+      0: feature
+    value: false

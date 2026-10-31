@@ -1,0 +1,122 @@
+{
+  "date": "2026-11-01",
+  "baseCommit": "17ec0eee6e9aa6013f15e7a7c6d2f4dfd7bc02cd",
+  "testedState": "Working tree with review fixes, before commit; development artifact version derives from baseCommit.",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :gfc:detektMain :cli:detektMain :cli:detektTest :gradle-plugin:detektMain :gradle-plugin:detektTest :cli:installDist :cli:distZip :cli:distTar publishAllPublicationsToReleaseVerificationRepository --continue --console=plain",
+  "modules": {
+    "gfc": {
+      "tests": {
+        "tests": 62,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 187,
+          "missed": 9,
+          "percent": 95.4082
+        },
+        "line": {
+          "covered": 335,
+          "missed": 5,
+          "percent": 98.5294
+        }
+      }
+    },
+    "engine": {
+      "tests": {
+        "tests": 558,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 2858,
+          "missed": 133,
+          "percent": 95.5533
+        },
+        "line": {
+          "covered": 3407,
+          "missed": 26,
+          "percent": 99.2426
+        }
+      }
+    },
+    "cli": {
+      "tests": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 33,
+          "missed": 1,
+          "percent": 97.0588
+        },
+        "line": {
+          "covered": 75,
+          "missed": 1,
+          "percent": 98.6842
+        }
+      }
+    },
+    "gradle-plugin": {
+      "tests": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 18,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 95,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "junitTests": 677,
+  "initialGateFailure": {
+    "module": "gradle-plugin",
+    "branchCovered": 17,
+    "branchTotal": 18,
+    "resolution": "Added in-process INFO logging verification; forked integration tests already passed. Final check reruns changed plugin tests and reuses unchanged module test outputs."
+  },
+  "hardGates": {
+    "branchPercent": 95,
+    "linePercent": 90,
+    "productionExclusionsAdded": false
+  },
+  "regressions": [
+    "Text CLI output emits one summary without stderr duplication.",
+    "JSON CLI output remains complete; stderr summaries are bounded by rule count rather than node count.",
+    "CLI --verbose emits all selected nodes; all four format and verbosity combinations pass.",
+    "Gradle lifecycle emits summaries; --info emits complete audits and retains configuration cache reuse.",
+    "Unknown selection and matching counts are distinct from successful zero counts.",
+    "AutoService annotations absent from engine/gfc publication dependencies and CLI distributions.",
+    "All four generated SPI registrations retained; isolated providers still load."
+  ],
+  "publicationVerification": {
+    "version": "0.1.0-17ec0eee6e9a",
+    "localOnly": true,
+    "releaseHelperVerify": true,
+    "zipTarSmoke": true
+  },
+  "performanceAcceptance": false,
+  "corpus": {
+    "java": 130,
+    "kotlin": 186,
+    "mismatches": 0,
+    "schemaValidatedReports": 316
+  }
+}

@@ -1,0 +1,902 @@
+[
+  {
+    "id": "same_line",
+    "language": "java",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 240,
+          "end": 241
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 240,
+          "end": 241
+        }
+      }
+    ]
+  },
+  {
+    "id": "same_line",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 218,
+          "end": 219
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 218,
+          "end": 219
+        }
+      }
+    ]
+  },
+  {
+    "id": "nested",
+    "language": "java",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 113,
+          "end": 114
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 113,
+          "end": 114
+        }
+      }
+    ]
+  },
+  {
+    "id": "nested",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 104,
+          "end": 105
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 104,
+          "end": 105
+        }
+      }
+    ]
+  },
+  {
+    "id": "field_initializer",
+    "language": "java",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 120,
+          "end": 121
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 120,
+          "end": 121
+        }
+      }
+    ]
+  },
+  {
+    "id": "field_initializer",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 105,
+          "end": 106
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 105,
+          "end": 106
+        }
+      }
+    ]
+  },
+  {
+    "id": "instance_initializer",
+    "language": "java",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 91,
+          "end": 92
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 91,
+          "end": 92
+        }
+      }
+    ]
+  },
+  {
+    "id": "instance_initializer",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 100,
+          "end": 101
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 100,
+          "end": 101
+        }
+      }
+    ]
+  },
+  {
+    "id": "static_initializer",
+    "language": "java",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 98,
+          "end": 99
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 98,
+          "end": 99
+        }
+      }
+    ]
+  },
+  {
+    "id": "static_initializer",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 104,
+          "end": 105
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 104,
+          "end": 105
+        }
+      }
+    ]
+  },
+  {
+    "id": "same_line_controlled",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 264,
+          "end": 265
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 264,
+          "end": 265
+        }
+      }
+    ]
+  },
+  {
+    "id": "same_line_controlled",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 245,
+          "end": 246
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 245,
+          "end": 246
+        }
+      }
+    ]
+  },
+  {
+    "id": "nested_controlled",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 137,
+          "end": 138
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 137,
+          "end": 138
+        }
+      }
+    ]
+  },
+  {
+    "id": "nested_controlled",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 131,
+          "end": 132
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 131,
+          "end": 132
+        }
+      }
+    ]
+  },
+  {
+    "id": "field_initializer_controlled",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 144,
+          "end": 145
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 144,
+          "end": 145
+        }
+      }
+    ]
+  },
+  {
+    "id": "field_initializer_controlled",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 132,
+          "end": 133
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 132,
+          "end": 133
+        }
+      }
+    ]
+  },
+  {
+    "id": "instance_initializer_controlled",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 115,
+          "end": 116
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 115,
+          "end": 116
+        }
+      }
+    ]
+  },
+  {
+    "id": "instance_initializer_controlled",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 127,
+          "end": 128
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 127,
+          "end": 128
+        }
+      }
+    ]
+  },
+  {
+    "id": "static_initializer_controlled",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 122,
+          "end": 123
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 122,
+          "end": 123
+        }
+      }
+    ]
+  },
+  {
+    "id": "static_initializer_controlled",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 131,
+          "end": 132
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 6,
+          "end": 6
+        },
+        "column": {
+          "start": 131,
+          "end": 132
+        }
+      }
+    ]
+  },
+  {
+    "id": "earlier_folded_allocation",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "insert",
+    "anonymousOwnerDrift": true
+  },
+  {
+    "id": "earlier_folded_allocation",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "insert",
+    "anonymousOwnerDrift": true
+  },
+  {
+    "id": "earlier_unused_declaration",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "insert",
+    "anonymousOwnerDrift": true
+  },
+  {
+    "id": "earlier_unused_declaration",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "insert",
+    "anonymousOwnerDrift": false
+  },
+  {
+    "id": "identical_same_line",
+    "language": "java",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 129,
+          "end": 130
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 129,
+          "end": 130
+        }
+      }
+    ]
+  },
+  {
+    "id": "identical_same_line",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 119,
+          "end": 120
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 119,
+          "end": 120
+        }
+      }
+    ]
+  },
+  {
+    "id": "reorder_unused_declaration",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "reorder",
+    "anonymousOwnerDrift": true
+  },
+  {
+    "id": "reorder_unused_declaration",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "reorder",
+    "anonymousOwnerDrift": false
+  },
+  {
+    "id": "super_argument",
+    "language": "java",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 45,
+          "end": 46
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 45,
+          "end": 46
+        }
+      }
+    ]
+  },
+  {
+    "id": "super_argument_controlled",
+    "language": "java",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 83,
+          "end": 84
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 83,
+          "end": 84
+        }
+      }
+    ]
+  },
+  {
+    "id": "super_argument",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 50,
+          "end": 51
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 50,
+          "end": 51
+        }
+      }
+    ]
+  },
+  {
+    "id": "super_argument_controlled",
+    "language": "kotlin",
+    "expectedVerdict": "PASS",
+    "operation": "literal",
+    "anonymousOwnerDrift": false,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 88,
+          "end": 89
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 88,
+          "end": 89
+        }
+      }
+    ]
+  }
+]
