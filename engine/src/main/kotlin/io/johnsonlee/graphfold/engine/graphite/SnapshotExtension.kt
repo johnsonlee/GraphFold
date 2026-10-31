@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import com.google.auto.service.AutoService
 import io.johnsonlee.graphite.core.jvmMethodDescriptor
 import io.johnsonlee.graphite.sootup.GraphiteContext
 import io.johnsonlee.graphite.sootup.GraphiteExtension
@@ -11,6 +12,7 @@ import sootup.core.util.printer.NormalStmtPrinter
 import java.util.IdentityHashMap
 
 /** ServiceLoader entry point. All capture state belongs to a single loader invocation. */
+@AutoService(GraphiteExtension::class)
 class SnapshotExtension : GraphiteExtension {
     override fun visit(sootClass: SootClass, context: GraphiteContext) {
         current.get()?.capture(sootClass, context)

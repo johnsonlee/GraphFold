@@ -1,10 +1,13 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.ksp)
     `java-library`
     `java-test-fixtures`
     alias(libs.plugins.sonatype)
 }
 dependencies {
+    implementation(libs.auto.service.annotations)
+    ksp(libs.auto.service.ksp)
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
     implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.8.0.202609011348-r")
     implementation("org.jetbrains.kotlin:kotlin-metadata-jvm:2.1.20")
@@ -25,6 +28,8 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    dependsOn(tasks.named("jar"))
+    systemProperty("graphfold.test.engineJar", tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath)
     inputs.dir(rootProject.layout.projectDirectory.dir("fixtures"))
         .withPropertyName("analysisFixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)

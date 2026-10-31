@@ -341,7 +341,7 @@ flowchart TD
 | 方法内常量传播和分支折叠 | 迭代到不动点 | 复用并验证边界 |
 | 跨过程常量传播、wrapper 专门化 | 不是现成通用能力 | 作为独立扩展，不假定已支持 |
 | 原始/折叠后 IR 成对输出 | 无完整的公共快照接口 | 优先明确最小输出接口 |
-| class 扩展 SPI | 已在固定版本 2.12.0 验证折叠后 body 捕获 | 当前实现通过 ServiceLoader 接入，升级必须重跑集成测试 |
+| class 扩展 SPI | 已在固定版本 2.12.0 验证折叠后 body 捕获 | `SnapshotExtension` 使用 `@AutoService(GraphiteExtension::class)`，由 KSP 生成 ServiceLoader 注册文件；测试从打包后的 engine JAR 验证加载，升级必须重跑集成测试 |
 | 合成成员规范化 | internal `SyntheticIdentity` | 参考并验证后复用，不当作通用等价证明 |
 | 精确源码位置 | 调用点多处行号为 null，无完整列范围 | GraphFold 补源码映射 |
 | 建图完整性 | 存在跳过方法/控制流的降级路径 | 补结构化阻断诊断 |
