@@ -1,5 +1,10 @@
 package io.johnsonlee.graphfold.gradle
 
+import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT
+import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_TIMEOUT
+import io.johnsonlee.graphfold.engine.DEFAULT_MAXIMUM_WORKSPACE_SLOTS
+import io.johnsonlee.graphfold.engine.defaultWorkspaceLeaseTimeout
+import io.johnsonlee.graphfold.engine.git.GitWorkspaceManager
 import org.gradle.api.GradleException
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.Test
@@ -14,7 +19,7 @@ class GraphFoldWorkTest {
     @TempDir lateinit var directory: Path
 
     @Test
-    fun `worker writes a pass report for identical revisions`() {
+    fun `worker writes pass then reports workspace capacity timeout distinctly`() {
         val repository = directory.resolve("repository").toFile().apply { mkdirs() }
         fun git(vararg args: String): String {
             val process = ProcessBuilder(listOf("git", "-C", repository.path) + args).redirectErrorStream(true).start()
@@ -30,6 +35,10 @@ class GraphFoldWorkTest {
         val fold = directory.resolve("pass.yml").apply {
             writeText("folds:\n  - select: 'MATCH (cs:CallSite) RETURN cs'\n    value: false\n")
         }
+        parameters.workspaceSlots.set(DEFAULT_MAXIMUM_WORKSPACE_SLOTS)
+        parameters.buildTimeout.set(DEFAULT_BUILD_TIMEOUT.seconds)
+        parameters.leaseTimeout.set(defaultWorkspaceLeaseTimeout(DEFAULT_BUILD_TIMEOUT).seconds)
+        parameters.buildEnv.set(DEFAULT_BUILD_ENVIRONMENT)
         parameters.repository.set(repository.path)
         parameters.base.set(revision)
         parameters.head.set(revision)
@@ -42,6 +51,14 @@ class GraphFoldWorkTest {
         }
         work.execute()
         assertTrue(directory.resolve("reports/pass.json").readText().contains("PASS"))
+        parameters.workspaceSlots.set(1)
+        parameters.leaseTimeout.set(1L)
+        GitWorkspaceManager(directory.resolve("cache/git"), maximumWorkspaceSlots = 1).open(repository.path, revision, revision).use {
+            val failure = assertFailsWith<GradleException> { work.execute() }
+            assertTrue(failure.message.orEmpty().contains("timed out waiting for workspace capacity"))
+            assertTrue(directory.resolve("reports/pass.json").readText().contains("WORKSPACE_CAPACITY_TIMEOUT"))
+            assertTrue(directory.resolve("reports/pass.txt").readText().contains("WORKSPACE_CAPACITY_TIMEOUT"))
+        }
     }
 
     @Test
@@ -51,6 +68,10 @@ class GraphFoldWorkTest {
         val fold = directory.resolve("fold.yml").apply {
             writeText("folds:\n  - select: 'MATCH (cs:CallSite) RETURN cs'\n    value: false\n")
         }
+        parameters.workspaceSlots.set(DEFAULT_MAXIMUM_WORKSPACE_SLOTS)
+        parameters.buildTimeout.set(DEFAULT_BUILD_TIMEOUT.seconds)
+        parameters.leaseTimeout.set(defaultWorkspaceLeaseTimeout(DEFAULT_BUILD_TIMEOUT).seconds)
+        parameters.buildEnv.set(DEFAULT_BUILD_ENVIRONMENT)
         parameters.repository.set(directory.resolve("missing-repository").toString())
         parameters.base.set("0123456789abcdef")
         parameters.head.set("fedcba9876543210")

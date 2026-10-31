@@ -26,7 +26,12 @@ class OriginFoldSelectionTest {
             "select" to "MATCH (cs:CallSite) WHERE cs.caller_class = 'Host\$1' AND cs.callee_name = 'enabled' RETURN cs",
             "args" to mapOf(0 to "checkout"), "value" to false,
         ))
-        assertSelection(GraphiteAnalyzer().analyzeOriginProject(project, listOf(rule)))
+        val audits = mutableMapOf<Int, RuleAuditUpdate>()
+        assertSelection(GraphiteAnalyzer { index, update -> audits[index] = update }.analyzeOriginProject(project, listOf(rule)))
+        assertEquals(2, audits.getValue(0).selectedNodes.size)
+        assertEquals(1, audits.getValue(0).matchedCallCount)
+        assertTrue(audits.getValue(0).selectedNodes.all { it.caller.signature == "Host\$1.run()" })
+        assertTrue(audits.getValue(0).selectedNodes.none { it.caller.signature.contains("left") })
     }
 
     @Test fun `constant patterns match original owners and retain argument constraints`() {
@@ -35,7 +40,12 @@ class OriginFoldSelectionTest {
             "match" to mapOf("CallSite" to mapOf("caller_class" to "Host\$1", "callee_name" to "enabled")),
             "args" to mapOf(0 to "checkout"), "value" to false,
         ))
-        assertSelection(GraphiteAnalyzer().analyzeOriginProject(project, listOf(rule)))
+        val audits = mutableMapOf<Int, RuleAuditUpdate>()
+        assertSelection(GraphiteAnalyzer { index, update -> audits[index] = update }.analyzeOriginProject(project, listOf(rule)))
+        assertEquals(2, audits.getValue(0).selectedNodes.size)
+        assertEquals(1, audits.getValue(0).matchedCallCount)
+        assertTrue(audits.getValue(0).selectedNodes.all { it.caller.signature == "Host\$1.run()" })
+        assertTrue(audits.getValue(0).selectedNodes.none { it.caller.signature.contains("left") })
     }
 
     @Test fun `typed selection remaps method parameter return arrays and erased result without changing constants`() {

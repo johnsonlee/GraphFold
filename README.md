@@ -16,13 +16,13 @@ See [the design](docs/design.md) for the proof model, gaps, and trade-offs, and 
 | `cli` | JVM application distribution, executable `graphfold` |
 | `gradle-plugin` | Plugin ID `io.johnsonlee.graphfold`; task `graphFoldCheck` |
 
-The project targets JDK 17 and pins Graphite to `2.12.0`. Git operations use JGit `7.8.0.202609011348-r`; the Git executable is not a runtime requirement. A shared bare object cache supplies isolated base/head checkouts through Git object alternates, with separate `.git` metadata and detached HEADs. These are shared-object checkouts, not native linked worktrees. Exclusive process leases retain a persistent base/head pair for subsequent analyses, preserving unchanged source timestamps and ignored build outputs (including `.gradle/`, `build/` and `target/`) so Gradle can reuse incremental state. Concurrent analyses receive separate pairs, bounded by `EngineConfiguration.maximumWorkspaceSlots` (default 2 per repository). At capacity, acquisition waits interruptibly up to `workspaceLeaseTimeout` (default 5 minutes), then fails with a diagnostic. Closing releases the lease; cached checkouts are retained on disk, with no automatic eviction policy yet. Files are materialized from commit blobs without checkout hooks or smudge filters; unsupported submodules and Git LFS inputs block analysis. Checkout metadata does not yet reproduce tags or remote refs; builds deriving versions from them require separate validation. HTTP/SSH authentication integration has not yet been verified; native credential-helper or SSH-agent inheritance is not guaranteed.
+The project targets JDK 17 and pins Graphite to `2.12.0`. Git operations use JGit `7.8.0.202609011348-r`; the Git executable is not a runtime requirement. A shared bare object cache supplies isolated base/head checkouts through Git object alternates, with separate `.git` metadata and detached HEADs. These are shared-object checkouts, not native linked worktrees. Exclusive process leases retain a persistent base/head pair for subsequent analyses, preserving unchanged source timestamps and ignored build outputs (including `.gradle/`, `build/` and `target/`) so Gradle can reuse incremental state. Available retained pairs are preferred by exact base/head match, then matching base with a bounded head-history distance heuristic; remaining ties and unknown history use slot index. Busy pairs are skipped, and a new slot is used only when no retained pair can be acquired. Slot selection does not cache analysis results or bind a directory to a PR. Concurrent analyses receive separate pairs, bounded by `EngineConfiguration.maximumWorkspaceSlots` (default 2 per repository). At capacity, acquisition waits interruptibly up to `workspaceLeaseTimeout` (default twice the external-build invocation timeout plus 5 minutes: 25 minutes), then blocks with a `WORKSPACE_CAPACITY_TIMEOUT` diagnostic. This is a waiting-budget heuristic, not a total analysis deadline: Maven may run multiple commands per revision, source-only javac runs in-process without this timeout, and graph analysis also holds the slot. Larger builds or longer queues may require an explicit larger lease timeout. Closing releases the lease; cached checkouts are retained on disk, with no automatic eviction policy yet. Files are materialized from commit blobs without checkout hooks or smudge filters; unsupported submodules and Git LFS inputs block analysis. Checkout metadata does not yet reproduce tags or remote refs; builds deriving versions from them require separate validation. HTTP/SSH authentication integration has not yet been verified; native credential-helper or SSH-agent inheritance is not guaranteed.
 
 ### Build trust and environment
 
 Analyze only repositories whose build code you trust. GraphFold executes the checked-out Gradle/Maven wrapper, build scripts, plugins and generators as the current OS user. It is not a sandbox. Run fork/untrusted PR analysis in a disposable isolated worker with no credentials or privileged filesystem/network access; allowlisting environment variables does not isolate files under `HOME`, build caches, credential stores, or network services.
 
-External builds inherit only `DEFAULT_BUILD_ENVIRONMENT`: executable/JDK paths, home/cache/temp directories, locale and proxy settings. Tokens, signing/cloud credentials, `JAVA_TOOL_OPTIONS`, `GRADLE_OPTS` and `MAVEN_OPTS` are not inherited by default. SDK callers can explicitly replace `EngineConfiguration.buildEnvironmentAllowlist`, for example `DEFAULT_BUILD_ENVIRONMENT + "MAVEN_OPTS"`; opt-in values become visible to the repository's build. The CLI and Gradle plugin use the default allowlist. Build failures include a bounded log tail in diagnostics even after temporary files are removed. Avoid making secrets available to builds or printing them in logs.
+External builds inherit only `DEFAULT_BUILD_ENVIRONMENT`: executable/JDK paths, home/cache/temp directories, locale and proxy settings. Tokens, signing/cloud credentials, `JAVA_TOOL_OPTIONS`, `GRADLE_OPTS` and `MAVEN_OPTS` are not inherited by default. SDK callers can explicitly replace `EngineConfiguration.buildEnvironmentAllowlist`, for example `DEFAULT_BUILD_ENVIRONMENT + "MAVEN_OPTS"`; opt-in values become visible to the repository's build. CLI `--build-env NAME` (repeatable) and Gradle `graphfold.buildEnv=NAME,OTHER_NAME` add names to that default allowlist; values are inherited from the current process, not supplied in these options. Build failures include a bounded log tail in diagnostics even after temporary files are removed. Avoid making secrets available to builds or printing them in logs.
 
 ## Build and validation
 
@@ -65,7 +65,23 @@ scenarios:
 
 Queries express caller-authorized assumptions; an overly broad rule is an overly broad assumption. GraphFold does not infer the intended feature ID from the source. The default scenario limit is 32; exceeding it fails rather than sampling scenarios.
 
+Fold input must be one YAML document with an object root. Syntax, duplicate keys,
+unknown fields and rule structure are validated before Git checkout or compilation;
+named scenarios use the `scenarios` form. Cypher syntax and result shape are checked
+against the actual graph. A rule matching no foldable calls in either BASE or HEAD
+blocks with `UNMATCHED_RULE`; a match in only one revision is allowed, since a new
+controlled call may exist only in HEAD. A no-diff analysis skips graph selection.
+
 ## CLI
+
+`graphfold --version` prints the version embedded in the distribution and exits
+without requiring analysis inputs or a Git installation. Official releases use
+the release version supplied with `-Pversion`, for example `graphfold version 1.2.3`.
+Development builds derive one shared version for every module and the CLI from
+`baseVersion` in `gradle.properties` plus the first 12 characters of Git HEAD,
+for example `0.1.0-a1b2c3d4e5f6`. The configured base is currently `0.1.0`; it is
+not discovered from tags. JGit reads the revision at build time. Explicit `-Pversion` bypasses version derivation; the existing publication plugin
+still requires Git metadata to configure the full build.
 
 ```sh
 graphfold \
@@ -77,7 +93,27 @@ graphfold \
   --format json
 ```
 
-`--repository` accepts a local path or a Git URL. `--fold` reads a YAML file. Reports go to stdout; `text` is the default format. Exit codes are `0` for PASS, `1` for a failed analysis gate, and `2` for input, Git, or build failures. Both nonzero outcomes block delivery.
+Use `--format json > verdict.json` to save the result. Fold audit log lines go to
+stderr, so stdout remains a single JSON document.
+
+`--repository` accepts a local path or a Git URL. `--fold` reads a YAML file. Reports go to stdout; `text` is the default format. Exit codes are `0` for PASS, `1` for a failed analysis gate, `2` for input, Git, or build failures, and `3` for a workspace-capacity timeout that CI can retry. Every nonzero outcome blocks delivery; GraphFold does not retry automatically. A capacity timeout is an operational diagnostic, not a code-change finding.
+
+Optional execution settings are available through both entry points:
+
+| CLI option | Gradle property | Default |
+| --- | --- | --- |
+| `--workspace-slots` | `graphfold.workspaceSlots` | `2` per repository/cache |
+| `--build-timeout` | `graphfold.buildTimeout` | `600` seconds per external build invocation |
+| `--lease-timeout` | `graphfold.leaseTimeout` | `2 × buildTimeout + 300` seconds |
+| `--build-env NAME` (repeatable) | `graphfold.buildEnv` (comma-separated names) | No additions to the default environment allowlist |
+
+Explicit slot counts and timeout values must be integers in `1..2147483647`.
+Timeouts are in seconds. The lease timeout measures only waiting to acquire an available
+workspace slot, after commit resolution and before checkout. It stops on acquisition;
+it is neither an inactivity timeout nor a limit on checkout or lease-holding duration.
+Increasing the build timeout also increases the default
+lease timeout unless a lease timeout is explicitly supplied. For example,
+`--build-timeout 1200` gives a 2700-second default lease timeout.
 
 ## Engine SDK
 
@@ -111,6 +147,26 @@ println(AnalysisReports.json(result))
 
 The SDK accepts fold document contents, not a filename. Results include `verdict`, findings, diagnostics, analysis metadata, and `reasons` for both passing and failing obligations. A finding can have multiple locations. Locations identify BASE or HEAD, repository-relative paths, and one-based `line: {start, end}` / `column: {start, end}` coordinates. End positions are exclusive and columns count UTF-16 code units. Deletions can refer to BASE. Each reason separates AST change categories (such as `FIELD_INITIALIZER_CHANGED` or `METHOD_RENAMED`) from the proof outcome: `FOLDED_EQUIVALENT`, `UNREACHABLE`, or `SURVIVING_DIFFERENCE`. A rename label is a structural candidate, not an equivalence proof. Pure file moves record old/new paths without inventing changed character ranges.
 
+Reports declare `schemaVersion: 1` and follow the packaged
+[verdict JSON Schema](engine/src/main/resources/io/johnsonlee/graphfold/engine/verdict.schema.json)
+(draft 2020-12), also available through `AnalysisReports.schema()`. The schema applies
+to the serialized result regardless of whether its filename is `verdict.json` or
+the Gradle default `report.json`. Structural schema validation complements the
+engine's cross-field and proof checks; it does not establish that a verdict is correct.
+
+`ruleAudits` records each scenario, revision and zero-based rule index. Each entry
+contains the selector, `selectionStatus`, all unique raw `selectedNodes`, nullable
+`selectedCount` and independent `matchedCallCount` from Graphite's fold report.
+Node details include caller/callee signatures and descriptors, node and origin IDs,
+ordinal and available debug line number. IDs belong only to that original unfolded
+graph; they are not stable cross-revision identifiers or precise diff locations.
+`NOT_EXECUTED` (including no diff) and `FAILED` are distinct from a successful
+`SELECTED` result with zero nodes. A later folding failure can preserve successful
+selection evidence while leaving the matched count unknown. Property-match rules
+record candidate call sites; argument predicates may reduce actual matched calls.
+The `[graphfold.fold]` log lines serialize the same audit entries without truncating
+their node lists; the Gradle worker emits them at lifecycle level.
+
 ## Gradle plugin
 
 The release workflow publishes plugin markers to Maven Central. After a release is published, add it to plugin resolution:
@@ -139,7 +195,7 @@ plugins {
   -Pgraphfold.fold=rules.yml
 ```
 
-The three required Gradle properties can also be set in `gradle.properties`. The repository defaults to the root project directory, and relative `graphfold.fold` paths resolve against that directory, including when the plugin is applied to a subproject. No `graphfold` extension is registered, and `graphFoldCheck` is invoked explicitly; it is not attached to `check`.
+The three required Gradle properties and the optional execution settings above can also be set in `gradle.properties`. For example, `graphfold.buildTimeout=1200`, `graphfold.workspaceSlots=4` and `graphfold.buildEnv=JAVA_TOOL_OPTIONS,MAVEN_OPTS`. The repository defaults to the root project directory, and relative `graphfold.fold` paths resolve against that directory, including when the plugin is applied to a subproject. No `graphfold` extension is registered, and `graphFoldCheck` is invoked explicitly; it is not attached to `check`.
 
 The task calls the engine in a process-isolated Gradle worker, writes `build/reports/graphfold/report.json` and `report.txt` in the applying project, then fails when the gate fails. It does not invoke the CLI. The task deliberately runs again instead of claiming up-to-date/build-cache safety for external Git and build inputs.
 
@@ -161,7 +217,7 @@ These limitations are not blanket exemptions. A surviving structural difference 
 
 ## Release workflow
 
-Tags matching `v<strict-semver>` trigger [Publish](.github/workflows/publish.yml). Every release first runs the quality gates, stages all Maven publications locally, verifies implementation JARs and the plugin marker, builds CLI ZIP/TAR distributions, and generates SHA-256 checksums. Tag builds download the verified repository, reproduce signed publications, and compare every JAR, POM and module-metadata payload before publishing. A second gate checks the actual upload inputs immediately before each Sonatype publication; mismatches stop release. Archive timestamps/order are deterministic. Verified distributions are attached to a GitHub Release. Prerelease tags produce prereleases.
+Tags matching `v<strict-semver>` trigger [Publish](.github/workflows/publish.yml). Every release first runs the quality gates, stages all Maven publications locally, verifies implementation JARs and the plugin marker, builds CLI ZIP/TAR distributions, and generates SHA-256 checksums. Both the CLI JAR's embedded version and the packaged executables' `--version` output must match the release version. Tag builds download the verified repository, reproduce signed publications, and compare every JAR, POM and module-metadata payload before publishing. A second gate checks the actual upload inputs immediately before each Sonatype publication; mismatches stop release. Archive timestamps/order are deterministic. Verified distributions are attached to a GitHub Release. Prerelease tags produce prereleases.
 
 `workflow_dispatch` accepts a tag-shaped version and performs a dry run without remote publication. Artifacts remain downloadable from the workflow run. Local rehearsal:
 

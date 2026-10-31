@@ -1,0 +1,529 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:io.johnsonlee.graphfold:verdict:1",
+  "title": "GraphFold analysis verdict (version 1)",
+  "description": "The AnalysisReports.json serialization contract, independent of output filename (verdict.json or report.json). Verdict is derived by the engine: PASS requires no findings, no blocking diagnostics, and all obligations proved. Cross-field verdict and count equality are enforced by the engine, not this structural schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "verdict",
+    "findings",
+    "diagnostics",
+    "metadata",
+    "reasons",
+    "ruleAudits"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reason"
+      }
+    },
+    "ruleAudits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ruleAudit"
+      }
+    }
+  },
+  "$defs": {
+    "revision": {
+      "type": "string",
+      "enum": [
+        "BASE",
+        "HEAD"
+      ]
+    },
+    "sourceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        }
+      },
+      "description": "One-based coordinates. End positions are exclusive; columns are UTF-16 offsets."
+    },
+    "sourceLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "path",
+        "line",
+        "column"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "line": {
+          "$ref": "#/$defs/sourceRange"
+        },
+        "column": {
+          "$ref": "#/$defs/sourceRange"
+        }
+      },
+      "description": "Path is repository-relative. End line must not precede start; columns are ordered only within the same line. These cross-field ordering constraints are enforced by the model."
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "location"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sourceLocation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "ruleId",
+        "message",
+        "locations",
+        "evidence",
+        "scenarios"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "UNCONTROLLED_CHANGE",
+            "UNVERIFIABLE_CHANGE"
+          ]
+        },
+        "ruleId": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "message": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceLocation"
+          },
+          "minItems": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "code",
+        "message",
+        "blocking"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "INPUT",
+            "GIT",
+            "BUILD",
+            "SOURCE",
+            "GRAPH",
+            "FOLD",
+            "COMPARE",
+            "REPORT"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "blocking": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseSha",
+        "headSha",
+        "scenarios",
+        "obligations",
+        "provedObligations",
+        "graphiteVersion"
+      ],
+      "properties": {
+        "baseSha": {
+          "type": "string"
+        },
+        "headSha": {
+          "type": "string"
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "obligations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "provedObligations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "graphiteVersion": {
+          "type": "string"
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changes",
+        "code",
+        "message",
+        "locations",
+        "scenario",
+        "basePath",
+        "headPath"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "FIELD_ADDED",
+              "FIELD_REMOVED",
+              "FIELD_INITIALIZER_CHANGED",
+              "FIELD_RENAMED",
+              "CONDITION_ADDED",
+              "CONDITION_REMOVED",
+              "CONDITION_CHANGED",
+              "CALL_CHANGED",
+              "METHOD_ADDED",
+              "METHOD_REMOVED",
+              "METHOD_RENAMED",
+              "TYPE_ADDED",
+              "TYPE_REMOVED",
+              "DECLARATION_CHANGED",
+              "BODY_CHANGED",
+              "SOURCE_ONLY",
+              "FILE_MOVED",
+              "FILE_RENAMED",
+              "CLASS_INITIALIZATION_CHANGED"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "FOLDED_EQUIVALENT",
+            "UNREACHABLE",
+            "SURVIVING_DIFFERENCE",
+            "ANALYSIS_INCOMPLETE"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceLocation"
+          }
+        },
+        "scenario": {
+          "type": "string"
+        },
+        "basePath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "query",
+        "description"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "CYPHER",
+            "CALL_SITE_MATCH"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signature",
+        "descriptor"
+      ],
+      "properties": {
+        "signature": {
+          "type": "string"
+        },
+        "descriptor": {
+          "type": "string"
+        }
+      }
+    },
+    "selectedCallSite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "caller",
+        "callee",
+        "ordinal",
+        "originNodeId",
+        "lineNumber"
+      ],
+      "properties": {
+        "nodeId": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "caller": {
+          "$ref": "#/$defs/method"
+        },
+        "callee": {
+          "$ref": "#/$defs/method"
+        },
+        "ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "originNodeId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "lineNumber": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        }
+      },
+      "description": "Node IDs identify raw, unfolded graph nodes within one scenario and revision only. Ordinals and debug line numbers may be synthetic or unavailable; they are not verified source locations."
+    },
+    "ruleAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "revision",
+        "ruleIndex",
+        "selector",
+        "selectionStatus",
+        "selectedNodes",
+        "matchedCallCount",
+        "message",
+        "selectedCount"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "ruleIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "selector": {
+          "$ref": "#/$defs/selector"
+        },
+        "selectionStatus": {
+          "type": "string",
+          "enum": [
+            "NOT_EXECUTED",
+            "SELECTED",
+            "FAILED"
+          ]
+        },
+        "selectedNodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/selectedCallSite"
+          }
+        },
+        "matchedCallCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "description": "ruleIndex is zero-based within the scenario. selectedCount counts unique raw selected nodes only after successful selection. matchedCallCount independently records Graphite fold application and may differ from selectedCount; null means unavailable, while zero is a measured count. A later fold failure can retain SELECTED nodes and a message. Standard JSON Schema cannot assert selectedCount equals selectedNodes.length; the model derives it.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "selectionStatus": {
+                "const": "SELECTED"
+              }
+            },
+            "required": [
+              "selectionStatus"
+            ]
+          },
+          "then": {
+            "properties": {
+              "selectedCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "selectedCount": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

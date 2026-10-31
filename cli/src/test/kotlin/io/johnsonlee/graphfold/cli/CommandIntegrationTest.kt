@@ -2,6 +2,8 @@ package io.johnsonlee.graphfold.cli
 
 import io.johnsonlee.graphfold.engine.testing.createFixture
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.github.ajalt.clikt.testing.test
 import io.johnsonlee.graphfold.engine.AnalysisReports
@@ -32,13 +34,30 @@ class CommandIntegrationTest {
         )
         val mapper = jacksonObjectMapper()
         val actual = mapper.readTree(cli.stdout)
-        assertEquals(mapper.readTree(AnalysisReports.json(expected)), actual)
+        // Graphite node IDs are scoped to one graph, so separate analyses need not allocate the same IDs.
+        assertEquals(withoutNodeIds(mapper.readTree(AnalysisReports.json(expected))), withoutNodeIds(actual))
         assertTrue(actual["diagnostics"].isEmpty)
+        val auditLines = cli.stderr.lineSequence().filter { it.startsWith("[graphfold.fold]") }.map {
+            mapper.readTree(it.removePrefix("[graphfold.fold]").trim())
+        }.toList()
+        assertTrue(auditLines.isNotEmpty(), cli.output)
+        assertEquals(actual["ruleAudits"].toList(), auditLines)
+        auditLines.forEach { audit ->
+            val nodes = audit["selectedNodes"]
+            assertTrue(nodes.all { it["nodeId"].isInt })
+            assertEquals(nodes.size(), nodes.map { it["nodeId"].asInt() }.distinct().size)
+        }
         if (exitCode != 0) {
             assertTrue(actual["findings"].size() > 0)
             val location = actual["findings"][0]["locations"][0]
             assertEquals("src/main/java/sample/Example.java", location["path"].asText())
             assertTrue(location["column"]["start"].asInt() > 0)
+        }
+    }
+
+    private fun withoutNodeIds(report: JsonNode): JsonNode = report.deepCopy<JsonNode>().apply {
+        get("ruleAudits").forEach { audit ->
+            audit["selectedNodes"].forEach { node -> (node as ObjectNode).remove("nodeId") }
         }
     }
 }

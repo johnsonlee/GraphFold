@@ -4,27 +4,41 @@ Date: 2026-10-31. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
 
-## PR review: final full quality gate (2026-10-31)
+## PR review: capacity, version and fold audit quality gate (2026-10-31)
 
-The unfiltered command passed in 20m 5s:
+The unfiltered command passed in 20m 51s:
 
 ```sh
 ./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :cli:installDist --continue --console=plain
 ```
 
-All **603 JUnit tests passed**, with zero failures, errors or skipped tests. Every
+All **657 JUnit tests passed**, with zero failures, errors or skipped tests. Every
 module passed the unchanged **95% branch / 90% line** hard gates without production
-exclusions. These counters come from one complete run, not merged targeted runs.
+exclusions. These counters come from the complete suites accepted by this command,
+not merged filtered runs.
 
 | Module | JUnit tests | Line coverage | Branch coverage |
 | --- | ---: | ---: | ---: |
-| engine | 581 | 99.0878% | 95.3971% (2943/3085) |
-| cli | 9 | 97.4359% | 100.0000% (14/14) |
-| gradle-plugin | 13 | 100.0000% | 100.0000% (4/4) |
+| engine | 606 | 99.1064% | 95.4445% (3038/3183) |
+| cli | 23 | 98.5075% | 96.6667% (29/30) |
+| gradle-plugin | 28 | 100.0000% | 100.0000% (14/14) |
 
-The prior 581-test baseline is preserved in
-[its historical record](experiments/incremental-object-flow-validation-2026-10-31.json).
-Review-specific regressions and independent publication checks are documented below.
+The prior 603-test review baseline is preserved in
+[its historical record](experiments/review-validation-before-capacity-2026-10-31.json).
+New regressions cover strict YAML document/structure validation, raw selection audits,
+separate selected/matched counts, zero-match blocking, query failures, skipped selection,
+CLI and Gradle log/report agreement, and valid/invalid JSON Schema payloads.
+All 316 actual Java/Kotlin corpus reports also passed schema validation.
+They also cover slot selection by exact pair and bounded head-history distance,
+lock cleanup and fallback, packaged CLI version consistency, the derived 25-minute
+default, explicit overrides, CLI and Gradle option validation and propagation, additive environment names, real held-slot
+contention and recovery, and retryable CLI exit code 3 with other error precedence.
+The lease timeout measures slot acquisition only. It does not bound checkout,
+inactivity, or the total analysis duration. Nine Python release-helper tests passed,
+including rejection of a missing or mismatched packaged CLI version. Release ZIP/TAR
+version smoke checks and development SHA version checks also passed; their snapshot
+and source-archive limitation are recorded in [version validation](experiments/cli-version-validation-2026-10-31.json). The earlier publication reproducibility and compiler compatibility
+matrices below were not rerun for these changes.
 
 ## PR review regressions (2026-10-31)
 

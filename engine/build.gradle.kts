@@ -21,6 +21,7 @@ dependencies {
     implementation("org.ow2.asm:asm-commons:${libs.versions.asm.get()}")
     implementation(libs.jackson.kotlin)
     implementation(libs.jackson.yaml)
+    testImplementation("com.networknt:json-schema-validator:1.5.9")
 }
 
 tasks.withType<Test>().configureEach {

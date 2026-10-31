@@ -2,6 +2,13 @@ import io.gitlab.arturbosch.detekt.Detekt
 import io.gitlab.arturbosch.detekt.extensions.DetektExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.gradle.external.javadoc.StandardJavadocDocletOptions
+import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder
+
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r") }
+}
 
 plugins {
     base
@@ -11,9 +18,24 @@ plugins {
     alias(libs.plugins.sonatype)
 }
 
+// Official releases supply -Pversion. Development artifacts identify the configured base and exact Git revision.
+// The lazy fallback skips our Git lookup when a release version is supplied.
+val artifactVersion = providers.gradleProperty("version").orElse(providers.provider {
+    val baseVersion = providers.gradleProperty("baseVersion").get()
+    val builder = FileRepositoryBuilder().findGitDir(rootDir).setMustExist(true)
+    if (builder.gitDir == null) {
+        throw GradleException("Cannot derive development version without Git metadata; supply -Pversion=<version>")
+    }
+    builder.build().use { repository ->
+        val head = repository.resolve(Constants.HEAD)
+            ?: throw GradleException("Cannot derive development version without a Git HEAD; supply -Pversion=<version>")
+        "$baseVersion-${head.name.take(12)}"
+    }
+}).get()
+
 allprojects {
     group = "io.johnsonlee.graphfold"
-    version = providers.gradleProperty("version").orElse("0.1.0-SNAPSHOT").get()
+    version = artifactVersion
     repositories { mavenCentral() }
 }
 

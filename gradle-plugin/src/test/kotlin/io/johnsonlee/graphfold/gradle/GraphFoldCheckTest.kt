@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.gradle
 
+import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT
+import java.time.Duration
 import org.gradle.api.Action
 import org.gradle.process.JavaForkOptions
 import org.gradle.testfixtures.ProjectBuilder
@@ -38,6 +40,10 @@ class GraphFoldCheckTest {
         task.repository.set("repository")
         task.base.set("base")
         task.head.set("head")
+        task.workspaceSlots.set(3)
+        task.buildTimeout.set(1500L)
+        task.leaseTimeout.set(1800L)
+        task.buildEnv.set(DEFAULT_BUILD_ENVIRONMENT + "ARTIFACT_TOKEN")
         task.fold.set(project.layout.projectDirectory.file("fold.yml"))
         task.cacheDirectory.set(project.layout.projectDirectory.dir("cache"))
         task.jsonReport.set(project.layout.projectDirectory.file("report.json"))
@@ -50,6 +56,11 @@ class GraphFoldCheckTest {
         assertEquals(task.cacheDirectory.get(), parameters.cacheDirectory.get())
         assertEquals(task.jsonReport.get(), parameters.jsonReport.get())
         assertEquals(task.textReport.get(), parameters.textReport.get())
+        val configuration = parameters.engineConfiguration()
+        assertEquals(3, configuration.maximumWorkspaceSlots)
+        assertEquals(Duration.ofSeconds(1500), configuration.buildTimeout)
+        assertEquals(Duration.ofSeconds(1800), configuration.workspaceLeaseTimeout)
+        assertEquals(DEFAULT_BUILD_ENVIRONMENT + "ARTIFACT_TOKEN", configuration.buildEnvironmentAllowlist)
         verify(fork).setMaxHeapSize("2g")
         verify(queue).await()
     }

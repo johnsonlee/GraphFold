@@ -11,6 +11,26 @@ class EngineIntegrationTest {
     @TempDir lateinit var temporary: Path
 
     @Test
+    fun `workspace contention reports a retryable capacity diagnostic then recovers`() {
+        val repository = repository("return x;")
+        val sha = commit(repository)
+        val cache = temporary.resolve("capacity-cache")
+        val request = AnalysisRequest(repository.toString(), sha, sha, rules())
+        val config = EngineConfiguration(cache, maximumWorkspaceSlots = 1,
+            workspaceLeaseTimeout = java.time.Duration.ofMillis(1))
+        io.johnsonlee.graphfold.engine.git.GitWorkspaceManager(cache.resolve("git"), 1)
+            .open(repository.toString(), sha, sha).use {
+                val result = GraphFoldEngine(config).analyze(request)
+                assertEquals(Verdict.FAIL, result.verdict)
+                assertTrue(result.findings.isEmpty())
+                assertEquals("WORKSPACE_CAPACITY_TIMEOUT", result.diagnostics.single().code)
+                assertEquals(AnalysisStage.GIT, result.diagnostics.single().stage)
+                assertTrue(result.diagnostics.single().message.contains("Retry"))
+            }
+        assertEquals(Verdict.PASS, GraphFoldEngine(config).analyze(request).verdict)
+    }
+
+    @Test
     fun `single blank line insertion and deletion remain provable diff changes`() {
         val repository = repository("return x;")
         val base = commit(repository)
@@ -32,6 +52,10 @@ class EngineIntegrationTest {
         val result = analyze("return x + 1;", "return x - 1;")
         assertEquals(Verdict.FAIL, result.verdict)
         assertTrue(result.diagnostics.isEmpty(), result.toString())
+        assertEquals(listOf(Revision.BASE, Revision.HEAD), result.ruleAudits.map { it.revision })
+        assertTrue(result.ruleAudits.all { it.selectionStatus == RuleSelectionStatus.SELECTED && it.selectedCount == 1 })
+        assertTrue(result.ruleAudits.all { it.matchedCallCount == 1 && it.selector.kind == RuleSelectorKind.CALL_SITE_MATCH })
+        assertTrue(result.ruleAudits.all { it.selector.query == null && it.ruleIndex == 0 && it.scenario == "baseline" })
         val finding = result.findings.single()
         assertEquals(listOf(Revision.BASE, Revision.HEAD), finding.locations.map { it.revision })
         finding.locations.forEach {
@@ -53,6 +77,8 @@ class EngineIntegrationTest {
         val result = analyze("return x;", "return thisDoesNotCompile;")
         assertEquals(Verdict.FAIL, result.verdict)
         assertEquals(AnalysisStage.BUILD, result.diagnostics.single().stage)
+        assertTrue(result.ruleAudits.all { it.selectionStatus == RuleSelectionStatus.NOT_EXECUTED })
+        assertTrue(result.ruleAudits.all { it.selectedCount == null && it.matchedCallCount == null })
         assertEquals(0, result.metadata.provedObligations)
     }
 
@@ -107,6 +133,7 @@ class EngineIntegrationTest {
         val result = engine().analyze(AnalysisRequest(repository.toString(), base, head, document))
         assertEquals(Verdict.FAIL, result.verdict)
         assertEquals(listOf("off", "on"), result.metadata.scenarios)
+        assertEquals(listOf("off", "off", "on", "on"), result.ruleAudits.map { it.scenario })
         assertEquals(listOf(listOf("off")), result.findings.map { it.scenarios }, result.toString())
     }
 
@@ -127,6 +154,9 @@ class EngineIntegrationTest {
         assertTrue(result.findings.isEmpty())
         assertTrue(result.diagnostics.isEmpty())
         assertEquals(0, result.metadata.provedObligations)
+        assertEquals(2, result.ruleAudits.size)
+        assertTrue(result.ruleAudits.all { it.selectionStatus == RuleSelectionStatus.NOT_EXECUTED })
+        assertTrue(result.ruleAudits.all { it.message.orEmpty().contains("No base/head diff") && it.selectedCount == null })
     }
 
     @Test
@@ -169,6 +199,8 @@ class EngineIntegrationTest {
         assertTrue(result.diagnostics.isEmpty(), result.toString())
         assertTrue(result.findings.isNotEmpty())
         assertTrue(result.findings.flatMap { it.locations }.all { it.revision == Revision.BASE })
+        assertEquals(listOf(1, 0), result.ruleAudits.map { it.matchedCallCount })
+        assertEquals(listOf(1, 0), result.ruleAudits.map { it.selectedCount })
     }
 
     @Test

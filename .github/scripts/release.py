@@ -10,6 +10,14 @@ import tarfile
 import tempfile
 
 SEMVER = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?")
+CLI_VERSION_RESOURCE = "io/johnsonlee/graphfold/cli/version.txt"
+
+
+def verify_cli_version(archive, release_version):
+    if CLI_VERSION_RESOURCE not in archive.namelist():
+        raise ValueError("Missing packaged CLI version")
+    if archive.read(CLI_VERSION_RESOURCE).decode("utf-8").strip() != release_version:
+        raise ValueError("Packaged CLI version differs from release version")
 
 
 def version(tag):
@@ -34,6 +42,8 @@ def verify(repository, release_version):
         with zipfile.ZipFile(directory / (stem + ".jar")) as archive:
             if entry not in archive.namelist():
                 raise ValueError(f"Missing implementation entry {entry}")
+            if module == "cli":
+                verify_cli_version(archive, release_version)
         pom = ET.parse(directory / (stem + ".pom"))
         for key, expected in (("groupId", "io.johnsonlee.graphfold"), ("artifactId", module), ("version", release_version)):
             if pom.findtext(f"m:{key}", namespaces=namespace) != expected:
@@ -84,6 +94,9 @@ def smoke(distributions, release_version):
             help_result = subprocess.run(["bash", str(executable), "--help"], capture_output=True, text=True, timeout=60)
             if help_result.returncode != 0 or "--fold" not in help_result.stdout:
                 raise ValueError(f"Packaged CLI failed help smoke: {help_result.stderr}")
+            version_result = subprocess.run(["bash", str(executable), "--version"], capture_output=True, text=True, timeout=60)
+            if version_result.returncode != 0 or version_result.stdout.strip() != f"graphfold version {release_version}":
+                raise ValueError(f"Packaged CLI failed version smoke: {version_result.stdout} {version_result.stderr}")
             invalid = subprocess.run(["bash", str(executable)], capture_output=True, text=True, timeout=60)
             if invalid.returncode != 2:
                 raise ValueError(f"Packaged CLI failed input-error exit contract: {invalid.returncode}")

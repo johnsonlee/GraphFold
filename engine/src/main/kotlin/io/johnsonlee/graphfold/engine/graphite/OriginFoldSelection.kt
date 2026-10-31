@@ -10,21 +10,32 @@ import org.objectweb.asm.commons.Remapper
 
 /** Evaluate user selectors against original identities; only typed selected keys cross the normalization boundary. */
 internal fun originFoldSelection(
-    graph: Graph, rules: List<FoldRule>, owners: Map<String, String>, resolve: (Graph, FoldSites) -> FoldSites,
-): List<FoldSites> = rules.map { rule ->
-    val selected = when (rule) {
-        is FoldSites -> resolve(graph, rule)
-        is ConstantFold -> FoldSites(
-            select = rule.cypher,
-            selected = graph.nodes(CallSiteNode::class.java)
-                .filter { (it.ordinal ?: -1) >= 0 && rule.matchesCallSite(it.foldProperties()) }
-                .map { CallSiteKey(it.caller.signature, it.caller.descriptor, it.callee.signature,
-                    it.callee.descriptor, requireNotNull(it.ordinal)) }.toSet(),
-            value = rule.value, arguments = rule.arguments,
-        )
-    }
-    remapOriginSelection(selected, owners)
+    graph: Graph, rules: List<FoldRule>, owners: Map<String, String>,
+    resolve: (Graph, FoldSites, Int) -> FoldSites, audit: RuleAuditCapture,
+): List<FoldSites> = rules.mapIndexed { index, rule ->
+    runCatching {
+        val selected = when (rule) {
+            is FoldSites -> resolve(graph, rule, index)
+            is ConstantFold -> {
+                val sites = constantSelection(graph, rule)
+                audit.selected(index, sites)
+                constantSites(rule, sites)
+            }
+        }
+        remapOriginSelection(selected, owners)
+    }.onFailure { audit.failed(index, it) }.getOrThrow()
 }
+
+/** Pattern-matched candidates before argument constraints are evaluated by the fold pass. */
+internal fun constantSelection(graph: Graph, rule: ConstantFold): List<CallSiteNode> =
+    graph.nodes(CallSiteNode::class.java).filter { (it.ordinal ?: -1) >= 0 && rule.matchesCallSite(it.foldProperties()) }.toList()
+
+private fun constantSites(rule: ConstantFold, sites: List<CallSiteNode>): FoldSites = FoldSites(
+    select = rule.cypher,
+    selected = sites.map { CallSiteKey(it.caller.signature, it.caller.descriptor, it.callee.signature,
+        it.callee.descriptor, requireNotNull(it.ordinal)) }.toSet(),
+    value = rule.value, arguments = rule.arguments,
+)
 
 internal fun remapOriginSelection(rule: FoldSites, owners: Map<String, String>): FoldSites {
     val remapper = object : Remapper(org.objectweb.asm.Opcodes.ASM9) {

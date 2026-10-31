@@ -5,6 +5,7 @@ import io.johnsonlee.graphite.core.CallSiteNode
 import io.johnsonlee.graphite.core.NodeId
 import io.johnsonlee.graphite.cypher.query
 import io.johnsonlee.graphite.graph.Graph
+import io.johnsonlee.graphite.input.ConstantFold
 import io.johnsonlee.graphite.input.CallSiteKey
 import io.johnsonlee.graphite.input.FoldPlan
 import io.johnsonlee.graphite.input.FoldReport
@@ -15,12 +16,16 @@ import io.johnsonlee.graphite.sootup.JavaProjectLoader
 import java.nio.file.Path
 
 /** Uses the same public frontend for selection and folded IR capture. */
-class GraphiteAnalyzer {
+class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAuditUpdate) -> Unit) {
+    constructor() : this({ _, _ -> })
+
     fun analyze(artifact: Path, rules: List<FoldRule>, dependencies: List<Path> = emptyList()): ProgramSnapshot {
         val inventory = BytecodeInventory().also { it.read(artifact) }
         inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics)
         inventory.missingReferences(dependencies).forEach { inventory.diagnostics.add("Unresolved class reference: $it") }
-        return AnalysisInputs(artifact, dependencies).use { inputs -> analyzeInputs(inputs.path, rules, inventory) }
+        return AnalysisInputs(artifact, dependencies).use { inputs ->
+            analyzeInputs(inputs.path, rules, inventory, RuleAuditCapture(onAudit))
+        }
     }
 
     internal fun analyzeOriginProject(project: OriginProject, rules: List<FoldRule>): ProgramSnapshot {
@@ -30,6 +35,10 @@ class GraphiteAnalyzer {
         inventory.overrides = inventory.inheritedEntries.resolve(compiled.dependencies, inventory.diagnostics)
         inventory.missingReferences(compiled.dependencies).forEach {
             inventory.diagnostics.add("Unresolved class reference: $it")
+        }
+        val audit = RuleAuditCapture(onAudit)
+        val resolveSelection = { graph: Graph, rule: FoldSites, index: Int ->
+            resolve(graph, rule) { audit.selected(index, it) }
         }
         val selected = if (rules.isEmpty()) emptyList() else {
             val original = BytecodeInventory().also { it.read(project.sourceClasses) }
@@ -42,16 +51,17 @@ class GraphiteAnalyzer {
                         }
                     },
                 ), false).load(inputs.path)
-                originFoldSelection(graph, rules, project.owners, ::resolve)
+                originFoldSelection(graph, rules, project.owners, resolveSelection, audit)
             }
         }
         return AnalysisInputs(compiled.classes, compiled.dependencies).use { inputs ->
-            analyzeInputs(inputs.path, selected, inventory, selectionResolved = true)
+            analyzeInputs(inputs.path, selected, inventory, audit, selectionResolved = true)
         }
     }
 
     private fun analyzeInputs(
-        artifact: Path, rules: List<FoldRule>, inventory: BytecodeInventory, selectionResolved: Boolean = false,
+        artifact: Path, rules: List<FoldRule>, inventory: BytecodeInventory, audit: RuleAuditCapture,
+        selectionResolved: Boolean = false,
     ): ProgramSnapshot {
         val diagnostics = mutableListOf<String>()
         diagnostics.addAll(inventory.diagnostics)
@@ -59,12 +69,8 @@ class GraphiteAnalyzer {
             val incomplete = listOf("Skipping method", "Skipping control-flow", "Failed to", "Recovered ")
             if (incomplete.any(message::contains)) diagnostics.add(message)
         }
-        val resolved = if (!selectionResolved && rules.any { it is FoldSites }) {
-            val plain = JavaProjectLoader(LoaderConfig(
-                interproceduralDataflow = true, verbose = log,
-                includePackages = inventory.classes.toList(), includeLibraries = true,
-            ), false).load(artifact)
-            rules.map { if (it is FoldSites) resolve(plain, it) else it }
+        val resolved = if (!selectionResolved && rules.isNotEmpty()) {
+            selectInputs(artifact, rules, inventory, log, audit)
         } else rules
         val sink = SnapshotSink(inventory.ignoredFields)
         var report: FoldReport? = null
@@ -80,7 +86,8 @@ class GraphiteAnalyzer {
             method.copy(calls = method.calls + dispatch[identity].orEmpty().map { it.callee.identity })
         }
         if (loader.bodyInterceptionFallbackCount > 0) diagnostics.add("Frontend recovered method bodies without requested transforms")
-        report?.outcomes?.forEach { outcome ->
+        report?.outcomes?.forEachIndexed { index, outcome ->
+            audit.applied(index, outcome.matched)
             outcome.unsupported.forEach { diagnostics.add("${it.method}: ${it.reason}") }
             outcome.hints.filter { it.contains("every caller") }.forEach(diagnostics::add)
         }
@@ -92,7 +99,24 @@ class GraphiteAnalyzer {
             inventory.initialization.dependencies(), inventory.overrides, inventory.enclosingClasses)
     }
 
-    internal fun resolve(graph: Graph, rule: FoldSites): FoldSites {
+    private fun selectInputs(
+        artifact: Path, rules: List<FoldRule>, inventory: BytecodeInventory, log: (String) -> Unit, audit: RuleAuditCapture,
+    ): List<FoldRule> {
+        val plain = JavaProjectLoader(LoaderConfig(
+            interproceduralDataflow = true, verbose = log,
+            includePackages = inventory.classes.toList(), includeLibraries = true,
+        ), false).load(artifact)
+        return rules.mapIndexed { index, rule ->
+            runCatching {
+                when (rule) {
+                    is FoldSites -> resolve(plain, rule) { audit.selected(index, it) }
+                    is ConstantFold -> rule.also { audit.selected(index, constantSelection(plain, it)) }
+                }
+            }.onFailure { audit.failed(index, it) }.getOrThrow()
+        }
+    }
+
+    internal fun resolve(graph: Graph, rule: FoldSites, selected: (List<CallSiteNode>) -> Unit = {}): FoldSites {
         val result = graph.query(rule.select)
         require(result.columns.size == 1) { "Fold select must return exactly one CallSite column" }
         val column = result.columns.single()
@@ -102,6 +126,7 @@ class GraphiteAnalyzer {
             val id = value["id"] as? Number ?: error("Fold select returned a node without an id")
             graph.node(NodeId(id.toInt())) as? CallSiteNode ?: error("Fold select returned an unknown CallSite")
         }
+        selected(sites)
         val selectedIds = sites.map { it.id }.toSet()
         val children = graph.nodes(CallSiteNode::class.java).filter { it.origin != null }.groupBy { it.origin }
         fun leaves(site: CallSiteNode, seen: Set<NodeId> = emptySet()): List<CallSiteNode> {

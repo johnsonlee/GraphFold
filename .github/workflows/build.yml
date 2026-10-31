@@ -24,6 +24,7 @@ jobs:
       - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - run: ./gradlew check :cli:installDist --no-daemon --stacktrace
       - run: cli/build/install/graphfold/bin/graphfold --help
+      - run: cli/build/install/graphfold/bin/graphfold --version
       - uses: actions/upload-artifact@v4
         if: always()
         with:

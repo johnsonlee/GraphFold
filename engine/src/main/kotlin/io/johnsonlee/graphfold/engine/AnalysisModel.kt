@@ -3,10 +3,15 @@ package io.johnsonlee.graphfold.engine
 import java.nio.file.Path
 import java.time.Duration
 
-private const val DEFAULT_BUILD_TIMEOUT_MINUTES = 10L
+val DEFAULT_BUILD_TIMEOUT: Duration = Duration.ofMinutes(10)
 private const val DEFAULT_MAXIMUM_SCENARIOS = 32
-private const val DEFAULT_MAXIMUM_WORKSPACE_SLOTS = 2
-private const val DEFAULT_WORKSPACE_LEASE_TIMEOUT_MINUTES = 5L
+const val DEFAULT_MAXIMUM_WORKSPACE_SLOTS = 2
+private const val REVISIONS_PER_ANALYSIS = 2L
+private const val WORKSPACE_PREPARATION_MARGIN_MINUTES = 5L
+
+/** Waiting-budget heuristic based on two external-build timeouts plus preparation; not a total analysis deadline. */
+fun defaultWorkspaceLeaseTimeout(buildTimeout: Duration = DEFAULT_BUILD_TIMEOUT): Duration =
+    buildTimeout.multipliedBy(REVISIONS_PER_ANALYSIS).plusMinutes(WORKSPACE_PREPARATION_MARGIN_MINUTES)
 
 /** All business inputs to an analysis. [fold] is a Graphite fold document, optionally containing scenarios. */
 data class AnalysisRequest(
@@ -89,7 +94,9 @@ data class AnalysisResult(
     val diagnostics: List<Diagnostic>,
     val metadata: AnalysisMetadata,
     val reasons: List<VerdictReason> = emptyList(),
+    val ruleAudits: List<RuleAudit> = emptyList(),
 ) {
+    val schemaVersion: Int = 1
     val verdict: Verdict
         get() = if (findings.isEmpty() && diagnostics.none { it.blocking } &&
             metadata.obligations == metadata.provedObligations
@@ -98,11 +105,11 @@ data class AnalysisResult(
 
 data class EngineConfiguration(
     val cacheDirectory: Path,
-    val buildTimeout: Duration = Duration.ofMinutes(DEFAULT_BUILD_TIMEOUT_MINUTES),
+    val buildTimeout: Duration = DEFAULT_BUILD_TIMEOUT,
     val maximumScenarios: Int = DEFAULT_MAXIMUM_SCENARIOS,
     val buildEnvironmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
     val maximumWorkspaceSlots: Int = DEFAULT_MAXIMUM_WORKSPACE_SLOTS,
-    val workspaceLeaseTimeout: Duration = Duration.ofMinutes(DEFAULT_WORKSPACE_LEASE_TIMEOUT_MINUTES),
+    val workspaceLeaseTimeout: Duration = defaultWorkspaceLeaseTimeout(buildTimeout),
 ) {
     init {
         require(!buildTimeout.isNegative && !buildTimeout.isZero) { "build timeout must be positive" }

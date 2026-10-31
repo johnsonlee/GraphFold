@@ -116,7 +116,7 @@ scenarios:
         value: false
 ```
 
-这是同一个 fold 输入内部的结构，不新增第五类业务输入。单场景直接接受 `version: 1` 与 `folds`；多场景使用上述 `scenarios` 包装，每个场景均须通过。默认最多 32 个场景，超过上限阻断。
+这是同一个 fold 输入内部的结构，不新增第五类业务输入。单场景直接接受 `version: 1` 与 `folds`；多场景使用上述 `scenarios` 包装，每个场景均须通过。默认最多 32 个场景，超过上限阻断。YAML 必须是单一对象文档；语法错误、重复键、额外文档、未知属性、非法版本及规则结构在 Git checkout 和构建之前阻断，错误包含场景/规则索引。规则字段由 Graphite 的解析器校验，Cypher 语法和返回类型则在实际图上执行查询时校验。
 
 规则表达的是用户授权的假定；过宽的查询也会产生过宽的假定。引擎记录实际选点供审计，并验证规则中的参数约束，但不能凭业务知识证明用户声明的假定正确。
 
@@ -153,7 +153,8 @@ data class AnalysisResult(
     val diagnostics: List<Diagnostic>,
     val metadata: AnalysisMetadata,
     val reasons: List<VerdictReason> = emptyList(),
-) // verdict 由 findings、blocking diagnostics 与证明完成情况派生，不由调用者赋值。
+    val ruleAudits: List<RuleAudit> = emptyList(),
+) // schemaVersion 固定为 1；verdict 由 findings、blocking diagnostics 与证明完成情况派生，不由调用者赋值。
 ```
 
 `Evidence`、`Diagnostic`、`AnalysisMetadata` 和 `VerdictReason` 已在 engine 定义。`Finding.locations` 至少一项，可跨文件和 revision，且都是本次 diff 的归属位置；调用链等未修改位置放入 evidence。纯移动的 `VerdictReason.locations` 可为空，此时以旧/新路径描述变化，不制造字符 diff。
@@ -178,6 +179,8 @@ Finding 分类：
 
 当前 Metadata 记录解析后的 SHA、Graphite 版本、场景和 obligation/证明完成数量。编译器版本、规则摘要、构建产物身份与完整 provenance 仍是待补的审计信息，不能声称已经输出。Finding ID 使用内容摘要，不依赖图节点编号。
 
+JSON 报告包含 `schemaVersion: 1`，规范为 [verdict.schema.json](../engine/src/main/resources/io/johnsonlee/graphfold/engine/verdict.schema.json)，采用 JSON Schema draft 2020-12，标识为 `urn:io.johnsonlee.graphfold:verdict:1`。同一资源随 engine 打包，可通过 `AnalysisReports.schema()` 读取。Schema 校验序列化结构、必需字段、枚举、空值与数值边界，不代替引擎的语义证明。它适用于任意报告文件名；Gradle 默认仍输出 `report.json`。
+
 ## 4. 仓库获取与共享对象 checkout
 
 大仓库采用 JGit `7.8.0.202609011348-r` 管理共享 bare object 缓存，为 base/head 创建各自独立的 checkout，不分别 clone 完整仓库。每个 checkout 有自己的 `.git`、HEAD 和 index，通过 `.git/objects/info/alternates` 引用缓存对象目录。用户原有 checkout 不受影响。
@@ -185,19 +188,39 @@ Finding 分类：
 这保留了 worktree 方案希望达到的对象共享与工作目录隔离，但不是原生 linked worktree 管理。JGit 从 7.0 起支持读取 linked worktree，7.8 的公开 API 仍缺少 add/list/remove/move 管理命令；不能把“缺少管理命令”表述为完全不支持 worktree。依据：[7.0 发布说明](https://github.com/eclipse-jgit/jgit/wiki/New-and-Noteworthy-7.0)、[维护者对管理 API 的说明](https://github.com/eclipse-jgit/jgit/issues/264)。
 
 ```text
-cache/repositories/<repository-key>.git/              # bare 仓库，共享 objects
-cache/workspaces/<repository-key>/slot-0.lock         # 进程间租约；位于 checkout 外
-cache/workspaces/<repository-key>/slot-0/base/.git/   # 独立元数据，alternates 指向 objects
-cache/workspaces/<repository-key>/slot-0/head/.git/   # 分别保留构建目录与增量状态
-cache/workspaces/<repository-key>/slot-1/...         # 并发分析使用另一对 checkout
+<cache>/                                            # CLI / Gradle 默认 ~/.cache/graphfold
+├── git/
+│   ├── repositories/
+│   │   ├── <repository-key>.git/                    # bare 仓库，共享 objects
+│   │   └── <repository-key>.lock                    # fetch / revision 解析锁
+│   └── workspaces/<repository-key>/
+│       ├── slot-0.lock                              # 进程间租约，位于 checkout 外
+│       ├── slot-0/
+│       │   ├── base/                               # base 构建的工作目录（cwd）
+│       │   │   ├── .git/                           # 独立元数据，alternates 指向共享 objects
+│       │   │   ├── .gradle/                        # Gradle 状态及 GraphFold provider
+│       │   │   ├── gradlew / pom.xml / src/...      # 对应 revision 的项目文件
+│       │   │   └── <module>/
+│       │   │       ├── build/                      # Gradle 编译产物与 provenance
+│       │   │       └── target/                     # Maven 编译产物与 provenance
+│       │   └── head/                               # head 构建的 cwd，结构同 base
+│       ├── slot-1.lock
+│       └── slot-1/...                              # 另一对可独占的持久 checkout
+└── analysis-<random>/                              # 每次分析独立的临时目录
+    ├── base/                                       # 导出的 classes、origins、输入清单和构建日志
+    ├── head/                                       # 同上
+    └── normalized/                                 # 来源规范化后的分析输入
 ```
+
+`<cache>` 指 `EngineConfiguration.cacheDirectory`；CLI 可用 `--cache-dir` 指定。上图中的 Gradle 与 Maven 目录是不同项目类型的示意，并非每个项目同时存在；根项目自身也可能有 `build/` 或 `target/`。两侧构建顺序为 base 后 head，外部 Gradle/Maven 命令的 cwd 分别是对应 checkout 根目录，多模块产物留在各模块自己的构建目录。checkout、原始编译产物和增量状态在分析结束后保留。导出到 `analysis-<random>` 的 classes 是本轮分析快照，正常完成或失败后都会尝试清理该临时目录；它不是增量编译目录。源码直接编译模式没有 Gradle/Maven 状态，classes 直接写入本轮 `analysis-<random>/{base,head}/classes`，目前不复用该模式的编译产物。
 
 流程：
 
 1. 规范化仓库身份，复用缓存；凭据不进入缓存键和日志。
 2. 通过 JGit fetch 缺失对象：完整 SHA 优先直接获取，服务端不支持时再回退分支发现；缩写先发现分支，再解析为完整 commit SHA。歧义缩写和非 commit 对象提供明确错误，要求使用完整 commit SHA。
 3. 校验两个 commit 可读取；不依赖可变 branch 名继续分析。
-4. 租用空闲 slot 中的一对持久 checkout；每个仓库最多使用 `EngineConfiguration.maximumWorkspaceSlots` 个 slot（默认 2），全部忙碌时可中断地等待 `workspaceLeaseTimeout`（默认 5 分钟），超时阻断分析。以原始 commit blob 恢复源码，内容及 mode 未变化的文件不重写、保留 mtime；被构建修改的 tracked 文件恢复原值，目标 commit 删除的文件移除。不运行 checkout hook 或 smudge filter。
+4. 租用空闲 slot 中的一对持久 checkout；每个仓库最多使用 `EngineConfiguration.maximumWorkspaceSlots` 个 slot（默认 2），全部忙碌时可中断地等待 `workspaceLeaseTimeout`（默认 `2 × buildTimeout + 5 分钟`，即 25 分钟），超时以 `WORKSPACE_CAPACITY_TIMEOUT` 诊断阻断分析，不产生代码变更 finding。`workspaceLeaseTimeout` 只计 commit 解析之后、checkout 之前获取空闲 slot 的等待时间，拿到 slot 即结束；不是无 activity 超时，也不限制 checkout 或 lease 持有时长。该默认值是等待预算的启发式，不是分析的总耗时上限：构建超时按外部命令生效，Maven 每个 revision 可能执行多条命令，源码模式的 javac 在进程内运行且不受该超时控制，图分析也会持有 slot。较大构建或长队列可显式加大等待预算。以原始 commit blob 恢复源码，内容及 mode 未变化的文件不重写、保留 mtime；被构建修改的 tracked 文件恢复原值，目标 commit 删除的文件移除。不运行 checkout hook 或 smudge filter。
+   Slot 按同一缓存中的仓库身份共享，不绑定 PR，不缓存分析结论。对可成功获取非阻塞锁的既有 slot，优先选择完全相同的 base/head，其次选择相同 base 且 head 历史距离较近的候选；同级距离相等或无法判断时按 slot 序号确定顺序。每个 head 最多探索 256 个祖先集合内的提交（含自身），通过已观察到的共同祖先计算两侧距离之和；这是有界启发式，不承诺任意历史上的全局最近距离。已占用的 slot 跳过；没有可获取的既有 slot 时才启用空 slot。读取候选 checkout 的 HEAD 前持有其锁，选择期间最多暂持两个候选锁；时间预算耗尽但已有候选时返回该空闲 slot，不伪报容量不足。获得最终候选后仍按目标 commit 恢复源码，历史状态仅用于调度，不作为源码正确性的证据。跨 PR 的增量收益依赖实际输入差异。
 5. 按目标 commit 的 ignore 规则清理非忽略的 untracked 文件。私有 checkout 的 `info/exclude` 额外保留 `.gradle/`、`build/`、`target/`，构建系统负责验证其任务输入与输出。在独立工作目录构建与分析；用 JGit 读取 commit tree 与 diff。
 6. 完成分析后释放 slot 租约，保留工作目录与构建状态，后续分析继续使用相同路径。checkout 准备失败时删除该 slot 的不完整目录并释放租约；本次导出的分析快照仍独立管理。
 
@@ -347,7 +370,18 @@ flowchart TD
 
 原始选点图可以在多个假定场景间复用，前提是查询选择不依赖折叠后的结果且所有输入身份一致。base/head 各自选点，不能强求调用数量相等。
 
-零匹配的解释必须明确：新引入的控制点在 base 中不存在可以合法；拼错规则、缺少类或未成功解析不能算合法。不能仅用“匹配数量为零”作统一成功或失败判断。
+每个场景的每条规则若在 base 和 head 两侧都没有实际匹配调用，会产生阻断 `UNMATCHED_RULE`。新引入的控制点只在 head 匹配、已删除的控制点只在 base 匹配可以合法；不要求两侧数量相等。查询失败、返回类型不符和无法验证的折叠另行阻断。没有 diff 时不必执行建图和选点，不将这一跳过路径误报为零匹配。
+
+每个场景 × revision × 规则索引（从零开始）都有 `ruleAudits` 记录：
+
+- `selector` 保存类型、原始 Cypher（非 Cypher 规则为 null）与描述。
+- `selectionStatus` 为 `NOT_EXECUTED`、`SELECTED` 或 `FAILED`；`message` 解释跳过或失败。
+- `selectedNodes` 保存原始未折叠图的唯一调用点：节点 ID、caller/callee 签名和 JVM 描述符、可空 ordinal、originNodeId 与调试行号。实际查询只执行一次，审计在来源归一化及派生调用转换之前捕获。后续规则或折叠失败不会抹去已获得的记录。
+- `selectedCount` 在 `SELECTED` 时为节点清单长度（可为 0），其余状态为 null。`matchedCallCount` 独立记录 Graphite FoldReport 的实际匹配调用数，尚未产生结果时为 null；参数约束或派生调用可能使它与选点数量不同，它也不代表所有折叠已成功完成。
+
+节点 ID 仅在对应场景/revision 的图内有意义，不能跨版本 join，也不替代 finding 的精确 diff 坐标。非 Cypher 的 `CALL_SITE_MATCH` 规则同样记录原始图上的候选调用点；为此无来源归一化路径也需要物化未折叠图，尚未完成代表性多图负载性能验收。
+
+CLI 将每条完整审计记录以 `[graphfold.fold]` 加紧凑 JSON 写入 stderr，保留 stdout 的单一 JSON 报告；Gradle 使用默认可见的 lifecycle 日志。文本报告也包含同样记录，节点清单不截断。
 
 ### 8.1 折叠语义
 
@@ -561,11 +595,18 @@ graphfold --repository <url> --base <sha> --head <sha> --fold <rules.yml> --form
 
 采用 cmdline library 负责帮助、参数校验与错误提示。stdout 用于报告，stderr 用于进度和运行日志，便于 CI 消费结构化结果。
 
-当前退出码：`0` 表示 `PASS`，`1` 表示已完成分析但门禁 `FAIL`，`2` 表示输入或运行失败。后两者都不放行；运行失败能够生成结果时，结果 verdict 也是 `FAIL`。
+当前退出码：`0` 表示 `PASS`，`1` 表示分析门禁 `FAIL`，`2` 表示输入、Git 或构建失败，`3` 表示可重试的工作区容量等待超时。所有非零状态均不放行；运行失败能够生成结果时，结果 verdict 也是 `FAIL`。
+
+`graphfold --version` 无需分析参数，输出构建时打包的版本号后以 `0` 退出。release 构建通过 `-Pversion` 指定版本；非 release 构建使用 `gradle.properties` 中的 `baseVersion`（当前 `0.1.0`）加 JGit 读取的 HEAD 前 12 位 SHA，例如 `0.1.0-a1b2c3d4e5f6`。基础版本由配置管理，不自动查找 tag。各模块、发布产物和 CLI 共用同一个版本值。显式指定版本会跳过版本推导中的 Git 读取；现有发布插件自身仍要求 Git 元数据，因此不能承诺源码归档直接构建。运行已打包的 CLI 不需要 Git。release 校验同时验证 CLI JAR 内的版本资源与 ZIP/TAR 内可执行文件的版本输出。
 
 ### 12.2 Gradle plugin
 
 当前 plugin ID 为 `io.johnsonlee.graphfold`，task 名为 `graphFoldCheck`。通过 Gradle Provider API 读取 `graphfold.base`、`graphfold.head` 和 `graphfold.fold` 三个必需的 project property；仓库默认使用 root project 目录，规则文件的相对路径也以该目录解析。不注册 `graphfold` extension。输出机器可读和人类可读报告；门禁失败时 task 失败。
+
+执行参数同时提供 CLI 和 Gradle property 入口：`--workspace-slots` / `graphfold.workspaceSlots`（默认 2），`--build-timeout` / `graphfold.buildTimeout`（每条外部构建命令默认 600 秒），`--lease-timeout` / `graphfold.leaseTimeout`（默认两次构建预算加 300 秒）。显式数值范围为 `1..2147483647`；超时单位为秒。未覆盖 lease 时，增大 build timeout 会同步增大默认等待预算。CLI 的 `--build-env NAME` 可重复，Gradle 的 `graphfold.buildEnv` 用逗号分隔变量名；两者均向默认 allowlist 增补名称，从启动进程继承对应值，不接受 `NAME=value`。SDK 仍可直接设置 `EngineConfiguration`。
+
+CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他输入、Git、构建失败仍为 `2`，分析 gate 失败为 `1`，通过为 `0`。Gradle worker 保留诊断报告，并以容量超时专用消息使 task 失败。所有失败均阻断 gate，入口不自动重试。
+
 
 当前使用 process-isolated Worker API 隔离分析依赖与内存，worker 直接调用引擎，不通过 CLI 转发。
 

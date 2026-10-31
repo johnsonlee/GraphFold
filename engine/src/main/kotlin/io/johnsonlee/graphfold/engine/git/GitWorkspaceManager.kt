@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.git
 
+import io.johnsonlee.graphfold.engine.DEFAULT_MAXIMUM_WORKSPACE_SLOTS
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
@@ -56,7 +57,8 @@ class GitWorkspaceManager(
     private fun createWorkspace(
         cached: Repository, bare: Path, runs: Path, key: String, base: String, head: String,
     ): GitWorkspace {
-        val lease = leaseWorkspace(runs.resolve(key), maximumWorkspaceSlots, workspaceLeaseTimeout)
+        val affinity = WorkspaceAffinity(cached, base, head)
+        val lease = leaseWorkspace(runs.resolve(key), maximumWorkspaceSlots, workspaceLeaseTimeout, affinity::score)
         return runCatching {
             checkout(cached, base, lease.directory.resolve("base"))
             checkout(cached, head, lease.directory.resolve("head"))

@@ -29,6 +29,8 @@ class GraphFoldIntegrationTest {
             .withArguments(
                 "graphFoldCheck", "--stacktrace", "--configuration-cache",
                 "-Pgraphfold.base=${fixture.base}", "-Pgraphfold.head=${fixture.head}", "-Pgraphfold.fold=fold.yml",
+                "-Pgraphfold.workspaceSlots=1", "-Pgraphfold.buildTimeout=900", "-Pgraphfold.leaseTimeout=120",
+                "-Pgraphfold.buildEnv=GRAPHFOLD_TEST_CREDENTIAL,GRAPHFOLD_TEST_USER",
             )
         val result = if (passes) runner.build() else runner.buildAndFail()
         assertEquals(if (passes) TaskOutcome.SUCCESS else TaskOutcome.FAILED, result.task(":graphFoldCheck")?.outcome)
@@ -37,6 +39,11 @@ class GraphFoldIntegrationTest {
         assertEquals(if (passes) "PASS" else "FAIL", report["verdict"].asText())
         assertEquals(fixture.base, report["metadata"]["baseSha"].asText())
         assertEquals(fixture.head, report["metadata"]["headSha"].asText())
+        val auditLines = result.output.lineSequence().filter { it.startsWith("[graphfold.fold]") }.map {
+            mapper.readTree(it.removePrefix("[graphfold.fold]").trim())
+        }.toList()
+        assertTrue(auditLines.isNotEmpty(), result.output)
+        assertEquals(report["ruleAudits"].toList(), auditLines)
         if (!passes) {
             val locations = report["findings"][0]["locations"]
             assertEquals(2, locations.size())
@@ -93,7 +100,8 @@ class GraphFoldIntegrationTest {
         directory.resolve("settings.gradle").writeText("rootProject.name = 'consumer'\ninclude 'child'\n")
         val child = java.nio.file.Files.createDirectories(directory.resolve("child"))
         directory.resolve("gradle.properties").writeText(
-            "graphfold.base=base\ngraphfold.head=head\ngraphfold.fold=rules.yml\n",
+            "graphfold.base=base\ngraphfold.head=head\ngraphfold.fold=rules.yml\n" +
+                "graphfold.workspaceSlots=3\ngraphfold.buildTimeout=1800\ngraphfold.buildEnv=ARTIFACT_TOKEN,BUILD_USER\n",
         )
         child.resolve("build.gradle").writeText(
             """
@@ -106,6 +114,10 @@ class GraphFoldIntegrationTest {
                     assert analysis.fold.get().asFile == new File(rootDir, 'rules.yml')
                     assert analysis.base.get() == 'base'
                     assert analysis.head.get() == 'head'
+                    assert analysis.workspaceSlots.get() == 3
+                    assert analysis.buildTimeout.get() == 1800L
+                    assert analysis.leaseTimeout.get() == 3900L
+                    assert analysis.buildEnv.get().containsAll(['PATH', 'JAVA_HOME', 'ARTIFACT_TOKEN', 'BUILD_USER'])
                     assert !tasks.named('check').get().taskDependencies.getDependencies(null).contains(analysis)
                     println 'ROOT_PROPERTIES_VERIFIED'
                 }

@@ -4,11 +4,22 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 
 /** Common report encoding for the CLI, Gradle plugin, and SDK consumers. */
 object AnalysisReports {
-    fun json(result: AnalysisResult): String = jacksonObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(result)
+    private val mapper = jacksonObjectMapper()
+
+    fun json(result: AnalysisResult): String = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result)
+
+    /** The packaged JSON Schema applies to the serialized result, independently of its output filename. */
+    fun schema(): String = javaClass.getResource("verdict.schema.json").readText()
+
+    /** One structured log line per revision/rule, including every selected node; callers choose the log destination. */
+    fun foldSelectionLog(result: AnalysisResult): List<String> = result.ruleAudits.map {
+        "[graphfold.fold] ${mapper.writeValueAsString(it)}"
+    }
 
     fun text(result: AnalysisResult): String = buildString {
         appendLine("GraphFold: ${result.verdict}")
         appendLine("Proved ${result.metadata.provedObligations}/${result.metadata.obligations} change obligations")
+        foldSelectionLog(result).forEach { appendLine(it) }
         result.reasons.forEach { reason ->
             appendLine("${reason.code} [${reason.changes.joinToString()}]: ${reason.message}")
         }

@@ -62,7 +62,12 @@ class GraphiteAnalyzerTest {
             "select" to "MATCH (cs:CallSite) WHERE cs.callee_name = 'enabled' RETURN cs",
             "args" to mapOf(0 to "checkout"), "value" to false,
         ))
-        val result = GraphiteAnalyzer().analyze(classes, listOf(selected))
+        val audits = mutableMapOf<Int, RuleAuditUpdate>()
+        val result = GraphiteAnalyzer { index, update -> audits[index] = update }.analyze(classes, listOf(selected))
+        assertEquals(2, audits.getValue(0).selectedNodes.size)
+        assertEquals(1, audits.getValue(0).matchedCallCount)
+        assertEquals(setOf(0, 1), audits.getValue(0).selectedNodes.map { it.ordinal }.toSet())
+        assertTrue(audits.getValue(0).selectedNodes.all { it.callee.signature == "Sample.enabled(java.lang.String)" })
         assertFalse("Sample.work()V" in result.methods.getValue("Sample.run()V").calls)
         assertTrue("Sample.tail()V" in result.methods.getValue("Sample.run()V").calls)
         assertTrue(result.diagnostics.any { it.contains("other") }, result.diagnostics.toString())

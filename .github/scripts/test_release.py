@@ -1,10 +1,24 @@
 import unittest
+import io
+import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from release import version, checksums, verify, compare
+from release import version, checksums, verify, compare, verify_cli_version, CLI_VERSION_RESOURCE
 
 
 class VersionTest(unittest.TestCase):
+    def test_packaged_version_matches_release(self):
+        with zipfile.ZipFile(io.BytesIO(), "w") as archive:
+            archive.writestr(CLI_VERSION_RESOURCE, "1.2.3\n")
+            verify_cli_version(archive, "1.2.3")
+            with self.assertRaisesRegex(ValueError, "differs"):
+                verify_cli_version(archive, "1.2.4")
+
+    def test_missing_packaged_version_fails(self):
+        with zipfile.ZipFile(io.BytesIO(), "w") as archive:
+            with self.assertRaisesRegex(ValueError, "Missing packaged CLI version"):
+                verify_cli_version(archive, "1.2.3")
+
     def test_release(self):
         self.assertEqual(("1.2.3", False), version("v1.2.3"))
 

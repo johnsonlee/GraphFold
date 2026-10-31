@@ -58,5 +58,15 @@ class AnalysisModelTest {
         assertFailsWith<IllegalArgumentException> { config.copy(maximumScenarios = 0) }
     }
 
+    @Test
+    fun `lease default covers both revision builds plus checkout preparation`() {
+        val cache = Path.of("cache")
+        assertEquals(Duration.ofMinutes(25), EngineConfiguration(cache).workspaceLeaseTimeout)
+        assertEquals(Duration.ofMinutes(45), EngineConfiguration(cache, buildTimeout = Duration.ofMinutes(20)).workspaceLeaseTimeout)
+        assertEquals(Duration.ofSeconds(302), EngineConfiguration(cache, buildTimeout = Duration.ofSeconds(1)).workspaceLeaseTimeout)
+        assertEquals(Duration.ofSeconds(7), EngineConfiguration(cache, buildTimeout = Duration.ofMinutes(20),
+            workspaceLeaseTimeout = Duration.ofSeconds(7)).workspaceLeaseTimeout)
+    }
+
     private fun location() = SourceLocation(Revision.HEAD, "src/Example.java", SourceRange(1, 1), SourceRange(1, 2))
 }

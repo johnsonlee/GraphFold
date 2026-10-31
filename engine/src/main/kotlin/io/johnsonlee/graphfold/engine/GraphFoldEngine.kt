@@ -4,7 +4,11 @@ import io.johnsonlee.graphfold.engine.build.ProjectCompiler
 import io.johnsonlee.graphfold.engine.git.ChangedFile
 import io.johnsonlee.graphfold.engine.git.GitWorkspace
 import io.johnsonlee.graphfold.engine.git.GitWorkspaceManager
+import io.johnsonlee.graphfold.engine.git.WorkspaceLeaseTimeoutException
 import io.johnsonlee.graphfold.engine.graphite.GraphiteAnalyzer
+import io.johnsonlee.graphfold.engine.graphite.RuleAuditUpdate
+import io.johnsonlee.graphite.input.ConstantFold
+import io.johnsonlee.graphite.input.FoldSites
 import io.johnsonlee.graphfold.engine.origin.OriginProject
 import io.johnsonlee.graphfold.engine.origin.bindOrigins
 import io.johnsonlee.graphfold.engine.origin.prepareOrigins
@@ -28,7 +32,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         val state = RunState(request)
         return try {
             val scenarios = FoldDocument.parse(request.fold, configuration.maximumScenarios)
-            state.scenarios = scenarios.map { it.name }
+            state.initialize(scenarios)
             state.stage = AnalysisStage.GIT
             val manager = GitWorkspaceManager(
                 configuration.cacheDirectory.resolve("git"),
@@ -40,6 +44,9 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
                 state.headSha = workspace.headSha
                 execute(workspace, scenarios, state)
             }
+            state.result()
+        } catch (failure: WorkspaceLeaseTimeoutException) {
+            state.diagnostics += Diagnostic(AnalysisStage.GIT, "WORKSPACE_CAPACITY_TIMEOUT", requireNotNull(failure.message))
             state.result()
         } catch (failure: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -54,7 +61,10 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
     private fun execute(workspace: GitWorkspace, scenarios: List<FoldScenario>, state: RunState) {
         val changes = workspace.changes()
         state.obligations = changes.size
-        if (changes.isEmpty()) return
+        if (changes.isEmpty()) {
+            state.ruleAudits.replaceAll { it.copy(message = "No base/head diff; graph selection was not executed") }
+            return
+        }
         state.stage = AnalysisStage.BUILD
         val run = Files.createTempDirectory(configuration.cacheDirectory, "analysis-")
         try {
@@ -84,9 +94,10 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
 
     private fun compareScenario(base: OriginProject, head: OriginProject, scenario: FoldScenario, state: RunState): SnapshotComparison {
         state.stage = AnalysisStage.GRAPH
-        val analyzer = GraphiteAnalyzer()
-        val old = analyzer.analyzeOriginProject(base, scenario.rules)
-        val new = analyzer.analyzeOriginProject(head, scenario.rules)
+        val old = GraphiteAnalyzer { index, update -> state.audit(scenario.name, Revision.BASE, index, update) }
+            .analyzeOriginProject(base, scenario.rules)
+        val new = GraphiteAnalyzer { index, update -> state.audit(scenario.name, Revision.HEAD, index, update) }
+            .analyzeOriginProject(head, scenario.rules)
         (old.diagnostics.map { "base: $it" } + new.diagnostics.map { "head: $it" }).forEach {
             state.diagnostics += Diagnostic(AnalysisStage.GRAPH, "INCOMPLETE_GRAPH", it)
         }
@@ -207,7 +218,30 @@ private class RunState(request: AnalysisRequest) {
     val reasons = mutableListOf<VerdictReason>()
     val findings = mutableListOf<Finding>()
     val diagnostics = mutableListOf<Diagnostic>()
+    val ruleAudits = mutableListOf<RuleAudit>()
+
+    fun initialize(folds: List<FoldScenario>) {
+        scenarios = folds.map { it.name }
+        folds.forEach { scenario ->
+            Revision.entries.forEach { revision -> ruleAudits.addAll(initialAudits(scenario, revision)) }
+        }
+    }
+
+    fun audit(scenario: String, revision: Revision, ruleIndex: Int, update: RuleAuditUpdate) {
+        val index = ruleAudits.indexOfFirst { it.scenario == scenario && it.revision == revision && it.ruleIndex == ruleIndex }
+        ruleAudits[index] = ruleAudits[index].copy(selectionStatus = update.selectionStatus,
+            selectedNodes = update.selectedNodes, matchedCallCount = update.matchedCallCount, message = update.message)
+    }
     fun result() = AnalysisResult(
-        findings.toList(), diagnostics.toList(), AnalysisMetadata(baseSha, headSha, scenarios, obligations, proved), reasons.toList(),
+        findings.toList(), diagnostics.toList(), AnalysisMetadata(baseSha, headSha, scenarios, obligations, proved),
+        reasons.toList(), ruleAudits.toList(),
     )
+}
+
+private fun initialAudits(scenario: FoldScenario, revision: Revision): List<RuleAudit> = scenario.rules.mapIndexed { index, rule ->
+    val selector = when (rule) {
+        is FoldSites -> RuleSelector(RuleSelectorKind.CYPHER, rule.select, rule.description)
+        is ConstantFold -> RuleSelector(RuleSelectorKind.CALL_SITE_MATCH, null, rule.description)
+    }
+    RuleAudit(scenario.name, revision, index, selector, message = "Analysis did not reach rule selection")
 }
