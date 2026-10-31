@@ -17,7 +17,15 @@ import org.eclipse.jgit.errors.IncorrectObjectTypeException
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevWalk
 
-/** JGit owns a shared bare object cache and isolated working trees backed by object alternates. */
+/**
+ * Manages a shared JGit object cache and persistent, isolated working trees backed by object alternates.
+ * Slots prefer the same base revision and nearby head revisions to retain useful incremental build state.
+ *
+ * @param cacheDirectory Root for repository object caches, workspace slots, and their locks.
+ * @param maximumWorkspaceSlots Positive maximum number of simultaneously leased slots per repository.
+ * @param workspaceLeaseTimeout Positive time budget for acquiring a free slot; it does not limit lease lifetime.
+ * @throws IllegalArgumentException if the slot count or lease timeout is not positive.
+ */
 class GitWorkspaceManager(
     private val cacheDirectory: Path,
     private val maximumWorkspaceSlots: Int = DEFAULT_MAXIMUM_WORKSPACE_SLOTS,
@@ -29,6 +37,18 @@ class GitWorkspaceManager(
             "workspace lease timeout must be positive"
         }
     }
+    /**
+     * Resolves both commits and exclusively leases their checkouts; the caller must close the returned workspace.
+     * Missing objects are fetched into the shared cache before checkout. The caller's repository is not modified.
+     *
+     * @param repository Local repository path or remote URL understood by JGit.
+     * @param base Hexadecimal base commit SHA, full length or an unambiguous abbreviation of at least seven characters.
+     * @param head Hexadecimal head commit SHA, full length or an unambiguous abbreviation of at least seven characters.
+     * @throws IllegalArgumentException if the repository is blank or the revisions are not hexadecimal SHA strings.
+     * @throws WorkspaceLeaseTimeoutException if no slot becomes available within the configured wait budget.
+     * @throws GitOperationException if fetching, resolving, or materializing either revision fails.
+     * @throws InterruptedException if the calling thread is interrupted.
+     */
     fun open(repository: String, base: String, head: String): GitWorkspace {
         require(repository.isNotBlank() && !repository.startsWith('-')) { "Repository is required" }
         require(COMMIT.matches(base) && COMMIT.matches(head)) { "Base and head must be commit SHAs" }

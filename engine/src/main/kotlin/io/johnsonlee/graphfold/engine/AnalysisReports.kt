@@ -6,6 +6,11 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 object AnalysisReports {
     private val mapper = jacksonObjectMapper()
 
+    /**
+     * Encodes [result] as indented JSON under the versioned [schema] contract.
+     *
+     * @return JSON text including derived verdict, reasons, diagnostics, and complete rule audits.
+     */
     fun json(result: AnalysisResult): String = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result)
 
     /** The packaged JSON Schema applies to the serialized result, independently of its output filename. */
@@ -16,6 +21,11 @@ object AnalysisReports {
         "[graphfold.fold] ${mapper.writeValueAsString(it)}"
     }
 
+    /**
+     * Renders [result] for a terminal, including proof counts, full selection logs, reasons, findings, and diagnostics.
+     *
+     * @return Human-readable report without a trailing newline; not a stable machine-readable format.
+     */
     fun text(result: AnalysisResult): String = buildString {
         appendLine("GraphFold: ${result.verdict}")
         appendLine("Proved ${result.metadata.provedObligations}/${result.metadata.obligations} change obligations")

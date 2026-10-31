@@ -25,16 +25,47 @@ import java.nio.file.Path
 import java.nio.file.Files
 import java.net.URLClassLoader
 
-enum class SymbolKind { CLASS, FIELD, METHOD }
+/** JVM declaration category used to connect source edits to graph and bytecode evidence. */
+enum class SymbolKind {
+    /** A class, interface, enum, record, or emitted Kotlin owner. */
+    CLASS,
+    /** A field declaration or Kotlin property mapped to an emitted field. */
+    FIELD,
+    /** A method or constructor with a JVM method descriptor. */
+    METHOD,
+}
 
+/**
+ * A source declaration mapped to a JVM owner and, where resolvable, a member.
+ *
+ * @property identity Dotted class name, owner-qualified field name, or owner-qualified method name and JVM descriptor.
+ * @property owner Dotted JVM binary name of the owning class.
+ * @property kind Declaration category controlling the subsequent proof obligation.
+ * @property location Enclosing declaration range in its revision; findings are narrowed to actual diff fragments later.
+ * @property compilerOrigin Whether this symbol's anonymous owner was bound using validated compiler provenance.
+ */
 data class SourceSymbol(
     val identity: String, val owner: String, val kind: SymbolKind, val location: SourceLocation,
     val compilerOrigin: Boolean = false,
 )
 
+/**
+ * Source text and resolvable declarations for a single repository-relative path.
+ *
+ * @property path Path relative to the analyzed checkout.
+ * @property text Original source text used for exact diff and location calculations.
+ * @property symbols Declarations successfully associated with JVM identities or conservative class-level obligations.
+ * @property diagnostics Parse or resolution gaps; an empty symbol list alone does not establish that the source is harmless.
+ */
 data class IndexedSource(val path: String, val text: String, val symbols: List<SourceSymbol>, val diagnostics: List<String>)
 
-/** Java-only source adapter. Unsupported languages remain unresolved obligations in the engine. */
+/**
+ * Indexes Java declarations with JavaParser's Java 17 grammar and symbol solver.
+ * Resolution gaps remain diagnostics rather than guessed JVM names. Close the index to release its dependency loader.
+ *
+ * @param sourceRoots Production Java source roots used for declaration resolution.
+ * @param dependencies Resolved dependency JARs and class directories used for external type resolution.
+ */
 class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoCloseable {
     private val dependencyLoader = URLClassLoader(
         dependencies.filter(Files::isDirectory).map { it.toUri().toURL() }.toTypedArray(), ClassLoader.getPlatformClassLoader(),
@@ -53,10 +84,20 @@ class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoC
         )
     }
 
+    /** Releases the dependency class loader and its open resources. */
     override fun close() {
         dependencyLoader.close()
     }
 
+    /**
+     * Reads a Java source file and indexes its resolvable classes, fields, methods, and constructors.
+     * Parse errors and unsupported or unresolved declarations are returned as diagnostics.
+     *
+     * @param root Checkout directory containing the source file.
+     * @param relativePath Source path relative to [root].
+     * @param revision Revision label attached to every returned source location.
+     * @return Original text, resolved symbols, and analysis gaps for the file.
+     */
     fun index(root: Path, relativePath: String, revision: Revision): IndexedSource {
         val file = root.resolve(relativePath)
         val text = java.nio.file.Files.readString(file)

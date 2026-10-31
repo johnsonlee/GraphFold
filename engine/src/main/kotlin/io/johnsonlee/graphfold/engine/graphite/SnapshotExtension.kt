@@ -14,10 +14,15 @@ import java.util.IdentityHashMap
 /** ServiceLoader entry point. All capture state belongs to a single loader invocation. */
 @AutoService(GraphiteExtension::class)
 class SnapshotExtension : GraphiteExtension {
+    /**
+     * Captures [sootClass] in the invocation-local sink using [context] to resolve JVM method identities.
+     * Calls made outside an active GraphFold capture on this thread have no effect.
+     */
     override fun visit(sootClass: SootClass, context: GraphiteContext) {
         current.get()?.capture(sootClass, context)
     }
 
+    /** Coordinates the thread-local capture scope used by [GraphiteAnalyzer]. */
     companion object {
         private val current = ThreadLocal<SnapshotSink>()
 

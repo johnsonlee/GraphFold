@@ -28,6 +28,10 @@ import org.objectweb.asm.tree.ClassNode
  * Properties map to emitted fields. Generated or ambiguous declarations retain CLASS obligations.
  * File-wide fallback owners retain constructs such as constructors and compiler-generated declarations.
  * Exact diff fragments, rather than these enclosing ranges, remain the reported finding locations.
+ * Close the index to dispose its headless Kotlin PSI environment.
+ *
+ * @param classes Directory of application class files emitted for the same revision as the indexed sources.
+ * @param sourceOutputs Source-root to original class-output mapping; when supplied, limits owners to their build module.
  */
 class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List<Path>> = emptyMap()) : AutoCloseable {
     private val disposable = Disposer.newDisposable("graphfold-kotlin-source")
@@ -37,10 +41,20 @@ class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List
     private val factory = KtPsiFactory(environment.project, false)
     private val inventory: List<Owner> = readOwners(classes)
 
+    /** Disposes the Kotlin PSI environment; this index must not be used afterward. */
     override fun close() {
         Disposer.dispose(disposable)
     }
 
+    /**
+     * Reads a Kotlin source file and binds its PSI declarations to available emitted JVM owners.
+     * Ambiguous member matches retain class-level obligations; missing owners and parse errors produce diagnostics.
+     *
+     * @param root Checkout directory containing the source file.
+     * @param relativePath Source path relative to [root].
+     * @param revision Revision label attached to every returned source location.
+     * @return Original text, resolved symbols or conservative owner obligations, and analysis gaps.
+     */
     fun index(root: Path, relativePath: String, revision: Revision): IndexedSource {
         val source = root.resolve(relativePath)
         val text = Files.readString(source)

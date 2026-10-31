@@ -24,8 +24,23 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
-/** Public synchronous SDK. Each call owns its workspace and analysis state. */
+/**
+ * Synchronous entry point for comparing Git revisions under caller-supplied folding assumptions.
+ * Each call owns its analysis state and acquires an exclusive lease on a reusable workspace.
+ * Analysis may execute repository build scripts; the caller must trust or isolate the analyzed repository.
+ *
+ * @param configuration Cache locations, resource limits, and inherited build environment policy.
+ */
 class GraphFoldEngine(private val configuration: EngineConfiguration) {
+    /**
+     * Resolves and builds [request]'s revisions, then checks diff obligations in every folding scenario.
+     *
+     * Adapter exceptions and analysis gaps become blocking diagnostics rather than a partial passing result.
+     * Interruption produces an analysis-cancelled diagnostic and restores the thread's interrupt flag.
+     * Workspace leases are released before returning; persistent checkout and build state remain reusable.
+     *
+     * @return Complete or partial report whose verdict fails for any finding, blocking diagnostic, or unproved obligation.
+     */
     // The SDK boundary must return a blocking diagnostic for any failed adapter, never a partial PASS.
     @Suppress("TooGenericExceptionCaught")
     fun analyze(request: AnalysisRequest): AnalysisResult {

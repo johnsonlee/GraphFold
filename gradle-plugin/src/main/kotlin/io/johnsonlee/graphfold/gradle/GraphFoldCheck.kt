@@ -21,20 +21,39 @@ import org.gradle.work.DisableCachingByDefault
 import org.gradle.workers.WorkerExecutor
 import javax.inject.Inject
 
+/**
+ * Compares two Git revisions under fold rules in a separate Gradle worker process.
+ *
+ * The task always invokes the engine, which manages checkout reuse and analysis input identity.
+ * Target-project builds can still use their own incremental compilation and build caches.
+ *
+ * @param workers Gradle-provided executor used to isolate compiler and engine dependencies.
+ */
 @DisableCachingByDefault(because = "Remote repositories and external builds require engine-managed input identity")
 abstract class GraphFoldCheck @Inject constructor(private val workers: WorkerExecutor) : DefaultTask() {
+    /** Git repository URL or local path; defaults to the root project's directory when registered by the plugin. */
     @get:Input abstract val repository: Property<String>
+    /** Base commit SHA against which [head] is compared. */
     @get:Input abstract val base: Property<String>
+    /** Head commit SHA containing the changes to analyze. */
     @get:Input abstract val head: Property<String>
+    /** Maximum number of checkout pairs available concurrently in the shared cache; must be positive. */
     @get:Input abstract val workspaceSlots: Property<Int>
+    /** Timeout for each external build command, in positive whole seconds. */
     @get:Input abstract val buildTimeout: Property<Long>
+    /** Maximum wait for a free checkout pair, in positive whole seconds; excludes time spent using the pair. */
     @get:Input abstract val leaseTimeout: Property<Long>
+    /** Names of environment variables external builds may inherit; entries are names, not values. */
     @get:Input abstract val buildEnv: SetProperty<String>
+    /** YAML file containing fold rules and optional analysis scenarios. */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val fold: RegularFileProperty
+    /** Shared directory for Git objects, reusable checkouts, and engine-managed analysis state. */
     @get:LocalState abstract val cacheDirectory: DirectoryProperty
+    /** Destination for the machine-readable analysis result, written before an analysis failure is reported. */
     @get:OutputFile abstract val jsonReport: RegularFileProperty
+    /** Destination for the human-readable analysis result, written before an analysis failure is reported. */
     @get:OutputFile abstract val textReport: RegularFileProperty
 
     init {
@@ -45,6 +64,11 @@ abstract class GraphFoldCheck @Inject constructor(private val workers: WorkerExe
         outputs.upToDateWhen { false }
     }
 
+    /**
+     * Submits the configured analysis to an isolated worker and waits for its reports and verdict.
+     *
+     * Worker failures, including a failing verdict, fail this task through Gradle's worker infrastructure.
+     */
     @TaskAction
     fun analyze() {
         val queue = workers.processIsolation { spec -> spec.forkOptions.maxHeapSize = "2g" }

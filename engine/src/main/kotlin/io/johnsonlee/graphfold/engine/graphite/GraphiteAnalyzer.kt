@@ -15,10 +15,25 @@ import io.johnsonlee.graphite.input.LoaderConfig
 import io.johnsonlee.graphite.sootup.JavaProjectLoader
 import java.nio.file.Path
 
-/** Uses the same public frontend for selection and folded IR capture. */
+/**
+ * Selects fold targets through Graphite and captures folded IR together with independent bytecode metadata.
+ * Returned diagnostics describe incomplete analysis and must be checked before using a snapshot as proof.
+ */
 class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAuditUpdate) -> Unit) {
+    /** Creates an analyzer without an external rule-audit callback. */
     constructor() : this({ _, _ -> })
 
+    /**
+     * Resolves [rules] against this artifact and captures the resulting folded application snapshot.
+     * Selection is evaluated for this invocation; matches from another revision are not reused.
+     *
+     * @param artifact Application class directory or archive to load.
+     * @param rules Fold rules in application order; an empty list captures the program without folding.
+     * @param dependencies Resolved dependency JARs and class directories used to complete the frontend's classpath.
+     * @return Structural evidence and any recoverable omissions reported by inventory or frontend analysis.
+     * @throws IllegalArgumentException if a fold selection has an invalid shape or cannot be applied safely.
+     * @throws IllegalStateException if selection or snapshot capture fails, including missing SPI capture.
+     */
     fun analyze(artifact: Path, rules: List<FoldRule>, dependencies: List<Path> = emptyList()): ProgramSnapshot {
         val inventory = BytecodeInventory().also { it.read(artifact) }
         inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics)

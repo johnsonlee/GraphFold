@@ -32,6 +32,14 @@ import java.nio.file.Path
 import java.time.Duration
 import kotlin.system.exitProcess
 
+/**
+ * Runs GraphFold and terminates the process with its analysis exit status.
+ *
+ * Exit codes are `0` for success, `1` for an uncontrolled or unverifiable change, `2` for invalid
+ * input or an operational failure, and `3` when waiting for workspace capacity times out.
+ *
+ * @param args command-line arguments, including the repository, revisions, and fold-rule file.
+ */
 fun main(args: Array<String>) {
     exitProcess(executeCli(args))
 }

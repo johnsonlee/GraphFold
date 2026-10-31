@@ -10,7 +10,18 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.provider.Provider
 
+/**
+ * Registers `graphFoldCheck`, configured from `graphfold.*` Gradle properties.
+ *
+ * `graphfold.base`, `graphfold.head`, and `graphfold.fold` supply the required analysis inputs.
+ * The task is invoked explicitly and is not attached to Gradle's `check` lifecycle task.
+ */
 class GraphFoldPlugin : Plugin<Project> {
+    /**
+     * Registers the verification task and its lazy input and report conventions.
+     *
+     * @param project project receiving the task; repository and fold-file paths are based on its root project.
+     */
     override fun apply(project: Project) {
         val rootDirectory = project.rootProject.layout.projectDirectory
         val base = requiredProperty(project, "graphfold.base")

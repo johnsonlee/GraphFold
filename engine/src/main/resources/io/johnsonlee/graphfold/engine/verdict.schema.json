@@ -17,41 +17,48 @@
   "properties": {
     "schemaVersion": {
       "type": "integer",
-      "const": 1
+      "const": 1,
+      "description": "Version of the serialized verdict contract; version 1 corresponds to this schema. This is independent of the GraphFold release version."
     },
     "verdict": {
       "type": "string",
       "enum": [
         "PASS",
         "FAIL"
-      ]
+      ],
+      "description": "Engine-derived gate decision: PASS requires no findings, no blocking diagnostics, and equality of obligations and provedObligations; otherwise FAIL."
     },
     "findings": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/finding"
-      }
+      },
+      "description": "Blocking violations anchored to verified changed source spans in the base/head diff. An empty array alone does not imply PASS."
     },
     "diagnostics": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/diagnostic"
-      }
+      },
+      "description": "Analysis conditions and coverage gaps, including failures without a source location. Any blocking diagnostic prevents PASS."
     },
     "metadata": {
-      "$ref": "#/$defs/metadata"
+      "$ref": "#/$defs/metadata",
+      "description": "Revision identities, parsed scenarios, proof-completion counts, and the Graphite version recorded for this analysis."
     },
     "reasons": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/reason"
-      }
+      },
+      "description": "Per-obligation explanations of proof outcomes under individual folding scenarios, including safe changes and incomplete analysis."
     },
     "ruleAudits": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/ruleAudit"
-      }
+      },
+      "description": "Available rule-selection and fold-application records, scoped by scenario, revision, and rule index. Records may be partial when analysis fails."
     }
   },
   "$defs": {
@@ -60,7 +67,8 @@
       "enum": [
         "BASE",
         "HEAD"
-      ]
+      ],
+      "description": "Side of the Git comparison: BASE is the baseline; HEAD is the proposed revision."
     },
     "sourceRange": {
       "type": "object",
@@ -73,15 +81,17 @@
         "start": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "One-based coordinate of the first source position on this axis."
         },
         "end": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "One-based coordinate of the exclusive end position on this axis. An end column can be less than its start column when the span crosses lines."
         }
       },
-      "description": "One-based coordinates. End positions are exclusive; columns are UTF-16 offsets."
+      "description": "One axis of a source span, combined with the other axis in sourceLocation. Coordinates are one-based; the paired end position is exclusive. Column values count UTF-16 code units within their respective lines."
     },
     "sourceLocation": {
       "type": "object",
@@ -94,20 +104,24 @@
       ],
       "properties": {
         "revision": {
-          "$ref": "#/$defs/revision"
+          "$ref": "#/$defs/revision",
+          "description": "Revision containing the source span; removed source is located in BASE and added source in HEAD."
         },
         "path": {
           "type": "string",
-          "pattern": "\\S"
+          "pattern": "\\S",
+          "description": "Nonblank repository-relative file path. The model rejects absolute paths and paths that escape the repository after normalization."
         },
         "line": {
-          "$ref": "#/$defs/sourceRange"
+          "$ref": "#/$defs/sourceRange",
+          "description": "One-based line coordinates of the start and exclusive end positions. The end line cannot precede the start line."
         },
         "column": {
-          "$ref": "#/$defs/sourceRange"
+          "$ref": "#/$defs/sourceRange",
+          "description": "One-based UTF-16 column coordinates on the corresponding start and end lines, not byte offsets or display widths. End columns are ordered after start columns only for spans on the same line."
         }
       },
-      "description": "Path is repository-relative. End line must not precede start; columns are ordered only within the same line. These cross-field ordering constraints are enforced by the model."
+      "description": "Repository-relative source span from (line.start, column.start) to the exclusive (line.end, column.end). The model rejects escaping paths and end positions preceding the start; those cross-field constraints are not expressed by this structural schema."
     },
     "evidence": {
       "type": "object",
@@ -118,7 +132,8 @@
       ],
       "properties": {
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "Human-readable supporting evidence or remaining representation difference."
         },
         "location": {
           "anyOf": [
@@ -128,9 +143,11 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Supporting source span, or null when the evidence has no precise source location."
         }
-      }
+      },
+      "description": "Supporting explanation for a finding, optionally anchored to a precise source span."
     },
     "finding": {
       "type": "object",
@@ -147,43 +164,51 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "\\S"
+          "pattern": "\\S",
+          "description": "Nonblank identifier distinguishing this finding within the report."
         },
         "kind": {
           "type": "string",
           "enum": [
             "UNCONTROLLED_CHANGE",
             "UNVERIFIABLE_CHANGE"
-          ]
+          ],
+          "description": "UNCONTROLLED_CHANGE identifies a change outside the specified folding control; UNVERIFIABLE_CHANGE means the changed location could not be proved safe."
         },
         "ruleId": {
           "type": "string",
-          "pattern": "\\S"
+          "pattern": "\\S",
+          "description": "Nonblank identifier of the analysis rule that reported the finding; distinct from a fold-rule index."
         },
         "message": {
           "type": "string",
-          "pattern": "\\S"
+          "pattern": "\\S",
+          "description": "Nonblank human-readable explanation of the violation or unresolved proof."
         },
         "locations": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/sourceLocation"
           },
-          "minItems": 1
+          "minItems": 1,
+          "description": "Nonempty list of verified diff spans associated with the finding; may include spans from both BASE and HEAD."
         },
         "evidence": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/evidence"
-          }
+          },
+          "description": "Additional explanations supporting the finding; empty when no supplementary evidence is available."
         },
         "scenarios": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Names of folding scenarios in which this finding occurred; may be empty when no scenario is attached."
         }
-      }
+      },
+      "description": "Blocking uncontrolled or unverifiable change, anchored to one or more verified source spans from the base/head diff."
     },
     "diagnostic": {
       "type": "object",
@@ -206,7 +231,8 @@
             "FOLD",
             "COMPARE",
             "REPORT"
-          ]
+          ],
+          "description": "Phase reporting the condition: input validation, Git preparation, compilation, source indexing, graph construction, folding, comparison, or report generation."
         },
         "code": {
           "type": "string",
@@ -220,15 +246,19 @@
             "UNMAPPED_CHANGE",
             "SOURCE_RESOLUTION_FAILED",
             "UNLOCATED_MOVE_DIFFERENCE"
-          ]
+          ],
+          "description": "Stable machine-readable diagnostic identity. Distinguishes workspace-capacity timeout, cancellation, unexpected failure, unverified compiler origin, incomplete graph, unmatched fold rule, unmapped change, failed source resolution, and an unlocated difference after a file move."
         },
         "message": {
-          "type": "string"
+          "type": "string",
+          "description": "Human-readable explanation of the condition and available context."
         },
         "blocking": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Whether this diagnostic forces FAIL even when findings is empty."
         }
-      }
+      },
+      "description": "Analysis condition that may prevent a reliable verdict without identifying a changed source span."
     },
     "metadata": {
       "type": "object",
@@ -243,31 +273,38 @@
       ],
       "properties": {
         "baseSha": {
-          "type": "string"
+          "type": "string",
+          "description": "Resolved base commit SHA, or the requested base revision if resolution did not complete."
         },
         "headSha": {
-          "type": "string"
+          "type": "string",
+          "description": "Resolved head commit SHA, or the requested head revision if resolution did not complete."
         },
         "scenarios": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Names of parsed folding scenarios; may be empty if scenario parsing did not complete."
         },
         "obligations": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Number of obligations requiring proof; on an early failure this may instead reflect pending changed files. PASS requires equality with provedObligations."
         },
         "provedObligations": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Number of obligations proved across every analyzed scenario, rather than the total of individual scenario proofs."
         },
         "graphiteVersion": {
-          "type": "string"
+          "type": "string",
+          "description": "Graphite dependency version recorded by the analysis; distinct from schemaVersion and the GraphFold release version."
         }
-      }
+      },
+      "description": "Revision identities and proof progress for the completed or partial analysis."
     },
     "reason": {
       "type": "object",
@@ -308,7 +345,8 @@
               "CLASS_INITIALIZATION_CHANGED"
             ]
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "description": "Distinct syntax-level change categories associated with the obligation. These describe what changed, independently of whether the change is safe."
         },
         "code": {
           "type": "string",
@@ -317,33 +355,40 @@
             "UNREACHABLE",
             "SURVIVING_DIFFERENCE",
             "ANALYSIS_INCOMPLETE"
-          ]
+          ],
+          "description": "FOLDED_EQUIVALENT means no analyzed folded difference survives; UNREACHABLE means the change is unreachable under the entry model and assumptions; SURVIVING_DIFFERENCE means a difference remains; ANALYSIS_INCOMPLETE means a gap prevents a safety conclusion."
         },
         "message": {
-          "type": "string"
+          "type": "string",
+          "description": "Human-readable explanation of the proof outcome."
         },
         "locations": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/sourceLocation"
-          }
+          },
+          "description": "Diff spans associated with the obligation; may be empty for a pure file move."
         },
         "scenario": {
-          "type": "string"
+          "type": "string",
+          "description": "Name of the folding scenario used for this proof."
         },
         "basePath": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "Repository-relative old file path, or null when the base path is absent or unspecified."
         },
         "headPath": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "Repository-relative new file path, or null when the head path is absent or unspecified."
         }
-      }
+      },
+      "description": "Explanation of a change obligation outcome under one folding scenario, independent of whether it produces a finding."
     },
     "selector": {
       "type": "object",
@@ -359,18 +404,22 @@
           "enum": [
             "CYPHER",
             "CALL_SITE_MATCH"
-          ]
+          ],
+          "description": "CYPHER selects call sites with a query; CALL_SITE_MATCH selects them using a configured constant-fold call-site match."
         },
         "query": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "Cypher query text for CYPHER selectors; null for CALL_SITE_MATCH selectors."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "Description supplied by the fold rule to identify its intended selection."
         }
-      }
+      },
+      "description": "Description of how a fold rule selects candidate call sites."
     },
     "method": {
       "type": "object",
@@ -381,12 +430,15 @@
       ],
       "properties": {
         "signature": {
-          "type": "string"
+          "type": "string",
+          "description": "Graphite method signature identifying the caller or callee; a graph identity rather than a verified source declaration."
         },
         "descriptor": {
-          "type": "string"
+          "type": "string",
+          "description": "JVM method descriptor containing parameter and return types."
         }
-      }
+      },
+      "description": "Method identity reported by Graphite for a selected call site."
     },
     "selectedCallSite": {
       "type": "object",
@@ -403,13 +455,16 @@
         "nodeId": {
           "type": "integer",
           "minimum": -2147483648,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Raw call-site node identifier within this scenario and revision; not a stable identifier across graphs or revisions."
         },
         "caller": {
-          "$ref": "#/$defs/method"
+          "$ref": "#/$defs/method",
+          "description": "Graphite identity of the method containing this invocation."
         },
         "callee": {
-          "$ref": "#/$defs/method"
+          "$ref": "#/$defs/method",
+          "description": "Graphite identity of the method targeted by this invocation."
         },
         "ordinal": {
           "type": [
@@ -417,7 +472,8 @@
             "null"
           ],
           "minimum": -2147483648,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Invocation ordinal reported by the raw graph, or null when unavailable. It is not a source offset and may reflect synthetic bytecode."
         },
         "originNodeId": {
           "type": [
@@ -425,7 +481,8 @@
             "null"
           ],
           "minimum": -2147483648,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Origin-node identifier reported by Graphite for this call site, or null when no origin is recorded; scoped to the same graph."
         },
         "lineNumber": {
           "type": [
@@ -433,10 +490,11 @@
             "null"
           ],
           "minimum": -2147483648,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Bytecode debug line number reported by Graphite, or null when unavailable. It may be synthetic and is not a verified sourceLocation."
         }
       },
-      "description": "Node IDs identify raw, unfolded graph nodes within one scenario and revision only. Ordinals and debug line numbers may be synthetic or unavailable; they are not verified source locations."
+      "description": "Raw, unfolded graph call site selected by a rule. Node identifiers are scoped to one scenario and revision. Ordinals and debug lines may be synthetic or unavailable and are not verified source locations."
     },
     "ruleAudit": {
       "type": "object",
@@ -454,18 +512,22 @@
       ],
       "properties": {
         "scenario": {
-          "type": "string"
+          "type": "string",
+          "description": "Name of the folding scenario containing this rule."
         },
         "revision": {
-          "$ref": "#/$defs/revision"
+          "$ref": "#/$defs/revision",
+          "description": "Revision whose raw graph was selected and folded."
         },
         "ruleIndex": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Zero-based index of the rule within its scenario."
         },
         "selector": {
-          "$ref": "#/$defs/selector"
+          "$ref": "#/$defs/selector",
+          "description": "Selector kind, optional query, and rule description used for this audit."
         },
         "selectionStatus": {
           "type": "string",
@@ -473,13 +535,15 @@
             "NOT_EXECUTED",
             "SELECTED",
             "FAILED"
-          ]
+          ],
+          "description": "NOT_EXECUTED means selection has not run; SELECTED means selection completed, including an empty result; FAILED means selection failed before a completed selection was recorded. A later fold failure can retain SELECTED."
         },
         "selectedNodes": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/selectedCallSite"
-          }
+          },
+          "description": "Unique raw call-site nodes captured by a completed selection, sorted by node identifier. Empty can mean zero matches or unavailable selection; consult selectionStatus."
         },
         "matchedCallCount": {
           "type": [
@@ -487,13 +551,15 @@
             "null"
           ],
           "minimum": 0,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Independent count reported by Graphite when applying the fold, which may differ from selectedCount. Null means unavailable; zero is a measured count."
         },
         "message": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "description": "Available selection or fold-failure message, or null when no message was recorded. A message can accompany successfully captured selected nodes."
         },
         "selectedCount": {
           "type": [
@@ -501,16 +567,18 @@
             "null"
           ],
           "minimum": 0,
-          "maximum": 2147483647
+          "maximum": 2147483647,
+          "description": "Number of unique selectedNodes when selectionStatus is SELECTED; otherwise null. Zero means a completed selection found no nodes, not that selection was skipped."
         }
       },
-      "description": "ruleIndex is zero-based within the scenario. selectedCount counts unique raw selected nodes only after successful selection. matchedCallCount independently records Graphite fold application and may differ from selectedCount; null means unavailable, while zero is a measured count. A later fold failure can retain SELECTED nodes and a message. Standard JSON Schema cannot assert selectedCount equals selectedNodes.length; the model derives it.",
+      "description": "Audit of one fold rule in one scenario and revision. Selection and fold application are independent: selectedCount counts unique raw selected nodes, while matchedCallCount comes from Graphite fold application and can differ. A later fold failure can retain SELECTED nodes and a message. The model derives selectedCount from selectedNodes; this schema does not assert their equality.",
       "allOf": [
         {
           "if": {
             "properties": {
               "selectionStatus": {
-                "const": "SELECTED"
+                "const": "SELECTED",
+                "description": "Applies the successful-selection count constraint only when selection completed."
               }
             },
             "required": [
@@ -522,14 +590,16 @@
               "selectedCount": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 2147483647
+                "maximum": 2147483647,
+                "description": "A completed selection reports a measured nonnegative count, including zero."
               }
             }
           },
           "else": {
             "properties": {
               "selectedCount": {
-                "type": "null"
+                "type": "null",
+                "description": "The selected-node count is unavailable unless selection completed successfully."
               }
             }
           }

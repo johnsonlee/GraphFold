@@ -18,12 +18,28 @@ import org.jetbrains.kotlin.config.CompilerConfigurationKey
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.ir.declarations.IrClass
 
-/** Loaded in the actual compilation JVM; JVM names are observed during emission, never predicted. */
+/**
+ * Installs Kotlin provenance capture in the actual compilation JVM.
+ *
+ * JVM names are observed during class emission rather than predicted from source. Capture writes
+ * physical source identities and ranges, including markers that survive backend inline copying.
+ * Registration accepts only explicitly supported compiler versions and is inactive without an
+ * output directory option.
+ */
 @OptIn(ExperimentalCompilerApi::class)
 @AutoService(CompilerPluginRegistrar::class)
 class KotlinOriginRegistrar : CompilerPluginRegistrar() {
+    /** Allows the compiler to load this registrar with the K2 frontend as well as K1. */
     override val supportsK2: Boolean = true
 
+    /**
+     * Registers emission observers and initializes an incomplete provenance document.
+     * The finalizer completes the document after class generation. No extensions are registered
+     * when the output option is absent.
+     *
+     * @param configuration compiler options containing the output directory and analysis run ID
+     * @throws IllegalArgumentException if the run ID is missing or the compiler version is unsupported
+     */
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
         val output = configuration.get(KotlinOriginOptions.OUTPUT) ?: return
         val runId = requireNotNull(configuration.get(KotlinOriginOptions.RUN_ID)) { "GraphFold origin runId is required" }
@@ -50,10 +66,21 @@ class KotlinOriginRegistrar : CompilerPluginRegistrar() {
     }
 }
 
+/**
+ * Parses GraphFold's Kotlin compiler plugin options supplied through the compiler's `-P` mechanism.
+ * The plugin ID remains stable across changes to the provider's package or artifact name.
+ */
 @OptIn(ExperimentalCompilerApi::class)
 @AutoService(CommandLineProcessor::class)
 class KotlinOriginCommandLineProcessor : CommandLineProcessor {
+    /** Stable namespace used in `plugin:<id>:<option>=<value>` compiler arguments. */
     override val pluginId: String = "io.johnsonlee.graphfold.origin.kotlin"
+
+    /**
+     * Declares required output-directory and run-ID options, plus an optional inline-source digest.
+     * Each option may occur once. The digest is an incremental compiler input; it is not persisted
+     * in the collector's configuration.
+     */
     override val pluginOptions: Collection<CliOption> = listOf(
         CliOption("output", "directory", "Compilation provenance output directory", required = true, allowMultipleOccurrences = false),
         CliOption("runId", "id", "Shared analysis invocation identifier", required = true, allowMultipleOccurrences = false),
@@ -61,6 +88,15 @@ class KotlinOriginCommandLineProcessor : CommandLineProcessor {
             required = false, allowMultipleOccurrences = false),
     )
 
+    /**
+     * Stores capture options in the compiler configuration. The inline-source digest deliberately
+     * has no runtime action: changing its compiler argument invalidates incremental compilation.
+     *
+     * @param option the declared option being processed
+     * @param value its unmodified command-line value
+     * @param configuration configuration read later by [KotlinOriginRegistrar]
+     * @throws IllegalStateException if the option name is not recognized
+     */
     override fun processOption(option: AbstractCliOption, value: String, configuration: CompilerConfiguration) {
         when (option.optionName) {
             "output" -> configuration.put(KotlinOriginOptions.OUTPUT, value)

@@ -10,15 +10,36 @@ import javax.tools.JavaFileObject
 import javax.tools.ToolProvider
 import kotlin.io.path.extension
 
-/** Classes are copied outside the checkout; dependency paths refer to resolved build inputs. */
+/**
+ * Production bytecode and provenance exported by a build adapter for one revision.
+ *
+ * @property classes Directory of copied application class files, separate from the checkout's build outputs.
+ * @property sourceRoots Declared production source directories used for source indexing.
+ * @property dependencies Resolved dependency JARs or class directories needed to analyze the application.
+ * @property originDirectory Compiler provenance directory, or null when no provenance was exported.
+ * @property originRunId Expected provenance run identity, or null when no identity was exported.
+ * @property sourceOutputs Source-root to original class-output mapping used to disambiguate module ownership.
+ */
 data class CompiledProject(
     val classes: Path, val sourceRoots: List<Path>, val dependencies: List<Path>, val originDirectory: Path? = null,
     val originRunId: String? = null, val sourceOutputs: Map<Path, List<Path>> = emptyMap(),
 )
 
+/**
+ * Compilation or build-output validation failed, so the revision cannot be analyzed completely.
+ *
+ * @param message Description of the failed build or invalid output.
+ */
 class BuildFailure(message: String) : IllegalStateException(message)
 
-/** Build adapters export actual outputs and dependencies instead of guessing global cache entries. */
+/**
+ * Compiles production JVM sources and exports actual build outputs, dependencies, and compiler provenance.
+ * A checked-in Gradle wrapper takes precedence over Maven; projects without either use source-only compilation.
+ *
+ * @param timeout Positive timeout passed to external build and compiler processes.
+ * @param buildEnvironmentAllowlist Names of inherited environment variables permitted in child processes.
+ * @throws IllegalArgumentException if [timeout] is zero or negative.
+ */
 class ProjectCompiler(
     private val timeout: Duration,
     private val buildEnvironmentAllowlist: Set<String> = io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT,
@@ -27,6 +48,15 @@ class ProjectCompiler(
         require(!timeout.isZero && !timeout.isNegative) { "Build timeout must be positive" }
     }
 
+    /**
+     * Builds [checkout] and collects analysis artifacts in [output], which must be absent or empty.
+     * Build-system outputs remain in the checkout to support incremental compilation on later runs.
+     *
+     * @param checkout Materialized repository revision containing production sources and optional build configuration.
+     * @param output Separate directory for copied classes, build metadata, logs, and compiler provenance.
+     * @return The classes and resolved inputs required to analyze this revision.
+     * @throws BuildFailure if compilation fails, inputs are unsupported, or exported outputs are incomplete.
+     */
     fun compile(checkout: Path, output: Path): CompiledProject {
         Files.createDirectories(output)
         checkBuild(Files.list(output).use { it.findAny().isEmpty }, "Build output directory must be empty: $output")
