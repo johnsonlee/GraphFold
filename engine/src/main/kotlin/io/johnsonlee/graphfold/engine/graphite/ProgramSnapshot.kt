@@ -54,6 +54,7 @@ data class ProgramSnapshot(
  * @property resourceReads Resource accesses surviving folding; unknown paths or keys conservatively denote any matching resource.
  * @property referenceCanonical Canonical IR with member references replaced by indexed placeholders.
  * @property references Member identities in placeholder order in [referenceCanonical].
+ * @property dynamicCalls Surviving invokedynamic names followed by JVM descriptors, before callback dispatch expansion.
  */
 data class MethodSnapshot(
     val identity: String,
@@ -64,6 +65,7 @@ data class MethodSnapshot(
     val referenceCanonical: String = canonical,
     val references: List<String> = emptyList(),
     val resourceReads: List<ResourceRead> = emptyList(),
+    val dynamicCalls: Set<String> = emptySet(),
 )
 
 /**
@@ -95,11 +97,15 @@ data class ResourceRead(val bundle: String?, val key: String?)
  * @property message Human-readable evidence explaining the missing model.
  * @property callee Dotted JVM callee identity; a gap is inactive when folding removes all calls to it.
  * @property globalObservation Whether an opaque access can discover arbitrary application declarations without call edges.
- * @property observedOwners Application classes whose private state may be inspected by a bounded opaque consumer.
+ * @property observedOwners Application classes whose state or runtime names may be observed by this operation.
+ * @property requiresObservedFrame Whether the operation must execute below an observed owner on the current call stack.
+ * @property dynamicCall Invokedynamic name and JVM descriptor; inactive when folding removes every matching factory call.
  */
 data class MethodAnalysisGap(
     val message: String,
     val callee: String? = null,
     val globalObservation: Boolean = false,
     val observedOwners: Set<String> = emptySet(),
+    val requiresObservedFrame: Boolean = false,
+    val dynamicCall: String? = null,
 )

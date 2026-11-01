@@ -4,6 +4,7 @@ import com.google.auto.service.AutoService
 import io.johnsonlee.graphite.core.jvmMethodDescriptor
 import io.johnsonlee.graphite.sootup.GraphiteContext
 import io.johnsonlee.graphite.sootup.GraphiteExtension
+import sootup.core.jimple.common.expr.JDynamicInvokeExpr
 import sootup.core.jimple.common.Local
 import sootup.core.jimple.common.stmt.Stmt
 import sootup.core.model.Body
@@ -67,13 +68,19 @@ internal class SnapshotSink(
                 "${signature.declClassType.fullyQualifiedName}.${signature.name}" +
                     jvmMethodDescriptor(signature.parameterTypes.map { it.toString() }, signature.type.toString())
             }.toSet()
+            val dynamicCalls = body?.stmts.orEmpty().filter { it.isInvokableStmt }.mapNotNull {
+                it.asInvokableStmt().invokeExpr.orElse(null) as? JDynamicInvokeExpr
+            }.map { call ->
+                val signature = call.methodSignature
+                signature.name + jvmMethodDescriptor(signature.parameterTypes.map { it.toString() }, signature.type.toString())
+            }.toSet()
             val lines = body?.stmts.orEmpty().map { it.positionInfo.stmtPosition.firstLine }.filter { it > 0 }.toSet()
             val canonical = canonicalModifiers + "\n" + (body?.let { canonicalBody(it) } ?: "NO_BODY")
             val references = mutableListOf<String>()
             val normalized = canonicalModifiers + "\n" +
                 (body?.let { canonicalBody(it, references, ignoredFields, identity) } ?: "NO_BODY")
             check(methods.put(identity, MethodSnapshot(identity, canonical, calls, modifiers, lines, normalized, references,
-                    body?.let { resourceReads(it, applicationOwners) }.orEmpty())) == null) {
+                    body?.let { resourceReads(it, applicationOwners) }.orEmpty(), dynamicCalls)) == null) {
                 "Duplicate method identity $identity"
             }
         }

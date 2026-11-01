@@ -236,7 +236,7 @@ class OriginObjectFlowBoundaryTest {
 
     private fun blocked(method: MethodNode): Boolean {
         val caller = definition("sample/Caller").apply { methods.add(method) }
-        return originNameObservability(listOf(caller, definition("sample/Renamed")),
+        return originNameMessages(listOf(caller, definition("sample/Renamed")),
             mapOf("sample.Renamed" to "sample.Stable")).any { "sample/Caller.probe(" in it }
     }
 

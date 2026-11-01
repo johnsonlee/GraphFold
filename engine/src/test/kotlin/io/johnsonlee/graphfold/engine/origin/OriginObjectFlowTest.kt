@@ -51,7 +51,7 @@ class OriginObjectFlowTest {
         assertEquals("Example$1", before)
         assertEquals("Example$2", after)
         assertNotEquals(before, after)
-        val diagnostics = originNameObservability(nodes(head), mapOf(after to before))
+        val diagnostics = originNameMessages(nodes(head), mapOf(after to before))
         assertTrue(diagnostics.any { "Example.run(" in it }, diagnostics.toString())
     }
 
@@ -71,7 +71,7 @@ class OriginObjectFlowTest {
         assertEquals("Example$1", before)
         assertEquals("Example$2", after)
         assertNotEquals(before, after)
-        val diagnostics = originNameObservability(nodes(head), mapOf(after to before))
+        val diagnostics = originNameMessages(nodes(head), mapOf(after to before))
         assertTrue(diagnostics.any { "$after.run(" in it }, diagnostics.toString())
     }
 
@@ -81,7 +81,7 @@ class OriginObjectFlowTest {
             node.innerClasses.any { it.name == node.name && it.innerName == null }
         }.associate { it.name.replace('/', '.') to "normalized.${it.name.replace('/', '.')}" }
         assertTrue(renamed.isNotEmpty(), "Fixture must contain actual anonymous allocations")
-        val diagnostics = originNameObservability(definitions, renamed)
+        val diagnostics = originNameMessages(definitions, renamed)
         val methods = definitions.single { it.name == owner }.methods
         val safe = methods.filter { it.name.startsWith("safe") }
         val blocked = methods.filter { it.name.startsWith("blocked") }

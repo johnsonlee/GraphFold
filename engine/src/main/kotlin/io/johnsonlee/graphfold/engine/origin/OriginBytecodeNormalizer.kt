@@ -9,7 +9,10 @@ import org.objectweb.asm.commons.ClassRemapper
 import org.objectweb.asm.commons.Remapper
 import org.objectweb.asm.tree.ClassNode
 
-internal data class OriginNormalizationResult(val classes: Path, val owners: Map<String, String>, val diagnostics: List<String>)
+internal data class OriginNormalizationResult(
+    val classes: Path, val owners: Map<String, String>, val diagnostics: List<String>,
+    val methodDiagnostics: Map<String, List<io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap>>,
+)
 
 /** Remapping is restricted to ASM's typed JVM references. User strings are never interpreted as class names. */
 internal fun normalizeOriginClasses(
@@ -25,7 +28,8 @@ internal fun normalizeOriginClasses(
     }
     val diagnostics = mutableListOf<String>()
     val mapped = deriveNestedOriginOwners(nodes, owners, diagnostics)
-    diagnostics += originNameObservability(nodes, mapped, dependencies)
+    val observations = originNameObservability(nodes, mapped, dependencies)
+    diagnostics += observations.diagnostics
     val remapper = OriginRemapper(mapped)
     Files.createDirectories(destination)
     files.filterNot { it.toString().endsWith(".class") }.forEach { file ->
@@ -48,7 +52,7 @@ internal fun normalizeOriginClasses(
             Files.write(target, writer.toByteArray())
         }
     }
-    return OriginNormalizationResult(destination, mapped, diagnostics)
+    return OriginNormalizationResult(destination, mapped, diagnostics, observations.methods)
 }
 
 private fun stripOriginMetadata(node: ClassNode, anonymous: Set<String>) {

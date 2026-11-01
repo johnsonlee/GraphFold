@@ -114,7 +114,7 @@ class OriginBytecodeNormalizerTest {
         method.instructions.add(MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/String", "valueOf",
             "(Ljava/lang/Object;)Ljava/lang/String;", false))
         node.methods.add(method)
-        val diagnostics = originNameObservability(listOf(node), mapOf("sample.Host\$1" to "sample.Stable"))
+        val diagnostics = originNameMessages(listOf(node), mapOf("sample.Host\$1" to "sample.Stable"))
         assertTrue(diagnostics.any { "Serializable" in it })
         assertTrue(diagnostics.any { "object rendering" in it })
     }
@@ -127,7 +127,7 @@ class OriginBytecodeNormalizerTest {
         method.instructions.add(MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/String", "toString",
             "()Ljava/lang/String;", false))
         node.methods.add(method)
-        assertTrue(originNameObservability(listOf(node), mapOf("sample.Host\$1" to "sample.Stable")).isEmpty())
+        assertTrue(originNameMessages(listOf(node), mapOf("sample.Host\$1" to "sample.Stable")).isEmpty())
     }
 
     @Test fun `formatters array rendering and Kotlin stdlib rendering remain observable`() {
@@ -145,7 +145,7 @@ class OriginBytecodeNormalizerTest {
             val method = org.objectweb.asm.tree.MethodNode(Opcodes.ACC_PUBLIC, "render", "()V", null, null)
             method.instructions.add(MethodInsnNode(Opcodes.INVOKESTATIC, owner, name, descriptor, false))
             node.methods.add(method)
-            assertTrue(originNameObservability(listOf(node), mapOf("sample.Host\$1" to "sample.Stable"))
+            assertTrue(originNameMessages(listOf(node), mapOf("sample.Host\$1" to "sample.Stable"))
                 .any { "object rendering" in it }, "$owner.$name")
         }
     }

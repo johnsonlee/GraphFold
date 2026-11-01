@@ -650,3 +650,31 @@ guards. Both tested compilers emit invokedynamic for the wide-concat fixture and
 operands can be discharged. A separate explicit Kotlin builder-chain fixture remains
 blocking; the distinction follows emitted bytecode rather than source language. Blocking diagnostics are not counted as
 confirmed uncontrolled violations or successful detection evidence.
+
+
+## Folded origin-name observation scope
+
+The repository-wide origin observation rejection now emits method-local evidence and
+checks it against each revision's folded reachability. Current-thread captures also
+require a potentially executing renamed frame. Existing/other-thread stack readers
+and deferred method references remain conservative; Serializable ancestry remains a
+type-level normalization guard. Missing normalized method declarations fail closed.
+
+`fixtures/origin-observation/` contains 20 real Java/Kotlin base/head pairs. These cover
+uncalled private observers, unrelated exception construction, folded-away rendering,
+string concatenation and method references, surviving rendering, transitive exception
+capture and cross-thread stack observation. Six additional compiler checks verify
+actual anonymous-owner renumbering and dynamic factory emission. A normalized bytecode
+integration test verifies owner/array-descriptor remapping and inherited stack getters;
+frame-scope tests prohibit combining base/head edges into a fictitious call stack.
+
+Targeted validation passed 42 tests and both engine type-aware detekt tasks:
+
+```sh
+./gradlew :engine:test --tests '*OriginObservation*Test' \
+  --tests '*OriginFoldSelectionTest' --tests '*ObservedFrameScopeTest' \
+  :engine:detektMain :engine:detektTest
+```
+
+This focused run is correctness evidence, not performance acceptance or a replacement
+for the unfiltered `check` and per-module 95% branch / 90% line coverage gates.

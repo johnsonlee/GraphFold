@@ -87,6 +87,19 @@ class OriginFoldSelectionTest {
             analyzer.analyzeOriginProject(project, emptyList()))
     }
 
+    @Test fun `unmapped origin observation evidence fails closed even without owner remapping`() {
+        val original = project()
+        listOf(original.owners, emptyMap()).forEach { owners ->
+            val missing = "Missing.observe()V"
+            val project = original.copy(owners = owners,
+                methodDiagnostics = mapOf(missing to listOf(MethodAnalysisGap("unmapped observation"))))
+            val snapshot = GraphiteAnalyzer().analyzeOriginProject(project, emptyList())
+            assertTrue(snapshot.diagnostics.any {
+                it == "Origin observation has no normalized method declaration: $missing"
+            }, snapshot.diagnostics.toString())
+        }
+    }
+
     @Test fun `selection remapping preserves external types and rejects malformed or unresolved keys`() {
         val parsed = FoldSites.parse(mapOf("select" to "MATCH (cs:CallSite) RETURN cs", "value" to false))
         assertFailsWith<IllegalArgumentException> { remapOriginSelection(parsed, emptyMap()) }

@@ -18,6 +18,8 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
     }
     private val baseReachable = reachable(base)
     private val headReachable = reachable(head)
+    private val baseFrames by lazy { ObservedFrameScope(base, baseReachable) }
+    private val headFrames by lazy { ObservedFrameScope(head, headReachable) }
     private val allMethods = base.methods.keys + head.methods.keys
     private val reachableMethods = baseReachable + headReachable
     private val reachableByOwner = reachableMethods.groupBy(::methodOwner)
@@ -92,8 +94,12 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
     private fun activeGaps(snapshot: ProgramSnapshot, reachable: Set<String>, relevant: Set<String>, owners: Set<String>): List<String> =
         snapshot.methodDiagnostics.filterKeys { it in reachable }.flatMap { (identity, gaps) ->
             gaps.filter { gap ->
+                val frameActive = !gap.requiresObservedFrame ||
+                    (if (snapshot === base) baseFrames else headFrames).contains(identity, gap.observedOwners)
                 val observes = gap.globalObservation || identity in relevant || gap.observedOwners.any { it in owners }
-                observes && (gap.callee == null || gap.callee in snapshot.methods.getValue(identity).calls)
+                val method = snapshot.methods.getValue(identity)
+                frameActive && observes && (gap.callee == null || gap.callee in method.calls) &&
+                    (gap.dynamicCall == null || gap.dynamicCall in method.dynamicCalls)
             }.map { it.message }
         }.distinct().sorted()
 

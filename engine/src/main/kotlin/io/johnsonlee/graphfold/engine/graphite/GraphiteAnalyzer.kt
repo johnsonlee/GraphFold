@@ -54,14 +54,10 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         val compiled = project.compiled
         val dependencies = (compiled.dependencies +
             if (dependencyResources) compiled.production?.resourceDependencies.orEmpty() else emptyList()).distinct()
-        if (project.owners.isEmpty()) return analyze(compiled.classes, rules, dependencies, dependencyResources)
-        // Class names remain observable when anonymous owners were normalized for structural alignment.
-        val inventory = BytecodeInventory(normalizedRuntimeNames = project.owners.any { it.key != it.value })
-            .also { it.read(compiled.classes) }
-        inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics, inventory.methodDiagnostics)
-        inventory.missingReferences(dependencies).forEach {
-            inventory.diagnostics.add("Unresolved class reference: $it")
+        if (project.owners.isEmpty() && project.methodDiagnostics.isEmpty()) {
+            return analyze(compiled.classes, rules, dependencies, dependencyResources)
         }
+        val inventory = originInventory(project, dependencies)
         val audit = RuleAuditCapture(onAudit)
         val resources = if (dependencyResources) ResourceDeclarations(listOf(compiled.classes) + dependencies) else null
         val resolveSelection = { graph: Graph, rule: FoldSites, index: Int ->
@@ -85,6 +81,23 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         return AnalysisInputs(compiled.classes, dependencies).use { inputs ->
             analyzeInputs(inputs.path, selected, inventory, audit, resources, selectionResolved = true)
         }
+    }
+
+    private fun originInventory(project: OriginProject, dependencies: List<Path>): BytecodeInventory {
+        // Class names remain observable when anonymous owners were normalized for structural alignment.
+        val inventory = BytecodeInventory(normalizedRuntimeNames = project.owners.any { it.key != it.value })
+            .also { it.read(project.compiled.classes) }
+        project.methodDiagnostics.forEach { (identity, gaps) ->
+            if (identity !in inventory.methods) {
+                inventory.diagnostics.add("Origin observation has no normalized method declaration: $identity")
+            }
+            inventory.methodDiagnostics[identity] = inventory.methodDiagnostics[identity].orEmpty() + gaps
+        }
+        inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics, inventory.methodDiagnostics)
+        inventory.missingReferences(dependencies).forEach {
+            inventory.diagnostics.add("Unresolved class reference: $it")
+        }
+        return inventory
     }
 
     private fun analyzeInputs(

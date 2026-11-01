@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin
 
+import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
 import java.nio.file.Path
 import org.objectweb.asm.Type
 import org.objectweb.asm.Handle
@@ -9,12 +10,17 @@ import org.objectweb.asm.tree.AbstractInsnNode
 import org.objectweb.asm.tree.InvokeDynamicInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
 
+internal data class OriginNameObservability(
+    val diagnostics: List<String>,
+    val methods: Map<String, List<MethodAnalysisGap>>,
+)
+
 /** Narrow rendering only when bytecode flow proves its operands safe; stack capture has a separate guard. */
 internal fun originNameObservability(
     nodes: List<ClassNode>, owners: Map<String, String>, dependencies: List<Path> = emptyList(),
-): List<String> {
+): OriginNameObservability {
     val renamed = owners.filter { it.key != it.value }.keys.map { it.replace('.', '/') }.toSet()
-    if (renamed.isEmpty()) return emptyList()
+    if (renamed.isEmpty()) return OriginNameObservability(emptyList(), emptyMap())
     val diagnostics = mutableListOf<String>()
     val hierarchy = OriginHierarchy(nodes, dependencies)
     val types = OriginRenderTypes(nodes, renamed)
@@ -25,28 +31,53 @@ internal fun originNameObservability(
             OriginSubtype.NO -> Unit
         }
     }
+    val remapper = OriginRemapper(owners)
+    val observedOwners = renamed.map { remapper.map(it).replace('/', '.') }.toSet()
+    val methods = linkedMapOf<String, List<MethodAnalysisGap>>()
     nodes.forEach { node ->
         node.methods.forEach { method ->
             val flow by lazy { OriginObjectFlow(node.name, method, types) }
-            val observable = method.instructions.any { instruction ->
-                observesInstruction(instruction, { flow }, hierarchy)
-            }
-            if (observable) diagnostics += "Runtime binary name may be observable through object rendering or stack capture " +
-                "(including unverified constructor ancestry): " +
-                "${node.name}.${method.name}${method.desc}"
+            val identity = "${remapper.map(node.name).replace('/', '.')}.${method.name}${remapper.mapMethodDesc(method.desc)}"
+            val observations = method.instructions.mapNotNull { instruction ->
+                observation(instruction, { flow }, hierarchy, remapper)?.copy(
+                    message = "Runtime binary name may be observable through object rendering or stack capture " +
+                        "(including unverified constructor ancestry): ${node.name}.${method.name}${method.desc}",
+                    observedOwners = observedOwners,
+                )
+            }.distinct()
+            if (observations.isNotEmpty()) methods[identity] = observations
         }
     }
-    return diagnostics
+    return OriginNameObservability(diagnostics, methods)
 }
 
-private fun observesInstruction(instruction: AbstractInsnNode, flow: () -> OriginObjectFlow, hierarchy: OriginHierarchy): Boolean =
-    when (instruction) {
-        is MethodInsnNode -> observesExecution(instruction.owner, instruction.name, instruction.desc, hierarchy) ||
-            (rendersObject(instruction.owner, instruction.name, instruction.desc) &&
-                (!canNarrowRendering(instruction) || !safeCall(instruction, flow())))
-        is InvokeDynamicInsnNode -> observesDynamicName(instruction, hierarchy) && !safeDynamic(instruction, flow(), hierarchy)
-        else -> false
+private fun observation(
+    instruction: AbstractInsnNode, flow: () -> OriginObjectFlow, hierarchy: OriginHierarchy, remapper: OriginRemapper,
+): MethodAnalysisGap? = when (instruction) {
+    is MethodInsnNode -> {
+        val execution = observesExecution(instruction.owner, instruction.name, instruction.desc, hierarchy)
+        val rendering = rendersObject(instruction.owner, instruction.name, instruction.desc) &&
+            (!canNarrowRendering(instruction) || !safeCall(instruction, flow()))
+        if (execution || rendering) MethodAnalysisGap(
+            message = "",
+            callee = "${remapper.map(instruction.owner).replace('/', '.')}.${instruction.name}" +
+                remapper.mapMethodDesc(instruction.desc),
+            requiresObservedFrame = !rendering && capturesCurrentStack(instruction, hierarchy),
+        ) else null
     }
+    is InvokeDynamicInsnNode -> if (observesDynamicName(instruction, hierarchy) && !safeDynamic(instruction, flow(), hierarchy)) {
+        // A method reference may escape and capture a stack later; its factory's callers do not bound that stack.
+        MethodAnalysisGap(message = "", dynamicCall = instruction.name + remapper.mapMethodDesc(instruction.desc))
+    } else null
+    else -> null
+}
+
+/** Reading an existing trace or another thread's stack cannot be restricted to this invocation's callers. */
+private fun capturesCurrentStack(call: MethodInsnNode, hierarchy: OriginHierarchy): Boolean =
+    (call.name == "<init>" && hierarchy.subtype(call.owner, "java/lang/Throwable") != OriginSubtype.NO) ||
+        call.name == "fillInStackTrace" ||
+        (call.owner == "java/lang/Thread" && call.name == "dumpStack") ||
+        (call.owner == "java/lang/StackWalker" && call.name in setOf("walk", "forEach", "getCallerClass"))
 
 private fun rendersObject(owner: String, name: String, descriptor: String): Boolean {
     if (name == "toString" && descriptor == "()Ljava/lang/String;") {
@@ -80,7 +111,8 @@ private val KOTLIN_RENDERING_NAMES = setOf("stringPlus", "contentToString", "con
 private fun observesStack(owner: String, name: String, descriptor: String): Boolean =
     owner == "java/lang/Throwable" || owner == "java/lang/StackTraceElement" || owner.startsWith("java/lang/StackWalker") ||
         (owner == "java/lang/Thread" && name in setOf("getStackTrace", "getAllStackTraces", "dumpStack")) ||
-        (name == "getStackTrace" && descriptor == "()[Ljava/lang/StackTraceElement;")
+        (name == "getStackTrace" && descriptor == "()[Ljava/lang/StackTraceElement;") ||
+        (name == "fillInStackTrace" && descriptor == "()Ljava/lang/Throwable;")
 
 private fun observesDynamicName(instruction: InvokeDynamicInsnNode, hierarchy: OriginHierarchy): Boolean =
     (instruction.bsm.owner == "java/lang/invoke/StringConcatFactory" &&

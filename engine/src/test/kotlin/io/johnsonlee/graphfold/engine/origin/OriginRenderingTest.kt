@@ -49,12 +49,12 @@ class OriginRenderingTest {
 
     @Test fun `without an identity change runtime name observability does not create an origin diagnostic`() {
         val node = node(MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/lang/Object", "toString", "()Ljava/lang/String;", false))
-        assertTrue(originNameObservability(listOf(node), emptyMap()).isEmpty())
-        assertTrue(originNameObservability(listOf(node), mapOf("sample.Host\$1" to "sample.Host\$1")).isEmpty())
+        assertTrue(originNameMessages(listOf(node), emptyMap()).isEmpty())
+        assertTrue(originNameMessages(listOf(node), mapOf("sample.Host\$1" to "sample.Host\$1")).isEmpty())
     }
 
     private fun diagnostics(instruction: org.objectweb.asm.tree.AbstractInsnNode): List<String> =
-        originNameObservability(listOf(node(instruction)), mapOf("sample.Host\$1" to "sample.Stable"))
+        originNameMessages(listOf(node(instruction)), mapOf("sample.Host\$1" to "sample.Stable"))
 
     private fun node(instruction: org.objectweb.asm.tree.AbstractInsnNode) = ClassNode().apply {
         name = "sample/Host\$1"

@@ -6,6 +6,7 @@ import java.nio.file.Path
 
 internal data class OriginProject(
     val compiled: CompiledProject, val sourceClasses: Path, val catalog: OriginCatalog, val owners: Map<String, String>,
+    val methodDiagnostics: Map<String, List<io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap>> = emptyMap(),
 )
 
 internal data class OriginProjects(val base: OriginProject?, val head: OriginProject?, val diagnostics: List<String>)
@@ -30,8 +31,10 @@ internal fun prepareOrigins(
         val selectionBase = selectionClasses(base, normalizedBase, output.resolve("selection-base"))
         val selectionHead = selectionClasses(head, normalizedHead, output.resolve("selection-head"))
         OriginProjects(
-            OriginProject(base.copy(classes = normalizedBase.classes), selectionBase, old, normalizedBase.owners),
-            OriginProject(head.copy(classes = normalizedHead.classes), selectionHead, new, normalizedHead.owners),
+            OriginProject(base.copy(classes = normalizedBase.classes), selectionBase, old, normalizedBase.owners,
+                normalizedBase.methodDiagnostics),
+            OriginProject(head.copy(classes = normalizedHead.classes), selectionHead, new, normalizedHead.owners,
+                normalizedHead.methodDiagnostics),
             normalizedBase.diagnostics.map { "base: $it" } + normalizedHead.diagnostics.map { "head: $it" },
         )
     }

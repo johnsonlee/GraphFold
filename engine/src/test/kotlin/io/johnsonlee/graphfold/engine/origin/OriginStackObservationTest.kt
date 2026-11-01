@@ -31,7 +31,8 @@ class OriginStackObservationTest {
         assertEquals("Example$2", newName)
         assertNotEquals(oldName, newName)
         val normalized = normalizeOriginClasses(head, temporary.resolve("normalized"), mapOf(newName to oldName))
-        assertTrue(normalized.diagnostics.any { "Runtime binary name" in it }, normalized.diagnostics.toString())
+        assertTrue(normalized.methodDiagnostics.values.flatten().any { "Runtime binary name" in it.message },
+            normalized.methodDiagnostics.toString())
         val stable = normalizeOriginClasses(base, temporary.resolve("stable"), mapOf(oldName to oldName))
         assertTrue(stable.diagnostics.isEmpty(), stable.diagnostics.toString())
     }
@@ -43,6 +44,7 @@ class OriginStackObservationTest {
             static StackTraceElement[] captureThread() { return Thread.currentThread().getStackTrace(); }
             static Object captureAllThreads() { return Thread.getAllStackTraces(); }
             static void dumpThread() { Thread.dumpStack(); }
+            static Throwable refresh(RuntimeException e) { return e.fillInStackTrace(); }
             static StackTraceElement[] inheritedCapture(Exception e) { return e.getStackTrace(); }
             static String elementName(StackTraceElement e) { return e.getClassName(); }
             static String elementRender(StackTraceElement e) { return e.toString(); }
@@ -64,11 +66,20 @@ class OriginStackObservationTest {
             static int safeNamesake() { return getStackTrace(); }
             static java.util.function.Function<String, Integer> safeReference() { return String::length; }
         """.trimIndent())
-        val diagnostics = originNameObservability(nodes(classes), mapOf("Example$1" to "Example\$stable"))
-        val positive = listOf("captureThrowable", "captureThread", "captureAllThreads", "dumpThread", "inheritedCapture",
+        val diagnostics = originNameMessages(nodes(classes), mapOf("Example$1" to "Example\$stable"))
+        val positive = listOf("captureThrowable", "captureThread", "captureAllThreads", "dumpThread", "refresh", "inheritedCapture",
             "elementName", "elementRender", "walk", "elementReference", "frameReference", "walkerReference",
             "objectReference", "boundReference", "exceptionReference")
         positive.forEach { method -> assertTrue(diagnostics.any { "Example.$method(" in it }, "$method: $diagnostics") }
+        val observations = originNameObservability(nodes(classes), mapOf("Example$1" to "Example\$stable")).methods
+        listOf("captureThrowable", "dumpThread", "refresh").forEach { name ->
+            val gaps = observations.entries.single { it.key.startsWith("Example.$name(") }.value
+            assertTrue(gaps.all { it.requiresObservedFrame }, name)
+        }
+        listOf("captureThread", "captureAllThreads", "inheritedCapture", "elementName", "exceptionReference").forEach { name ->
+            val gaps = observations.entries.single { it.key.startsWith("Example.$name(") }.value
+            assertTrue(gaps.none { it.requiresObservedFrame }, name)
+        }
         listOf("safeThread", "safeNamesake", "safeReference", "scalarReference", "safeConstructor").forEach { method ->
             assertTrue(diagnostics.none { "Example.$method(" in it }, "$method: $diagnostics")
         }
@@ -91,7 +102,7 @@ class OriginStackObservationTest {
             assertEquals("Example$1", before)
             assertEquals("Example$2", after)
             val result = normalizeOriginClasses(head, temporary.resolve("exception-normalized-$index"), mapOf(after to before))
-            assertTrue(result.diagnostics.any { "Runtime binary name" in it }, result.diagnostics.toString())
+            assertTrue(result.methodDiagnostics.values.flatten().any { "Runtime binary name" in it.message }, result.diagnostics.toString())
         }
     }
 
@@ -103,7 +114,7 @@ class OriginStackObservationTest {
             static Object constructUnknown() { return new Mystery(); }
         """.trimIndent())
         Files.delete(classes.resolve("Example\$Parent.class"))
-        val diagnostics = originNameObservability(nodes(classes), mapOf("Example$1" to "Example\$stable"))
+        val diagnostics = originNameMessages(nodes(classes), mapOf("Example$1" to "Example\$stable"))
         assertTrue(diagnostics.any { "Example.constructUnknown(" in it }, diagnostics.toString())
     }
 

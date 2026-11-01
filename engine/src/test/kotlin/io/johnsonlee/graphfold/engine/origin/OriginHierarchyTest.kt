@@ -21,7 +21,7 @@ class OriginHierarchyTest {
         val anonymous = anonymous("library/Base")
         val hierarchy = OriginHierarchy(listOf(anonymous), listOf(dependency))
         assertEquals(OriginSubtype.YES, hierarchy.serializable(anonymous.name))
-        assertTrue(originNameObservability(listOf(anonymous), OWNERS, listOf(dependency))
+        assertTrue(originNameMessages(listOf(anonymous), OWNERS, listOf(dependency))
             .any { "observable through Serializable" in it })
     }
 
@@ -29,13 +29,13 @@ class OriginHierarchyTest {
         val anonymous = anonymous("java/lang/Object").apply { interfaces.add("library/Safe") }
         val dependency = library()
         assertEquals(OriginSubtype.NO, OriginHierarchy(listOf(anonymous), listOf(dependency)).serializable(anonymous.name))
-        assertTrue(originNameObservability(listOf(anonymous), OWNERS, listOf(dependency)).isEmpty())
+        assertTrue(originNameMessages(listOf(anonymous), OWNERS, listOf(dependency)).isEmpty())
     }
 
     @Test fun `unavailable external ancestor cannot establish nonserializability`() {
         val anonymous = anonymous("missing/Parent")
         assertEquals(OriginSubtype.UNKNOWN, OriginHierarchy(listOf(anonymous), emptyList()).serializable(anonymous.name))
-        assertTrue(originNameObservability(listOf(anonymous), OWNERS).single().contains("Unable to verify Serializable"))
+        assertTrue(originNameMessages(listOf(anonymous), OWNERS).single().contains("Unable to verify Serializable"))
     }
 
     @Test fun `directory dependencies resolve and missing entries remain unknown on repeated queries`() {
