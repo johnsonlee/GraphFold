@@ -32,7 +32,7 @@ jobs:
           path: '**/build/reports/'
   run-unit-test:
     needs: verify
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require successful verification on every platform
