@@ -3,6 +3,7 @@ package io.johnsonlee.graphfold.engine
 import sootup.core.model.MethodModifier
 import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
 import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.graphite.ResourceRead
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -10,6 +11,29 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SnapshotComparisonTest {
+    @Test
+    fun `resource entry effects include existing inherited APIs but not new unused public types`() {
+        val oldRead = ResourceRead("messages", "old")
+        val newRead = ResourceRead("messages", "new")
+        val base = snapshot().copy(entryClasses = setOf("Existing"),
+            resourceEntryReads = mapOf("Existing" to listOf(oldRead)), resourceDependenciesAnalyzed = true)
+        val head = base.copy(entryClasses = setOf("Existing", "Added"),
+            resourceEntryReads = mapOf("Existing" to listOf(oldRead), "Added" to listOf(newRead)))
+        val comparison = SnapshotComparison(base, head)
+        assertTrue(comparison.reachableSnapshots().isEmpty())
+        assertEquals(listOf(oldRead, oldRead), comparison.resourceEntryReads)
+        assertTrue(comparison.resourceDependenciesAnalyzed)
+        assertTrue(!SnapshotComparison(base, head.copy(resourceDependenciesAnalyzed = false)).resourceDependenciesAnalyzed)
+        assertTrue(!SnapshotComparison(base.copy(resourceDependenciesAnalyzed = false), head).resourceDependenciesAnalyzed)
+        val external = head.copy(externalEntries = setOf("Added.callback()V"))
+        assertTrue(newRead in SnapshotComparison(base, external).resourceEntryReads)
+        val root = method("Existing.run()V", calls = setOf("Added.<init>()V"))
+        val activeBase = base.copy(methods = mapOf(root.identity to root))
+        val constructor = method("Added.<init>()V", isPrivate = true)
+        val activeHead = head.copy(methods = mapOf(root.identity to root, constructor.identity to constructor))
+        assertTrue(newRead in SnapshotComparison(activeBase, activeHead).resourceEntryReads)
+    }
+
     @Test
     fun `source annotation change reaches a generated callee even when annotated IR is unchanged`() {
         val root = method("Example.run()I", calls = setOf("Generated.value()I"))

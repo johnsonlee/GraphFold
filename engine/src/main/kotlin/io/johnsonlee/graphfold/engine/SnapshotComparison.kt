@@ -9,6 +9,7 @@ import io.johnsonlee.graphfold.engine.source.SymbolKind
 internal class SnapshotComparison(private val base: ProgramSnapshot, originalHead: ProgramSnapshot) {
     private val alignment = PrivateMemberAlignment(base, originalHead)
     private val head = alignment.aligned()
+    val resourceDependenciesAnalyzed: Boolean get() = base.resourceDependenciesAnalyzed && head.resourceDependenciesAnalyzed
     private val entryPoints = base.methods.values.filter {
         MethodModifier.PRIVATE !in it.modifiers && !it.identity.substringBefore('(').endsWith(".<clinit>") &&
             (base.entryClasses == null || methodOwner(it.identity) in base.entryClasses)
@@ -59,6 +60,13 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
     /** Retains both versions: a removed resource reader can still expose a changed base value. */
     fun reachableSnapshots(): List<io.johnsonlee.graphfold.engine.graphite.MethodSnapshot> =
         baseReachable.mapNotNull(base.methods::get) + headReachable.mapNotNull(head.methods::get)
+
+    /** Existing exposed types may have only inherited APIs or static fields, without a declared callable method. */
+    val resourceEntryReads: List<io.johnsonlee.graphfold.engine.graphite.ResourceRead> by lazy {
+        val owners = base.entryClasses.orEmpty() + reachableByOwner.keys +
+            (base.externalEntries + head.externalEntries).map(::methodOwner)
+        owners.flatMap { base.resourceEntryReads[it].orEmpty() + head.resourceEntryReads[it].orEmpty() }
+    }
 
     /** Only surviving gaps on a change's dependencies/callers invalidate its proof. */
     fun analysisGaps(original: ProofObligation? = null): List<String> {

@@ -37,9 +37,13 @@ class SnapshotExtension : GraphiteExtension {
 internal class SnapshotSink(
     private val ignoredFields: Set<String> = emptySet(),
     private val applicationOwners: Set<String> = emptySet(),
+    private val dependencyResources: Boolean = false,
+    private val trustedIntrinsics: Boolean = false,
 ) {
     val methods = linkedMapOf<String, MethodSnapshot>()
     val declarations = linkedMapOf<String, String>()
+    val resourceCalls = linkedMapOf<String, Set<String>>()
+    val resourceInitializers = linkedMapOf<String, Set<String>>()
 
     fun capture(type: SootClass, context: GraphiteContext) {
         declarations[type.name] = listOf(
@@ -53,6 +57,10 @@ internal class SnapshotSink(
             val modifiers = method.modifiers.toSet()
             val canonicalModifiers = modifiers.map { it.name }.sorted().joinToString(",")
             val body = if (method.hasBody()) method.body else null
+            if (dependencyResources) {
+                resourceCalls[identity] = body?.let { dependencyResourceCalls(it, trustedIntrinsics) }.orEmpty()
+                resourceInitializers[identity] = body?.let(::dependencyResourceInitializers).orEmpty()
+            }
             val calls = body?.stmts.orEmpty().mapNotNull { stmt ->
                 if (!stmt.isInvokableStmt) null else stmt.asInvokableStmt().invokeExpr.orElse(null)?.methodSignature
             }.map { signature ->

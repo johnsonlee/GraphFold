@@ -30,38 +30,49 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
      * @param artifact Application class directory or archive to load.
      * @param rules Fold rules in application order; an empty list captures the program without folding.
      * @param dependencies Resolved dependency JARs and class directories used to complete the frontend's classpath.
+     * @param dependencyResources Expand folded dependency bodies to account for indirect resource reads. This is only
+     * needed for resource proofs; dependency methods remain excluded from application entry points and structural comparison.
      * @return Structural evidence and any recoverable omissions reported by inventory or frontend analysis.
      * @throws IllegalArgumentException if a fold selection has an invalid shape or cannot be applied safely.
      * @throws IllegalStateException if selection or snapshot capture fails, including missing SPI capture.
      */
-    fun analyze(artifact: Path, rules: List<FoldRule>, dependencies: List<Path> = emptyList()): ProgramSnapshot {
+    fun analyze(
+        artifact: Path, rules: List<FoldRule>, dependencies: List<Path> = emptyList(), dependencyResources: Boolean = false,
+    ): ProgramSnapshot {
         val inventory = BytecodeInventory().also { it.read(artifact) }
         inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics, inventory.methodDiagnostics)
         inventory.missingReferences(dependencies).forEach { inventory.diagnostics.add("Unresolved class reference: $it") }
+        val resources = if (dependencyResources) ResourceDeclarations(listOf(artifact) + dependencies) else null
         return AnalysisInputs(artifact, dependencies).use { inputs ->
-            analyzeInputs(inputs.path, rules, inventory, RuleAuditCapture(onAudit))
+            analyzeInputs(inputs.path, rules, inventory, RuleAuditCapture(onAudit), resources)
         }
     }
 
-    internal fun analyzeOriginProject(project: OriginProject, rules: List<FoldRule>): ProgramSnapshot {
+    internal fun analyzeOriginProject(
+        project: OriginProject, rules: List<FoldRule>, dependencyResources: Boolean = false,
+    ): ProgramSnapshot {
         val compiled = project.compiled
-        if (project.owners.isEmpty()) return analyze(compiled.classes, rules, compiled.dependencies)
+        val dependencies = (compiled.dependencies +
+            if (dependencyResources) compiled.production?.resourceDependencies.orEmpty() else emptyList()).distinct()
+        if (project.owners.isEmpty()) return analyze(compiled.classes, rules, dependencies, dependencyResources)
         // Class names remain observable when anonymous owners were normalized for structural alignment.
         val inventory = BytecodeInventory(normalizedRuntimeNames = project.owners.any { it.key != it.value })
             .also { it.read(compiled.classes) }
-        inventory.overrides = inventory.inheritedEntries.resolve(compiled.dependencies, inventory.diagnostics, inventory.methodDiagnostics)
-        inventory.missingReferences(compiled.dependencies).forEach {
+        inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics, inventory.methodDiagnostics)
+        inventory.missingReferences(dependencies).forEach {
             inventory.diagnostics.add("Unresolved class reference: $it")
         }
         val audit = RuleAuditCapture(onAudit)
+        val resources = if (dependencyResources) ResourceDeclarations(listOf(compiled.classes) + dependencies) else null
         val resolveSelection = { graph: Graph, rule: FoldSites, index: Int ->
             resolve(graph, rule) { audit.selected(index, it) }
         }
         val selected = if (rules.isEmpty()) emptyList() else {
             val original = BytecodeInventory().also { it.read(project.sourceClasses) }
-            AnalysisInputs(project.sourceClasses, compiled.dependencies).use { inputs ->
+            AnalysisInputs(project.sourceClasses, dependencies).use { inputs ->
                 val graph = JavaProjectLoader(LoaderConfig(
-                    interproceduralDataflow = true, includePackages = original.classes.toList(), includeLibraries = true,
+                    interproceduralDataflow = true,
+                    includePackages = if (dependencyResources) emptyList() else original.classes.toList(), includeLibraries = true,
                     verbose = { message ->
                         if (listOf("Skipping method", "Skipping control-flow", "Failed to", "Recovered ").any(message::contains)) {
                             inventory.diagnostics.add(message)
@@ -71,37 +82,39 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
                 originFoldSelection(graph, rules, project.owners, resolveSelection, audit)
             }
         }
-        return AnalysisInputs(compiled.classes, compiled.dependencies).use { inputs ->
-            analyzeInputs(inputs.path, selected, inventory, audit, selectionResolved = true)
+        return AnalysisInputs(compiled.classes, dependencies).use { inputs ->
+            analyzeInputs(inputs.path, selected, inventory, audit, resources, selectionResolved = true)
         }
     }
 
     private fun analyzeInputs(
         artifact: Path, rules: List<FoldRule>, inventory: BytecodeInventory, audit: RuleAuditCapture,
+        resources: ResourceDeclarations? = null,
         selectionResolved: Boolean = false,
     ): ProgramSnapshot {
         val diagnostics = mutableListOf<String>()
         diagnostics.addAll(inventory.diagnostics)
+        diagnostics.addAll(resources?.diagnostics.orEmpty())
         val log: (String) -> Unit = { message ->
             val incomplete = listOf("Skipping method", "Skipping control-flow", "Failed to", "Recovered ")
             if (incomplete.any(message::contains)) diagnostics.add(message)
         }
         val resolved = if (!selectionResolved && rules.isNotEmpty()) {
-            selectInputs(artifact, rules, inventory, log, audit)
+            selectInputs(artifact, rules, resources?.classes ?: inventory.classes, log, audit)
         } else rules
-        val sink = SnapshotSink(inventory.ignoredFields, inventory.classes)
+        val sink = SnapshotSink(inventory.ignoredFields, resources?.classes ?: inventory.classes,
+            resources != null, resources?.trustedIntrinsics == true)
         var report: FoldReport? = null
         val config = LoaderConfig(
             folding = resolved.takeIf { it.isNotEmpty() }?.let { FoldPlan(it) { value -> report = value } },
             verbose = log,
-            includePackages = inventory.classes.toList(), includeLibraries = true,
+            includePackages = if (resources != null) emptyList() else inventory.classes.toList(), includeLibraries = true,
+            interproceduralDataflow = true,
         )
         val loader = JavaProjectLoader(config, false)
         val folded = SnapshotExtension.capture(sink) { loader.load(artifact) }
-        val dispatch = folded.nodes(CallSiteNode::class.java).groupBy { it.caller.identity }
-        val methods = sink.methods.filterKeys { it in inventory.methods }.mapValues { (identity, method) ->
-            method.copy(calls = method.calls + dispatch[identity].orEmpty().map { it.callee.identity })
-        }
+        val resourceAnalysis = resourceAnalysis(resources, inventory, sink, folded)
+        val methods = foldedMethods(inventory, sink, folded, resourceAnalysis)
         if (loader.bodyInterceptionFallbackCount > 0) diagnostics.add("Frontend recovered method bodies without requested transforms")
         report?.outcomes?.forEachIndexed { index, outcome ->
             audit.applied(index, outcome.matched)
@@ -110,18 +123,42 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         }
         check(sink.declarations.isNotEmpty()) { "Graphite SPI captured no classes from $artifact" }
         (inventory.methods - sink.methods.keys).forEach { diagnostics.add("Frontend omitted declared method: $it") }
+        (resources?.methods.orEmpty() - sink.methods.keys).forEach { diagnostics.add("Frontend omitted resource dependency method: $it") }
         return ProgramSnapshot(methods, inventory.declarations, diagnostics.distinct(),
             report?.outcomes?.map { it.matched }.orEmpty(), inventory.fields, inventory.classShapes,
             inventory.ignoredFields, inventory.entryClasses, inventory.externalEntries,
-            inventory.initialization.dependencies(), inventory.overrides, inventory.enclosingClasses, inventory.methodDiagnostics)
+            inventory.initialization.dependencies(), inventory.overrides, inventory.enclosingClasses, inventory.methodDiagnostics,
+            resourceDependenciesAnalyzed = resources != null && diagnostics.isEmpty(),
+            resourceEntryReads = resourceEntries(inventory.classes, resourceAnalysis))
     }
 
+    private fun foldedMethods(
+        inventory: BytecodeInventory, sink: SnapshotSink, folded: Graph, resourceAnalysis: DependencyResourceAnalysis?,
+    ): Map<String, MethodSnapshot> {
+        val dispatch = folded.nodes(CallSiteNode::class.java).groupBy { it.caller.identity }
+        return sink.methods.filterKeys { it in inventory.methods }.mapValues { (identity, method) ->
+            method.copy(calls = method.calls + dispatch[identity].orEmpty().map { it.callee.identity },
+                resourceReads = resourceAnalysis?.reads(identity) ?: method.resourceReads)
+        }
+    }
+
+    private fun resourceAnalysis(
+        resources: ResourceDeclarations?, inventory: BytecodeInventory, sink: SnapshotSink, graph: Graph,
+    ): DependencyResourceAnalysis? = resources?.let {
+        DependencyResourceAnalysis(graph, sink.methods, sink.resourceCalls, it.initialization(), sink.resourceInitializers,
+            fieldOwner = it::fieldOwner, inheritedMethods = inventory.classes.associateWith(it::inheritedMethods),
+            entryInitializers = inventory.classes.associateWith(it::entryInitializers))
+    }
+
+    private fun resourceEntries(owners: Set<String>, analysis: DependencyResourceAnalysis?): Map<String, List<ResourceRead>> =
+        analysis?.let { owners.associateWith(it::entryReads) }.orEmpty()
+
     private fun selectInputs(
-        artifact: Path, rules: List<FoldRule>, inventory: BytecodeInventory, log: (String) -> Unit, audit: RuleAuditCapture,
+        artifact: Path, rules: List<FoldRule>, owners: Set<String>, log: (String) -> Unit, audit: RuleAuditCapture,
     ): List<FoldRule> {
         val plain = JavaProjectLoader(LoaderConfig(
             interproceduralDataflow = true, verbose = log,
-            includePackages = inventory.classes.toList(), includeLibraries = true,
+            includePackages = owners.toList(), includeLibraries = true,
         ), false).load(artifact)
         return rules.mapIndexed { index, rule ->
             runCatching {

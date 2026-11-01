@@ -4,6 +4,8 @@
 
 日期：2026-10-30。
 
+Graphite 上游需求与验收范围见 [dependency-aware proof problem statement](graphite-problem-statement.md)。
+
 ## 1. 目标与判定契约
 
 GraphFold 检查一次 Git 变更是否受指定的折叠条件控制。给定仓库、base commit、head commit 和折叠规则，引擎先从 diff 识别变更的类、字段、方法和表达式，为每项变化建立证明义务；再利用 Graphite 展开证明依赖，在相同假定下折叠相关 IR，检测仍然存活的 uncontrolled change，并报告精确源码位置。
@@ -363,7 +365,13 @@ flowchart TD
 
 明确的无资源读取模型按 JVM 方法签名与参数类型匹配，包含标量 boxing/parsing、StringBuilder/StringBuffer 的标量重载，以及 bootstrap 签名和 handle 类型均验证通过、参数不触发对象回调的 StringConcatFactory 拼接。普通 System.out/err 的标量 print/println 也允许：receiver 必须可追溯到这两个标准流；任意 PrintStream 参数、自定义流、Object/CharSequence 的未知转换及格式化仍不能据此放行。此模型假设标准流未在分析范围之外被替换；存活的 System.setOut/setErr 调用本身不在模型内，会保留资源读取缺口。不能从“库调用没有传入 bundle 名字”推断库不读取资源，库可能硬编码资源名或隐式加载。
 
-动态 bundle/key、bundle 跨方法传递或逃逸、原始文件/流读取、非明确建模的 JDK/library 调用、非 ASCII 编码、重复路径内容冲突、外部运行时库可能自行读取资源、增删整个 bundle 文件均保守阻断。资源消费者必须属于已分析的应用 class；不会因为库使用 `kotlin.*` 包名就信任它，当前 Kotlin 标准库等外部 class 同样不能作为完整资源证明的已知消费者。Kotlin 的直接 bundle/key IR 捕获已有 Java 等价测试，但完整资源放行还需要外部库的受验证模型。包内 `BOOT-INF/classes/` 等前缀也不会被猜测成 classloader 映射，只按实际资源路径匹配。此版不宣称覆盖 Spring 配置绑定、任意 Properties 流处理、Android `R.*`、自定义 ResourceBundle 控制器或框架隐式资源发现。即使资源证明失败，混合 PR 的源码义务仍继续分析，保留源码 diff finding 及 reason；不会因资源缺口提前丢弃源码证据。
+存在外部 class 不再直接否决资源证明。生产清单记录需要分析的实际 runtime 依赖；资源 diff 需要这些依赖时，Graphite 同时装载编译与运行时依赖，展开其方法体并启用跨方法数据流。应用入口仍由应用清单决定，依赖方法不提升为入口，也不参与应用源码差异归属。资源效果沿折叠后调用关系反向传播，纳入已捕获的 callback 目标、应用继承的可调用 API、类初始化、父类/default 接口初始化及字段声明者初始化。继承 API 的效果仅附着到对应应用 owner 的激活路径，并按 JVM 方法签名处理覆盖/隐藏，不扩大其他依赖类的入口。仅存在于依赖 JAR、但没有存活激活路径的读取，不会否决证明。两侧都取得依赖图证据且资源读取与变化 key 不相交，才可忽略对应资源内容差异。
+
+缺失方法体、native/abstract 目标、未闭合分派、未知初始化或动态名称保留 wildcard；图中的候选 callback 不等于分派已穷尽，不能据此删除原有未知目标。调用间的 bundle/key 参数尚未做上下文敏感求解，bundle 跨方法传递或逃逸仍可能保守误拦。`trim(CharSequence)` 的实际 receiver 未被证明为安全实现时仍阻断，不能仅因使用 Kotlin 字符串 API 放行。标准 JVM 标量模型按具体签名匹配；Kotlin Intrinsics 的模型另要求唯一类定义与引擎固定 stdlib 的字节一致，替换实现必须分析实际方法体。目录/JAR 内的自定义 ResourceBundle、Control、provider、含 `provides` 的 JPMS 模块、隐式 manifest Class-Path、普通类的多版本布局、嵌套归档、混合或转换后的应用 class、损坏的 class 仍不能声明资源消费者范围完整。
+
+应用中的未建模语义注解（含字段、参数和类型注解）可能引入配置注入或框架拦截，因此也使资源消费者范围保持未知；精确的编译器标记和 GraphFold 来源注解除外。无关依赖类的注解不会据此污染整个应用。原始文件/流读取、未建模 JDK 调用、非 ASCII 编码、重复路径内容冲突和增删整个 bundle 文件继续保守阻断。包内 `BOOT-INF/classes/` 等前缀也不会被猜测成 classloader 映射，只按实际资源路径匹配。此版不宣称覆盖 Spring 配置绑定、任意 Properties 流处理、Android `R.*`、自定义 ResourceBundle 控制器或框架隐式资源发现。即使资源证明失败，混合 PR 的源码义务仍继续分析，保留源码 diff finding 及 reason；不会因资源缺口提前丢弃源码证据。
+
+依赖资源分析仅在需要它的非源码证明中启用；当前实现会展开提供的依赖 class，尚未实现按需加载和跨分析结果缓存。任意 frontend/inventory 遗漏都会使这次依赖证据无效，因此无关依赖的前端失败仍可能保守阻断。实际能力探针与端到端回归见 [依赖分析记录](research/dependencies/README.md)；这些正确性测试不构成大型仓库性能验收，代表性多图负载、按方法完整性证据及上下文精度仍是上游协作与后续优化边界。
 
 **适配范围。** Gradle 执行生产 `main` 输出及 `runtimeElements` 出站 artifact 的依赖任务，导出各项目实际 runtime classpath（包含应用输出）和 source-set 输出。发现额外可消费的 Java runtime variant 时，保留主源码分析，但不声明生产清单完整。Maven 使用 effective reactor 模型、单次 reactor 构建内独立导出的 runtime scope classpath，以及约定 JAR/package 输出；分析注入的 POM 仅在清单副本中还原为原 POM，真实构建输出保持可复用。自定义 Maven packaging、无法确定的资源映射或未支持的插件组合不宣称清单完整。source-only 编译器没有资源与打包模型，非源码 diff 会报告缺少生产清单。
 
@@ -377,7 +385,7 @@ flowchart TD
 | --- | --- | --- |
 | class/JAR/Boot JAR/WAR 建图 | `JavaProjectLoader` 可用 | 复用 |
 | JVM Cypher 查询 | `Graph.query` 可用 | 复用 |
-| 跨过程数据流 | 配置开关，默认关闭 | 选点图显式开启；不将连通关系当作确定值证明 |
+| 跨过程数据流 | 配置开关，默认关闭 | 选点图与折叠后的分析图均显式开启；不将连通关系当作确定值证明 |
 | Cypher select 折叠编排 | Rust CLI 两次建图 | JVM 消费侧需实现等价的编排或抽取上游接口 |
 | 折叠规则 | `ConstantFold`、`FoldSites`、`FoldPlan` | 复用规则语义 |
 | 方法内常量传播和分支折叠 | 迭代到不动点 | 复用并验证边界 |

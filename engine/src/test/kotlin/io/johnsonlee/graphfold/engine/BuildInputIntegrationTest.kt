@@ -199,6 +199,33 @@ class BuildInputIntegrationTest {
         assertTrue(result.reasons.any { it.headPath == SOURCE && it.code == ReasonCode.SURVIVING_DIFFERENCE }, result.toString())
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `resource analysis includes exposed static fields without external dependencies or callable constructors`(exposed: Boolean) {
+        val repository = repository()
+        val path = "src/main/resources/messages.properties"
+        val visibility = if (exposed) "public" else "private"
+        write(repository, "src/main/java/sample/Extra.java", """
+            package sample;
+            public final class Extra {
+                $visibility static final String VALUE = java.util.ResourceBundle.getBundle("messages").getString("greeting");
+                private Extra() {}
+            }
+        """.trimIndent())
+        write(repository, path, "greeting=Hello")
+        val base = commit(repository)
+        write(repository, path, "greeting=Bonjour")
+        val result = analyze(repository, base, commit(repository))
+        assertEquals(if (exposed) Verdict.FAIL else Verdict.PASS, result.verdict, result.toString())
+        assertTrue(result.findings.isEmpty(), "Resource-only changes must not invent source findings")
+        if (exposed) {
+            assertTrue(result.diagnostics.any { it.code == DiagnosticCode.PRODUCTION_OUTPUT_CHANGED }, result.toString())
+        } else {
+            assertTrue(result.diagnostics.isEmpty(), result.toString())
+            assertEquals(ReasonCode.FOLDED_EQUIVALENT, result.reasons.single().code)
+        }
+    }
+
     private fun repository(): Path {
         val root = Files.createDirectory(temporary.resolve("repository"))
         val project = Path.of(System.getProperty("user.dir")).let { if (Files.exists(it.resolve("gradlew"))) it else it.parent }

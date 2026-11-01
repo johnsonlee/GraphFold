@@ -30,3 +30,12 @@ jobs:
         with:
           name: reports-${{ matrix.os }}
           path: '**/build/reports/'
+  run-unit-test:
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful verification on every platform
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFY_RESULT" = success

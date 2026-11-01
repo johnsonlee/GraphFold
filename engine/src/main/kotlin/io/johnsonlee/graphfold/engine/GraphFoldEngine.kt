@@ -117,7 +117,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         val passed = BooleanArray(obligations.size) { true }
         var inputsProved = true
         scenarios.forEach { scenario ->
-            val comparison = compareScenario(oldProject, newProject, scenario, state)
+            val comparison = compareScenario(oldProject, newProject, scenario, state, inputProof.requiresResourceAnalysis)
             val inputPassed = checkBuildInputs(inputProof, comparison, scenario.name, state)
             inputsProved = inputsProved && inputPassed
             obligations.forEachIndexed { index, obligation ->
@@ -184,7 +184,9 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
     private fun checkProductionInputs(
         proof: BuildInputProof, comparison: SnapshotComparison, scenario: String, state: RunState,
     ): Boolean {
-        val gap = proof.gap(resourcesProved = proof.resourcesUnreachable(comparison.reachableSnapshots()))
+        val gap = proof.gap(resourcesProved = proof.resourcesUnreachable(
+            comparison.reachableSnapshots(), comparison.resourceDependenciesAnalyzed, comparison.resourceEntryReads,
+        ))
         if (gap != null) {
             state.diagnostics += gap
             state.reasons += proof.reasons(ReasonCode.ANALYSIS_INCOMPLETE, scenario, gap.message)
@@ -205,12 +207,14 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         return proved
     }
 
-    private fun compareScenario(base: OriginProject, head: OriginProject, scenario: FoldScenario, state: RunState): SnapshotComparison {
+    private fun compareScenario(
+        base: OriginProject, head: OriginProject, scenario: FoldScenario, state: RunState, dependencyResources: Boolean,
+    ): SnapshotComparison {
         state.stage = AnalysisStage.GRAPH
         val old = GraphiteAnalyzer { index, update -> state.audit(scenario.name, Revision.BASE, index, update) }
-            .analyzeOriginProject(base, scenario.rules)
+            .analyzeOriginProject(base, scenario.rules, dependencyResources)
         val new = GraphiteAnalyzer { index, update -> state.audit(scenario.name, Revision.HEAD, index, update) }
-            .analyzeOriginProject(head, scenario.rules)
+            .analyzeOriginProject(head, scenario.rules, dependencyResources)
         (old.diagnostics.map { "base: $it" } + new.diagnostics.map { "head: $it" }).forEach {
             state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it)
         }

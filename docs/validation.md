@@ -1,8 +1,37 @@
 # Validation record
 
-Date: 2026-11-01. Local environment: macOS, JDK 17. Graphite: 2.12.0.
+Date: 2026-11-02. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
+
+## PR review: folded dependency resource effects (2026-11-02)
+
+The unfiltered root check, type-aware detekt, local publications and CLI distributions
+passed with **930 JUnit tests**, zero failures/errors/skips. All four
+modules retain the **95% branch / 90% line** hard gates without new production exclusions.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| gfc | 62 | 98.5294% | 95.4082% (187/196) |
+| engine | 811 | 99.3604% | 95.7827% (4020/4197) |
+| cli | 28 | 98.6842% | 97.0588% (33/34) |
+| gradle-plugin | 29 | 100.0000% | 100.0000% (18/18) |
+
+All **130 Java + 207 Kotlin** corpus cases match their labels;
+all actual reports validate against the verdict JSON Schema. Eleven real Gradle
+Kotlin + stdlib cases verify folded dependency effects with separate compile and
+runtime-only JARs. Positive cases pass; surviving hardcoded/dynamic reads, callbacks,
+initialization, unknown receiver behavior and unmodeled configuration injection fail.
+Java regressions retain exposed static-field reads even without external dependencies
+and keep a private-only uncalled type inactive. Inherited entry, field declaration,
+replacement Intrinsics and unsupported provider/layout boundaries have dedicated tests.
+
+Local publication/version smoke checks, 17 release-helper tests, public API documentation
+and workflow lint pass. The required `run-unit-test` CI job aggregates both platform
+verification jobs. No remote release or representative multi-graph performance acceptance
+was performed. See [machine-readable evidence](research/validation/dependency-validation-2026-11-02.json),
+[capability probe and integration boundaries](research/dependencies/README.md), and
+[the design](design.md#61-非源码变更按实际生产产物证明).
 
 ## PR review: resource value calls and Class queries (2026-11-01)
 

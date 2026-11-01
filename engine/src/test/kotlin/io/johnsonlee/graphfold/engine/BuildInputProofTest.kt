@@ -2,6 +2,8 @@ package io.johnsonlee.graphfold.engine
 
 import io.johnsonlee.graphfold.engine.build.ProductionInventory
 import io.johnsonlee.graphfold.engine.git.ChangedFile
+import io.johnsonlee.graphfold.engine.graphite.ResourceRead
+import java.nio.file.Path
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,6 +12,45 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BuildInputProofTest {
+    @Test
+    fun `inherited resource entry can observe a changed key without a declared reachable method`() {
+        val base = ProductionInventory(emptyMap(), emptyMap(), resourceConsumersKnown = true,
+            resourceEntries = mapOf("messages.properties" to mapOf("old" to "Hello")))
+        val head = base.copy(resourceEntries = mapOf("messages.properties" to mapOf("old" to "Changed")))
+        val proof = BuildInputProof(listOf(change("messages.properties", "messages.properties")), base, head)
+        assertTrue(proof.requiresResourceAnalysis, "Application-only static field entries still require graph evidence")
+        assertTrue(proof.resourcesUnreachable(emptyList()))
+        assertFalse(proof.resourcesUnreachable(emptyList(), entryReads = listOf(ResourceRead("messages", "old"))))
+    }
+
+    @Test
+    fun `runtime class declarations require graph evidence from both revisions before resource proof`() {
+        val inventory = ProductionInventory(emptyMap(), emptyMap(),
+            resourceEntries = mapOf("messages.properties" to mapOf("old" to "Hello")), resourceConsumersKnown = true)
+        val dependency = inventory.copy(resourceDependencies = listOf(Path.of("stdlib.jar")))
+        val changes = listOf(change("messages.properties", "messages.properties"))
+        listOf(dependency to inventory, inventory to dependency, dependency to dependency).forEach { (base, head) ->
+            val proof = BuildInputProof(changes, base, head.copy(
+                resourceEntries = mapOf("messages.properties" to mapOf("old" to "Hello", "new" to "Bonjour"))))
+            assertTrue(proof.requiresResourceAnalysis)
+            assertFalse(proof.resourcesUnreachable(emptyList()))
+            assertTrue(proof.resourcesUnreachable(emptyList(), dependenciesAnalyzed = true))
+        }
+        assertFalse(BuildInputProof(changes, inventory, inventory).requiresResourceAnalysis)
+        assertFalse(BuildInputProof(emptyList(), dependency, dependency).requiresResourceAnalysis)
+        assertFalse(BuildInputProof(changes, dependency.copy(resourceEntries = emptyMap()),
+            dependency.copy(resourceEntries = emptyMap())).requiresResourceAnalysis)
+        assertTrue(BuildInputProof(changes, dependency.copy(resourceEntries = emptyMap()), dependency).requiresResourceAnalysis)
+        assertFalse(BuildInputProof(changes, null, null).requiresResourceAnalysis)
+        assertFalse(BuildInputProof(changes, null, dependency).requiresResourceAnalysis)
+        assertFalse(BuildInputProof(changes, dependency, null).requiresResourceAnalysis)
+        assertFalse(BuildInputProof(changes, dependency, dependency).requiresResourceAnalysis)
+        val bytes = inventory.copy(nonClassEntries = mapOf("resource/messages" to "before"),
+            resourceIndependentEntries = mapOf("resource/messages" to "properties:messages.properties"))
+        assertTrue(BuildInputProof(changes, bytes, bytes.copy(nonClassEntries = mapOf("resource/messages" to "after")))
+            .requiresResourceAnalysis)
+    }
+
     @Test
     fun `missing production evidence from either revision blocks instead of proving unchanged outputs`() {
         val inventory = ProductionInventory(emptyMap(), emptyMap())

@@ -3,6 +3,7 @@ package io.johnsonlee.graphfold.engine
 import io.johnsonlee.graphfold.engine.build.ProductionInventory
 import io.johnsonlee.graphfold.engine.git.ChangedFile
 import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
+import io.johnsonlee.graphfold.engine.graphite.ResourceRead
 import io.johnsonlee.graphfold.engine.origin.ORIGIN_MARKER
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,6 +20,14 @@ internal class BuildInputProof(
     private val head: ProductionInventory?,
 ) {
     val unchanged: Boolean get() = base != null && head != null && base.entries == head.entries
+    val requiresResourceAnalysis: Boolean get() = changes.isNotEmpty() && resourceContentChanged()
+
+    private fun resourceContentChanged(): Boolean {
+        if (base == null || head == null) return false
+        return base.resourceEntries != head.resourceEntries || base.resourceIndependentEntries.any { (entry, marker) ->
+            marker.startsWith("properties:") && base.nonClassEntries[entry] != head.nonClassEntries[entry]
+        }
+    }
 
     fun gap(resourcesProved: Boolean = false): Diagnostic? {
         if (base == null || head == null) return Diagnostic(
@@ -41,11 +50,13 @@ internal class BuildInputProof(
     }
 
     /** Proves changed properties keys unobservable in both folded revisions; unknown loaders block. */
-    fun resourcesUnreachable(methods: List<MethodSnapshot>): Boolean {
+    fun resourcesUnreachable(
+        methods: List<MethodSnapshot>, dependenciesAnalyzed: Boolean = false, entryReads: List<ResourceRead> = emptyList(),
+    ): Boolean {
         if (base == null || head == null) return false
         val scopeKnown = base.resourceConsumersKnown && head.resourceConsumersKnown &&
-            base.resourceEntries.keys == head.resourceEntries.keys
-        val reads = methods.flatMap { it.resourceReads }
+            base.resourceEntries.keys == head.resourceEntries.keys && dependenciesCovered(dependenciesAnalyzed)
+        val reads = methods.flatMap { it.resourceReads } + entryReads
         val byteChanges = base.resourceIndependentEntries.filter { (entry, marker) ->
             marker.startsWith("properties:") && base.nonClassEntries[entry] != head.nonClassEntries[entry]
         }.values.map { it.removePrefix("properties:") }.toSet()
@@ -59,6 +70,9 @@ internal class BuildInputProof(
             }
         }
     }
+
+    private fun dependenciesCovered(analyzed: Boolean): Boolean = analyzed ||
+        base?.resourceDependencies.orEmpty().isEmpty() && head?.resourceDependencies.orEmpty().isEmpty()
 
     fun reasons(code: ReasonCode, scenario: String, message: String): List<VerdictReason> = changes.map {
         VerdictReason(setOf(ChangeKind.BUILD_INPUT_CHANGED), code, message, emptyList(), scenario, it.basePath, it.headPath)

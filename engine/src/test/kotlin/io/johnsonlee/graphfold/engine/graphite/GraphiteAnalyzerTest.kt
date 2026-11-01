@@ -269,6 +269,15 @@ class GraphiteAnalyzerTest {
         val directoryResolved = GraphiteAnalyzer().analyze(application, emptyList(), listOf(library))
         assertTrue(directoryResolved.diagnostics.isEmpty(), directoryResolved.diagnostics.toString())
         assertEquals(resolved.methods, directoryResolved.methods)
+        val expanded = GraphiteAnalyzer().analyze(application, emptyList(), listOf(jar), dependencyResources = true)
+        assertTrue(expanded.resourceDependenciesAnalyzed, expanded.diagnostics.toString())
+        assertTrue(expanded.methods.getValue("App.run()I").resourceReads.isEmpty())
+        assertEquals(resolved.methods.keys, expanded.methods.keys)
+        assertEquals(resolved.entryClasses, expanded.entryClasses)
+        assertFalse(resolved.resourceDependenciesAnalyzed)
+        val incomplete = GraphiteAnalyzer().analyze(application, emptyList(), dependencyResources = true)
+        assertFalse(incomplete.resourceDependenciesAnalyzed)
+        assertTrue(ResourceRead(null, null) in incomplete.methods.getValue("App.run()I").resourceReads)
     }
 
     @Test fun `unread constructor scalar initializers erase without erasing following work`() {
