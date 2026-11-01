@@ -36,6 +36,34 @@ class ScopedGraphAnalysisTest {
         assertTrue(snapshot.methodDiagnostics.values.flatten().all { it.globalObservation })
     }
 
+    @Test fun `ordinary class queries preserve source differences without global reflection gaps`() {
+        val old = typeQueries("base", 1)
+        val new = typeQueries("head", 2)
+        val comparison = SnapshotComparison(old, new)
+        val changed = obligation("Sample.run()I")
+        assertTrue(comparison.analysisGaps(changed).isEmpty())
+        assertTrue(comparison.differences(changed).contains("Sample.run()I"))
+        assertTrue(old.methods.getValue("Queries.label(Ljava/lang/Class;)Ljava/lang/String;").calls.any {
+            it == "java.lang.Class.getSimpleName()Ljava/lang/String;"
+        })
+    }
+
+    private fun typeQueries(revision: String, value: Int): io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot {
+        val output = Files.createDirectory(directory.resolve(revision))
+        val source = output.resolve("Sample.java")
+        val queries = output.resolve("Queries.java")
+        Files.writeString(source, "public class Sample { public int run() { return $value; } }")
+        Files.writeString(queries, """
+            public class Queries {
+                public String label(Class<?> type) { return type.getSimpleName(); }
+                public boolean accepts(Class<?> type, Object value) { return type.isInstance(value); }
+            }
+        """.trimIndent())
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
+            "-d", output.toString(), source.toString(), queries.toString()))
+        return GraphiteAnalyzer().analyze(output, emptyList())
+    }
+
     private fun snapshot(parameter: String = "Dto value"): io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot {
         val dependency = Files.createDirectory(directory.resolve("dependency"))
         val encoder = directory.resolve("Encoder.java")

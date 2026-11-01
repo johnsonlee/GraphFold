@@ -114,6 +114,75 @@ class ResourceReadsTest {
         assertEquals(listOf(ResourceRead("messages", "old")), folded.methods.getValue("Sample.run()Ljava/lang/String;").resourceReads)
     }
 
+    @Test fun `Java scalar output concatenation and conversions do not invent resource reads`() {
+        val snapshot = GraphiteAnalyzer().analyze(compile("""
+            public static String values(int value) {
+                System.out.println("hello");
+                System.err.print(value);
+                System.out.println();
+                Integer boxed = Integer.valueOf(value);
+                System.out.println(boxed);
+                int parsed = Integer.parseInt("42");
+                String text = new StringBuilder().append("count=").append(parsed).append(true).toString();
+                String buffer = new StringBuffer("text").append(value).toString();
+                return text + buffer + boxed.intValue();
+            }
+            public static String conversions() {
+                return String.valueOf(1) + Boolean.parseBoolean("true") + Long.parseLong("ff", 16)
+                    + Double.valueOf("2.0").doubleValue() + Float.toString(3.0f);
+            }
+        """.trimIndent()), emptyList())
+        listOf("values", "conversions").forEach { name ->
+            val method = snapshot.methods.values.single { it.identity.substringBefore('(') == "Sample.$name" }
+            assertTrue(method.resourceReads.isEmpty(), "$name: ${method.resourceReads}")
+        }
+    }
+
+    @Test fun `custom output object conversion property lookups and formatters remain unknown readers`() {
+        val snapshot = GraphiteAnalyzer().analyze(compile("""
+            public static void custom(java.io.PrintStream out) { out.println("hello"); }
+            public static void object(Object value) { System.out.println(value); }
+            public static String builder(Object value) { return new StringBuilder().append(value).toString(); }
+            public static String sequence(CharSequence value) { return new StringBuffer().append(value).toString(); }
+            public static String concatenation(Object value) { return "value=" + value; }
+            public static Object property() { return Integer.getInteger("resource.path"); }
+            public static void format(Object value) { System.out.printf("%s", value); }
+            public static void replace(java.io.PrintStream out) { System.setOut(out); }
+        """.trimIndent()), emptyList())
+        listOf("custom", "object", "builder", "sequence", "concatenation", "property", "format", "replace").forEach { name ->
+            val method = snapshot.methods.values.single { it.identity.substringBefore('(') == "Sample.$name" }
+            assertTrue(ResourceRead(null, null) in method.resourceReads, "$name: ${method.resourceReads}")
+        }
+    }
+
+    @Test fun `Kotlin scalar output and templates match Java while object templates retain unknown readers`() {
+        val root = Files.createDirectories(directory.resolve("kotlin-output"))
+        val source = Files.createDirectories(root.resolve("src/main/kotlin")).resolve("Sample.kt")
+        Files.writeString(source, """
+            class Sample {
+                fun values(value: Int): String {
+                    println("hello")
+                    println(value)
+                    val parsed = java.lang.Integer.parseInt("42")
+                    return "value=${'$'}value parsed=${'$'}parsed"
+                }
+                fun unknown(value: Any): String {
+                    println(value)
+                    return "value=${'$'}value"
+                }
+                fun loader(): java.io.InputStream? = javaClass.getResourceAsStream("/messages.properties")
+            }
+        """.trimIndent())
+        val compiled = io.johnsonlee.graphfold.engine.build.ProjectCompiler(java.time.Duration.ofMinutes(1))
+            .compile(root, directory.resolve("kotlin-output-classes"))
+        val snapshot = GraphiteAnalyzer().analyze(compiled.classes, emptyList(), compiled.dependencies)
+        assertTrue(snapshot.methods.getValue("Sample.values(I)Ljava/lang/String;").resourceReads.isEmpty())
+        listOf("unknown", "loader").forEach { name ->
+            val method = snapshot.methods.values.single { it.identity.substringBefore('(') == "Sample.$name" }
+            assertTrue(ResourceRead(null, null) in method.resourceReads, "$name: ${method.resourceReads}")
+        }
+    }
+
     private fun compile(body: String): Path {
         val source = directory.resolve("Sample.java")
         Files.writeString(source, "public class Sample { static boolean enabled() { return true; } $body }")

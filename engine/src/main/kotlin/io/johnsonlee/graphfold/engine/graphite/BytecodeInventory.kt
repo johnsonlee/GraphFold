@@ -209,7 +209,7 @@ internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = f
         referenceName(instruction.owner)
         referenceType(Type.getMethodType(instruction.desc))
         val nameObservation = normalizedRuntimeNames && instruction.owner == "java/lang/Class" &&
-            instruction.name in setOf("getName", "getTypeName")
+            instruction.name in ClassValueQueries.runtimeNameMembers
         if (dynamicAccess(instruction) || nameObservation) {
             val diagnostic = "Unmodeled reflective or dynamic access: $identity -> " +
                 "${instruction.owner}.${instruction.name}${instruction.desc} (${instruction.opcode})"
@@ -236,7 +236,7 @@ internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = f
     private fun dynamicAccess(call: MethodInsnNode): Boolean =
         call.owner.startsWith("java/lang/reflect/") || call.owner.startsWith("java/lang/invoke/MethodHandle") ||
             call.owner.startsWith("kotlin/reflect/") || call.owner.startsWith("kotlin/jvm/internal/Reflection") ||
-            (call.owner == "java/lang/Class" && call.name !in setOf("desiredAssertionStatus", "getName", "getTypeName")) ||
+            (call.owner == "java/lang/Class" && call.name + call.desc !in ClassValueQueries.signatures) ||
             call.owner.endsWith("ClassLoader")
 
     /** Only the stdlib-only adapter is an identity operation; kotlin-reflect can replace its factory. */

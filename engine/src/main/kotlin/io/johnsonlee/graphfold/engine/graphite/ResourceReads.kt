@@ -14,12 +14,13 @@ internal fun resourceReads(body: Body, applicationOwners: Set<String>): List<Res
         val name = call?.takeIf(::simpleBundle)?.args?.singleOrNull() as? StringConstant
         if (local is Local && name != null) local to name.value.replace('.', '/') else null
     }.toMap()
+    val independent = ResourceIndependentCalls(assignments.mapValues { it.value.singleOrNull()?.rightOp })
     val reads = mutableListOf<ResourceRead>()
     body.stmts.forEach { stmt ->
         val call = if (stmt.isInvokableStmt) stmt.asInvokableStmt().invokeExpr.orElse(null) else null
         val signature = call?.methodSignature
         val owner = signature?.declClassType?.fullyQualifiedName
-        call?.let { reads += invocationReads(it, bundles, applicationOwners) }
+        call?.let { reads += invocationReads(it, bundles, applicationOwners, independent) }
         if (call != null && simpleBundle(call)) {
             val target = if (stmt.isJAssignStmt) stmt.asJAssignStmt().leftOp else null
             if (target !in bundles) reads += ResourceRead(null, null)
@@ -38,7 +39,7 @@ private fun simpleBundle(call: AbstractInvokeExpr): Boolean =
         call.methodSignature.name == "getBundle" && call.args.size == 1
 
 private fun invocationReads(
-    call: AbstractInvokeExpr, bundles: Map<Local, String>, applicationOwners: Set<String>,
+    call: AbstractInvokeExpr, bundles: Map<Local, String>, applicationOwners: Set<String>, independent: ResourceIndependentCalls,
 ): List<ResourceRead> {
     val owner = call.methodSignature.declClassType.fullyQualifiedName
     val member = call.methodSignature.name
@@ -53,16 +54,7 @@ private fun invocationReads(
             } else null
             listOf(ResourceRead(bundle, key))
         }
-        owner in applicationOwners || resourceIndependentCall(owner, member) -> emptyList()
+        owner in applicationOwners || independent.matches(call) -> emptyList()
         else -> listOf(ResourceRead(null, null))
     }
-}
-
-/** Explicit value-only boundaries; unmodeled platform/library calls can discover resources implicitly. */
-private fun resourceIndependentCall(owner: String, member: String): Boolean = when (owner) {
-    "java.lang.Object" -> member in setOf("<init>", "getClass")
-    "java.lang.String" -> member in setOf("length", "isEmpty", "equals", "hashCode", "toString", "charAt")
-    "java.lang.Class" -> member in setOf("getName", "getSimpleName", "desiredAssertionStatus")
-    "kotlin.jvm.internal.Intrinsics" -> member in setOf("checkNotNullParameter", "checkNotNullExpressionValue", "checkNotNull")
-    else -> false
 }

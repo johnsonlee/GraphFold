@@ -361,6 +361,8 @@ flowchart TD
 
 **资源 key 证明的范围。** 当前支持由构建适配器导出的既有 ASCII `.properties` 文件（包括 Java Unicode 转义）。直接从折叠后 IR 提取 `ResourceBundle.getBundle(String)` 与 `getString` / `getObject` / `getStringArray` / `containsKey` 的常量 bundle 和 key。局部 bundle 必须有唯一直接定义；locale 子资源按照 basename 归属保守匹配。新增 key 只有折叠掉的 reader 使用时可通过；控制路径读取的 key 改值或删除仍阻断。资源输出与 runtime 目录/JAR/生产包内副本必须路径及字节均匹配，才允许将这些副本的内容差异交给 key 证明；布局、文件存在性、未匹配副本及其他内容仍比较。
 
+明确的无资源读取模型按 JVM 方法签名与参数类型匹配，包含标量 boxing/parsing、StringBuilder/StringBuffer 的标量重载，以及 bootstrap 签名和 handle 类型均验证通过、参数不触发对象回调的 StringConcatFactory 拼接。普通 System.out/err 的标量 print/println 也允许：receiver 必须可追溯到这两个标准流；任意 PrintStream 参数、自定义流、Object/CharSequence 的未知转换及格式化仍不能据此放行。此模型假设标准流未在分析范围之外被替换；存活的 System.setOut/setErr 调用本身不在模型内，会保留资源读取缺口。不能从“库调用没有传入 bundle 名字”推断库不读取资源，库可能硬编码资源名或隐式加载。
+
 动态 bundle/key、bundle 跨方法传递或逃逸、原始文件/流读取、非明确建模的 JDK/library 调用、非 ASCII 编码、重复路径内容冲突、外部运行时库可能自行读取资源、增删整个 bundle 文件均保守阻断。资源消费者必须属于已分析的应用 class；不会因为库使用 `kotlin.*` 包名就信任它，当前 Kotlin 标准库等外部 class 同样不能作为完整资源证明的已知消费者。Kotlin 的直接 bundle/key IR 捕获已有 Java 等价测试，但完整资源放行还需要外部库的受验证模型。包内 `BOOT-INF/classes/` 等前缀也不会被猜测成 classloader 映射，只按实际资源路径匹配。此版不宣称覆盖 Spring 配置绑定、任意 Properties 流处理、Android `R.*`、自定义 ResourceBundle 控制器或框架隐式资源发现。即使资源证明失败，混合 PR 的源码义务仍继续分析，保留源码 diff finding 及 reason；不会因资源缺口提前丢弃源码证据。
 
 **适配范围。** Gradle 执行生产 `main` 输出及 `runtimeElements` 出站 artifact 的依赖任务，导出各项目实际 runtime classpath（包含应用输出）和 source-set 输出。发现额外可消费的 Java runtime variant 时，保留主源码分析，但不声明生产清单完整。Maven 使用 effective reactor 模型、单次 reactor 构建内独立导出的 runtime scope classpath，以及约定 JAR/package 输出；分析注入的 POM 仅在清单副本中还原为原 POM，真实构建输出保持可复用。自定义 Maven packaging、无法确定的资源映射或未支持的插件组合不宣称清单完整。source-only 编译器没有资源与打包模型，非源码 diff 会报告缺少生产清单。
@@ -870,7 +872,7 @@ Java/Kotlin 反射、native/JNI 回调、序列化钩子和框架入口不能仅
 
 自定义 delegate 的编译器元数据构造仅有一个窄范围例外：精确静态调用 `Reflection.property1(PropertyReference1): KProperty1`，且依赖中的 `Reflection` / `ReflectionFactory` 各有唯一一份定义、字节与引擎固定标准库一致、没有完整反射 factory 或应用覆盖。调用及属性名/签名仍保留在 IR；真正的 `KProperty` 访问仍阻断。不同标准库实现、替换类和重复定义不自动放行。
 
-不透明第三方调用的 gap 按方法和实际 callee 保存；折叠删除调用，或该方法在两个版本均不可达时，不再因这个 gap 阻断。可界定的 gap 只影响义务的依赖闭包、可达调用方和被观察对象的 owner；全程序构建输入证明仍检查所有可达 gap。普通 `Class.getName/getTypeName` 保留在 IR 中参与差异比较，不再等同于任意反射访问；若项目对匿名 owner 做了名字归一化，存活的类名观察仍保留 gap，避免抹去运行时二进制名变化。尚未实现类名 token 的对象级来源缩窄，因此这类项目可能保守误拦。
+不透明第三方调用的 gap 按方法和实际 callee 保存；折叠删除调用，或该方法在两个版本均不可达时，不再因这个 gap 阻断。可界定的 gap 只影响义务的依赖闭包、可达调用方和被观察对象的 owner；全程序构建输入证明仍检查所有可达 gap。`Class` 的 `getName/getTypeName/getSimpleName/getPackageName`、`isInstance/cast/isAssignableFrom/isArray/isInterface` 与断言状态查询按具体签名建模，保留在 IR 中参与差异比较，不再等同于任意反射访问；成员发现、实例化、按名字加载类型和资源读取仍保留 gap。若项目对匿名 owner 做了名字归一化，存活的类名观察及可能通过 `ClassCastException` 暴露名字的 `cast` 仍保留 gap，避免抹去运行时名称变化。尚未实现类名 token 的对象级来源缩窄，因此这类项目可能保守误拦。
 
 边界模型允许 primitive、String、boxed primitive、null，以及参数内容均已证明安全的固定参数不可变工厂（`List.of`、`Set.of`、`Map.of`、`Collections.empty/singleton`、`Optional.empty/of/ofNullable`）。集合声明类型本身不构成证明，varargs 数组、可变集合及未知来源仍不放行。精确 SLF4J `Logger` 日志方法仅在实际参数全部为标量且 receiver 不是应用实现时排除对象图逃逸；对象参数和 varargs 不在此模型内。
 

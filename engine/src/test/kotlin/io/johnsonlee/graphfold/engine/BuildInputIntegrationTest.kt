@@ -6,6 +6,8 @@ import java.time.Duration
 import org.eclipse.jgit.api.Git
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -148,8 +150,13 @@ class BuildInputIntegrationTest {
         assertEquals(ReasonCode.ANALYSIS_INCOMPLETE, result.reasons.single().code)
     }
 
-    @Test
-    fun `new properties key read only in folded branch passes while live key edit fails`() {
+    @ParameterizedTest
+    @ValueSource(strings = [
+        "return bundle.getString(\"old\");",
+        "System.out.println(\"hello\"); return bundle.getString(\"old\");",
+        "return bundle.getString(\"old\") + \"!\";",
+    ])
+    fun `new properties key read only in folded branch passes while live key edit fails`(output: String) {
         val repository = repository()
         val path = "src/main/resources/messages.properties"
         write(repository, path, "old=Hello")
@@ -159,7 +166,7 @@ class BuildInputIntegrationTest {
                 public String value() {
                     java.util.ResourceBundle bundle = java.util.ResourceBundle.getBundle("messages");
                     if (Ab.enabled("feature")) return bundle.getString("new");
-                    return bundle.getString("old");
+                    $output
                 }
             }
         """.trimIndent())

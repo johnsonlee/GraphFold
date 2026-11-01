@@ -4,6 +4,33 @@ Date: 2026-11-01. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
 
+## PR review: resource value calls and Class queries (2026-11-01)
+
+The unfiltered root check, type-aware detekt, local publications and CLI distributions
+passed with **835 JUnit tests**, zero failures/errors/skips. Every module
+retains the **95% branch / 90% line** hard gates without new production exclusions.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| gfc | 62 | 98.5294% | 95.4082% (187/196) |
+| engine | 716 | 99.3530% | 95.9047% (3583/3736) |
+| cli | 28 | 98.6842% | 97.0588% (33/34) |
+| gradle-plugin | 29 | 100.0000% | 100.0000% (18/18) |
+
+All **130 Java + 207 Kotlin** corpus cases match their labels, and
+all 337 actual reports validate against the verdict JSON Schema.
+Real Gradle regressions prove folded-only properties keys remain safe with standard
+output and returned string concatenation; live-key edits still fail. Java/Kotlin IR
+and direct model tests cover scalar operations and unknown callbacks, streams,
+loaders, bootstrap variants and receiver provenance. Compiled Class queries retain
+member/loader reflection gaps and normalized runtime-name observation boundaries.
+
+Local publication verification, ZIP/TAR version smoke checks, 17 Python release tests
+and documentation checks for 319 public Kotlin declarations passed. No remote
+release or representative multi-graph performance acceptance was performed.
+See [value-call evidence](research/validation/value-call-validation-2026-11-01.json)
+and the [resource model boundary](design.md#61-非源码变更按实际生产产物证明).
+
 ## PR review: inline copies, resource readers and scoped gaps (2026-11-01)
 
 The unfiltered root check, type-aware detekt, local publications and CLI distributions
