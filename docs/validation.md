@@ -4,6 +4,39 @@ Date: 2026-11-01. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
 
+## PR review: inline copies, resource readers and scoped gaps (2026-11-01)
+
+The unfiltered root check, type-aware detekt, local publications and CLI distributions
+passed with **825 JUnit tests**, zero failures/errors/skips. Every module
+retains the **95% branch / 90% line** hard gates without production exclusions.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| gfc | 62 | 98.5294% | 95.4082% (187/196) |
+| engine | 706 | 99.3427% | 95.8639% (3523/3675) |
+| cli | 28 | 98.6842% | 97.0588% (33/34) |
+| gradle-plugin | 29 | 100.0000% | 100.0000% (18/18) |
+
+The corpus contains **130 Java + 207 Kotlin** cases with zero mismatches;
+all 337 actual reports validate against the JSON Schema. The 21 new inline
+cases verify uncontrolled, folded and dead copies, including object members and
+file-facade functions. Properties/accessors add parity coverage rather than claiming
+the original private-function bug affected every property shape.
+
+Resource tests verify direct constant bundle/key readers, folded-only new keys,
+live changed values, unknown platform readers, escaping bundles, literal package
+paths and external consumers. Mixed resource/source PRs retain source evidence.
+Method-gap regressions cover cross-owner private state, private-member alignment,
+immutable value factories, scalar logging and unbounded observation. Real Gradle
+builds distinguish documentation/test-fixture variants from production features.
+Whole-program shared-closure tests establish correctness only; no representative
+multi-graph performance acceptance is claimed.
+
+Local artifact verification, ZIP/TAR version smoke tests and 17 Python release tests
+passed. No remote release was performed. See [review evidence](research/validation/review-closure-validation-2026-11-01.json)
+and [capability boundaries](design.md#17-高精度检测的能力边界gap-与-trade-off).
+Earlier records below are historical baselines.
+
 ## Production scope from actual build outputs (2026-11-01)
 
 The unfiltered root check and type-aware detekt checks passed with **742 JUnit tests**,

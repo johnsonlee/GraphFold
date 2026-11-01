@@ -13,8 +13,14 @@ internal class InheritedEntries {
 
     fun add(node: ClassNode) { application[node.name] = node }
 
-    fun resolve(dependencies: List<Path>, diagnostics: MutableList<String>): Set<String> {
-        diagnostics.addAll(ExternalObjectEscape(application).diagnostics())
+    fun resolve(
+        dependencies: List<Path>,
+        diagnostics: MutableList<String>,
+        methodDiagnostics: MutableMap<String, List<MethodAnalysisGap>> = mutableMapOf(),
+    ): Set<String> {
+        ExternalObjectEscape(application).methodDiagnostics().forEach { (method, gaps) ->
+            methodDiagnostics[method] = methodDiagnostics[method].orEmpty() + gaps
+        }
         val cache = application.mapValues { it.value as ClassNode? }.toMutableMap()
         fun type(name: String): ClassNode? {
             if (name !in cache) cache[name] = load(name, dependencies)

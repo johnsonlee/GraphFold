@@ -73,6 +73,25 @@ class SnapshotWholeProgramComparisonTest {
         assertEquals(listOf(callback.identity), SnapshotComparison(base, head).wholeProgramDifferences())
     }
 
+    @Test
+    fun `shared cyclic dependencies and initialization changes are reported once across owners`() {
+        val entries = (0 until 24).map { index -> method("Entry$index.run()I", calls = setOf("Shared.first()I")) }
+        val first = method("Shared.first()I", calls = setOf("Shared.second()I"))
+        val second = method("Shared.second()I", "old", setOf(first.identity))
+        val base = snapshot(*(entries + first + second + method("Parent.<clinit>()V")).toTypedArray())
+            .copy(entryClasses = entries.map { it.identity.substringBefore('.') }.toSet(),
+                initializationDependencies = mapOf("Shared" to setOf("Parent")))
+        val head = base.copy(methods = base.methods + (second.identity to second.copy(referenceCanonical = "new")),
+            initializationDependencies = emptyMap())
+        val comparison = SnapshotComparison(base, head)
+        val legacyUnion = (base.declarations.keys + head.declarations.keys).flatMap { owner ->
+            comparison.differences(io.johnsonlee.graphfold.engine.source.ProofObligation(owner,
+                io.johnsonlee.graphfold.engine.source.SymbolKind.CLASS, owner, emptyList()))
+        }.distinct().sorted()
+        assertEquals(legacyUnion, comparison.wholeProgramDifferences())
+        assertTrue(comparison.wholeProgramDifferences().any { it.startsWith("Class initialization dependencies") })
+    }
+
     private fun method(identity: String, body: String = "body", calls: Set<String> = emptySet(), isPrivate: Boolean = false) =
         MethodSnapshot(identity, body, calls, setOf(if (isPrivate) MethodModifier.PRIVATE else MethodModifier.PUBLIC), emptySet())
 

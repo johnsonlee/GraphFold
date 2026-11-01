@@ -141,13 +141,18 @@ gradle.projectsEvaluated {
             })
         }
     }
-    // Additional feature/test-fixture runtime variants have independent sources and artifacts.
-    // Preserve source-only analysis, but do not claim complete production evidence for such builds.
+    // Documentation and Java test-fixture variants are not production outputs. A genuine
+    // additional feature runtime variant has independent production sources and artifacts,
+    // so retain source analysis without claiming complete production evidence for that build.
     def completeRuntimeScope = projects.every { project ->
+        def fixtures = project.plugins.hasPlugin('java-test-fixtures') ? project.sourceSets.findByName('testFixtures') : null
         project.configurations.findAll { configuration ->
-            configuration.canBeConsumed && configuration.name != 'runtimeElements' &&
+            configuration.canBeConsumed && configuration.name != project.sourceSets.main.runtimeElementsConfigurationName &&
                 configuration.attributes.getAttribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE)?.name ==
-                    org.gradle.api.attributes.Usage.JAVA_RUNTIME
+                    org.gradle.api.attributes.Usage.JAVA_RUNTIME &&
+                configuration.attributes.getAttribute(org.gradle.api.attributes.Category.CATEGORY_ATTRIBUTE)?.name !=
+                    org.gradle.api.attributes.Category.DOCUMENTATION &&
+                configuration.name != fixtures?.runtimeElementsConfigurationName
         }.isEmpty()
     }
     def runtimeArtifacts = projects.collectMany { project ->

@@ -152,11 +152,11 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         proof: BuildInputProof, changeCount: Int, scenarios: List<FoldScenario>, state: RunState,
     ): Boolean {
         if (proof.changes.isEmpty()) return true
-        val gap = proof.gap()
+        val inventoryGap = proof.gap()?.takeIf { it.code == DiagnosticCode.PRODUCTION_INVENTORY_UNAVAILABLE }
         return when {
-            gap != null -> {
-                state.diagnostics += gap
-                scenarios.forEach { state.reasons += proof.reasons(ReasonCode.ANALYSIS_INCOMPLETE, it.name, gap.message) }
+            proof.changes.size == changeCount && inventoryGap != null -> {
+                state.diagnostics += inventoryGap
+                scenarios.forEach { state.reasons += proof.reasons(ReasonCode.ANALYSIS_INCOMPLETE, it.name, inventoryGap.message) }
                 false
             }
             proof.changes.size == changeCount && proof.unchanged -> {
@@ -178,12 +178,26 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         proof: BuildInputProof, comparison: SnapshotComparison, scenario: String, state: RunState,
     ): Boolean {
         if (proof.changes.isEmpty()) return true
+        return checkProductionInputs(proof, comparison, scenario, state)
+    }
+
+    private fun checkProductionInputs(
+        proof: BuildInputProof, comparison: SnapshotComparison, scenario: String, state: RunState,
+    ): Boolean {
+        val gap = proof.gap(resourcesProved = proof.resourcesUnreachable(comparison.reachableSnapshots()))
+        if (gap != null) {
+            state.diagnostics += gap
+            state.reasons += proof.reasons(ReasonCode.ANALYSIS_INCOMPLETE, scenario, gap.message)
+            return false
+        }
+        val analysisGaps = comparison.analysisGaps()
+        analysisGaps.forEach { state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it) }
         val differences = comparison.wholeProgramDifferences()
-        val proved = differences.isEmpty()
-        val message = if (proved) "Production resources and runtime dependencies are unchanged; " +
+        val proved = differences.isEmpty() && analysisGaps.isEmpty()
+        val message = if (proved) "Production outputs are unchanged or changed resource keys have no surviving reader; " +
             "the entire analyzed production program is equivalent after folding"
-        else "Folded production program differs; non-JVM input effects cannot be independently attributed: " +
-            differences.joinToString()
+        else "Folded production program has differences or gaps; non-JVM input effects cannot be independently attributed: " +
+            (differences + analysisGaps).joinToString()
         state.reasons += proof.reasons(
             if (proved) ReasonCode.FOLDED_EQUIVALENT else ReasonCode.ANALYSIS_INCOMPLETE, scenario, message,
         )
@@ -254,7 +268,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             val fragments = group.flatMap { it.locations }.distinct()
             group.first().copy(
                 locations = fragments, changes = ChangeClassifier.classify(old, new, fragments) + moveKinds,
-                basePath = change.basePath, headPath = change.headPath,
+                basePath = change.basePath, headPath = change.headPath, inlined = group.any { it.inlined },
             )
         }
     }
@@ -272,21 +286,24 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
     private fun checkObligation(
         obligation: ProofObligation, comparison: SnapshotComparison, scenario: String, state: RunState,
     ): Boolean {
+        val gaps = comparison.analysisGaps(obligation)
+        gaps.forEach { state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it) }
         val differences = comparison.differences(obligation)
-        val proved = differences.isEmpty()
+        val proved = differences.isEmpty() && gaps.isEmpty()
         val reason = when {
+            gaps.isNotEmpty() -> ReasonCode.ANALYSIS_INCOMPLETE
             !proved -> ReasonCode.SURVIVING_DIFFERENCE
             comparison.isUnreachable(obligation) -> ReasonCode.UNREACHABLE
             else -> ReasonCode.FOLDED_EQUIVALENT
         }
         state.reasons += VerdictReason(
-            obligation.changes, reason, reasonMessage(reason, differences),
+            obligation.changes, reason, if (gaps.isEmpty()) reasonMessage(reason, differences) else gaps.joinToString(),
             obligation.locations, scenario, obligation.basePath, obligation.headPath,
         )
-        if (!proved && obligation.locations.isEmpty()) {
+        if (differences.isNotEmpty() && obligation.locations.isEmpty()) {
             state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNLOCATED_MOVE_DIFFERENCE,
                 "Moving ${obligation.basePath} to ${obligation.headPath} changes JVM representation: ${differences.joinToString()}")
-        } else if (!proved) {
+        } else if (differences.isNotEmpty()) {
             val message = "Surviving program representation differs: ${differences.joinToString()}"
             state.findings += Finding(
                 digest("$scenario|${obligation.locations}|$message"), FindingKind.UNVERIFIABLE_CHANGE,

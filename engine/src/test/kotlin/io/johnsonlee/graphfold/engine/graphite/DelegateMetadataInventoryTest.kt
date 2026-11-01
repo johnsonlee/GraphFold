@@ -20,8 +20,8 @@ class DelegateMetadataInventoryTest {
             Call("kotlin/reflect/KProperty", "getName", "()Ljava/lang/String;", Opcodes.INVOKEINTERFACE),
         ))
         inventory.missingReferences(listOf(stdlib))
-        assertEquals(1, inventory.diagnostics.size)
-        assertTrue(inventory.diagnostics.single().contains("KProperty.getName"))
+        assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
+        assertTrue(inventory.methodDiagnostics.values.flatten().single().message.contains("KProperty.getName"))
         assertTrue("kotlin.jvm.internal.PropertyReference1" in inventory.references)
     }
 
@@ -34,7 +34,7 @@ class DelegateMetadataInventoryTest {
             Call("kotlin/jvm/internal/Reflection", "property0", adapter),
         ))
         inventory.missingReferences(listOf(stdlib))
-        assertEquals(4, inventory.diagnostics.size)
+        assertEquals(4, inventory.methodDiagnostics.values.flatten().size)
     }
 
     @Test fun `full reflection factory keeps the adapter explicitly unsupported`() {
@@ -48,13 +48,13 @@ class DelegateMetadataInventoryTest {
         writer.visitEnd()
         Files.write(file, writer.toByteArray())
         inventory.missingReferences(listOf(stdlib, dependency))
-        assertEquals(1, inventory.diagnostics.size)
+        assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
     }
 
     @Test fun `missing runtime cannot authorize the adapter`() {
         val inventory = calls(listOf(Call("kotlin/jvm/internal/Reflection", "property1", adapter)))
         inventory.missingReferences(emptyList())
-        assertEquals(1, inventory.diagnostics.size)
+        assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
     }
 
     @Test fun `replacement factory in dependency directory or jar cannot authorize metadata adapter`() {
@@ -81,22 +81,22 @@ class DelegateMetadataInventoryTest {
         for (replacement in listOf(dependency, archive)) {
             val inventory = calls(listOf(Call("kotlin/jvm/internal/Reflection", "property1", adapter)))
             inventory.missingReferences(listOf(replacement))
-            assertEquals(1, inventory.diagnostics.size)
+            assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
             inventory.missingReferences(listOf(stdlib, replacement))
-            assertEquals(1, inventory.diagnostics.size)
+            assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
         }
     }
 
     @Test fun `dependency recheck restores diagnostics and rejects duplicate trusted runtimes`() {
         val inventory = calls(listOf(Call("kotlin/jvm/internal/Reflection", "property1", adapter)))
         inventory.missingReferences(listOf(stdlib))
-        assertTrue(inventory.diagnostics.isEmpty())
+        assertTrue(inventory.methodDiagnostics.values.flatten().isEmpty())
         inventory.missingReferences(listOf(stdlib, stdlib))
-        assertEquals(1, inventory.diagnostics.size)
+        assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
         inventory.missingReferences(listOf(stdlib))
-        assertTrue(inventory.diagnostics.isEmpty())
+        assertTrue(inventory.methodDiagnostics.values.flatten().isEmpty())
         inventory.missingReferences(emptyList())
-        assertEquals(1, inventory.diagnostics.size)
+        assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
     }
 
     @Test fun `application shadowing of reflection factory prevents trusted stdlib exemption`() {
@@ -111,8 +111,8 @@ class DelegateMetadataInventoryTest {
         Files.write(path, writer.toByteArray())
         inventory.read(shadow)
         inventory.missingReferences(listOf(stdlib))
-        assertEquals(1, inventory.diagnostics.size)
-        assertTrue(inventory.diagnostics.single().contains("Reflection.property1"))
+        assertEquals(1, inventory.methodDiagnostics.values.flatten().size)
+        assertTrue(inventory.methodDiagnostics.values.flatten().single().message.contains("Reflection.property1"))
     }
 
     private data class Call(

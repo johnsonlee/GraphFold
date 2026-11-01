@@ -20,13 +20,14 @@ import java.nio.file.Path
 import java.util.zip.ZipFile
 
 /** Independent inventory catches frontend omissions and preserves declaration-only changes. */
-internal class BytecodeInventory {
+internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = false) {
     val initialization = ClassInitialization()
     val inheritedEntries = InheritedEntries()
     var overrides: Set<String> = emptySet()
     val methods = linkedSetOf<String>()
     val declarations = linkedMapOf<String, String>()
     val diagnostics = mutableListOf<String>()
+    val methodDiagnostics = linkedMapOf<String, List<MethodAnalysisGap>>()
     val classes = linkedSetOf<String>()
     val references = linkedSetOf<String>()
     val fields = linkedMapOf<String, FieldSnapshot>()
@@ -35,7 +36,7 @@ internal class BytecodeInventory {
     val externalEntries = linkedSetOf<String>()
     val enclosingClasses = linkedMapOf<String, String>()
     private val fieldReads = linkedSetOf<String>()
-    private val propertyTokenDiagnostics = linkedSetOf<String>()
+    private val propertyTokenDiagnostics = linkedMapOf<String, MethodAnalysisGap>()
     val ignoredFields: Set<String> get() = fields.values.filter { it.renameSafe && it.identity !in fieldReads }
         .map { it.identity }.toSet()
 
@@ -207,11 +208,16 @@ internal class BytecodeInventory {
     private fun inspectCall(instruction: MethodInsnNode, identity: String) {
         referenceName(instruction.owner)
         referenceType(Type.getMethodType(instruction.desc))
-        if (dynamicAccess(instruction)) {
+        val nameObservation = normalizedRuntimeNames && instruction.owner == "java/lang/Class" &&
+            instruction.name in setOf("getName", "getTypeName")
+        if (dynamicAccess(instruction) || nameObservation) {
             val diagnostic = "Unmodeled reflective or dynamic access: $identity -> " +
                 "${instruction.owner}.${instruction.name}${instruction.desc} (${instruction.opcode})"
-            diagnostics.add(diagnostic)
-            if (propertyTokenAdapter(instruction)) propertyTokenDiagnostics.add(diagnostic)
+            val callee = "${instruction.owner.replace('/', '.')}.${instruction.name}${instruction.desc}"
+            methodDiagnostics[identity] = methodDiagnostics[identity].orEmpty() +
+                MethodAnalysisGap(diagnostic, callee, globalObservation = true)
+            if (propertyTokenAdapter(instruction)) propertyTokenDiagnostics[identity] =
+                MethodAnalysisGap(diagnostic, callee, globalObservation = true)
         }
     }
 
@@ -230,7 +236,7 @@ internal class BytecodeInventory {
     private fun dynamicAccess(call: MethodInsnNode): Boolean =
         call.owner.startsWith("java/lang/reflect/") || call.owner.startsWith("java/lang/invoke/MethodHandle") ||
             call.owner.startsWith("kotlin/reflect/") || call.owner.startsWith("kotlin/jvm/internal/Reflection") ||
-            (call.owner == "java/lang/Class" && call.name != "desiredAssertionStatus") ||
+            (call.owner == "java/lang/Class" && call.name !in setOf("desiredAssertionStatus", "getName", "getTypeName")) ||
             call.owner.endsWith("ClassLoader")
 
     /** Only the stdlib-only adapter is an identity operation; kotlin-reflect can replace its factory. */
@@ -247,10 +253,13 @@ internal class BytecodeInventory {
         val factory = "kotlin.jvm.internal.ReflectionFactory"
         val applicationOverrides = classes.intersect(setOf(factory, "kotlin.jvm.internal.Reflection"))
         val standardFactory = factory in available && "kotlin.reflect.jvm.internal.ReflectionFactoryImpl" !in available
-        diagnostics.removeAll(propertyTokenDiagnostics)
-        diagnostics.addAll(propertyTokenDiagnostics)
+        propertyTokenDiagnostics.forEach { (identity, gap) ->
+            methodDiagnostics[identity] = (methodDiagnostics[identity].orEmpty() + gap).distinct()
+        }
         val candidate = propertyTokenDiagnostics.isNotEmpty() && standardFactory && applicationOverrides.isEmpty()
-        if (candidate && DelegateMetadataRuntime.trusted(dependencies)) diagnostics.removeAll(propertyTokenDiagnostics)
+        if (candidate && DelegateMetadataRuntime.trusted(dependencies)) {
+            methodDiagnostics.replaceAll { _, gaps -> gaps.filterNot { it in propertyTokenDiagnostics.values } }
+        }
         return (references - available).filterNot { name ->
             try { Class.forName(name, false, ClassLoader.getPlatformClassLoader()); true }
             catch (_: ClassNotFoundException) { false }

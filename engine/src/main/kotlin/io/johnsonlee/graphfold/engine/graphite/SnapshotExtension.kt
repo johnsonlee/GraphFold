@@ -34,7 +34,10 @@ class SnapshotExtension : GraphiteExtension {
     }
 }
 
-internal class SnapshotSink(private val ignoredFields: Set<String> = emptySet()) {
+internal class SnapshotSink(
+    private val ignoredFields: Set<String> = emptySet(),
+    private val applicationOwners: Set<String> = emptySet(),
+) {
     val methods = linkedMapOf<String, MethodSnapshot>()
     val declarations = linkedMapOf<String, String>()
 
@@ -61,7 +64,8 @@ internal class SnapshotSink(private val ignoredFields: Set<String> = emptySet())
             val references = mutableListOf<String>()
             val normalized = canonicalModifiers + "\n" +
                 (body?.let { canonicalBody(it, references, ignoredFields, identity) } ?: "NO_BODY")
-            check(methods.put(identity, MethodSnapshot(identity, canonical, calls, modifiers, lines, normalized, references)) == null) {
+            check(methods.put(identity, MethodSnapshot(identity, canonical, calls, modifiers, lines, normalized, references,
+                    body?.let { resourceReads(it, applicationOwners) }.orEmpty())) == null) {
                 "Duplicate method identity $identity"
             }
         }

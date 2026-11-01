@@ -98,7 +98,7 @@ class ExternalEntryTest {
         Files.write(directory.resolve("Sample.class"), writer.toByteArray())
         val inventory = BytecodeInventory().also { it.read(directory) }
         assertTrue(inventory.diagnostics.any { "Unsupported Kotlin metadata" in it })
-        assertEquals(2, inventory.diagnostics.count { "reflective or dynamic" in it })
+        assertEquals(2, inventory.methodDiagnostics.values.flatten().count { "reflective or dynamic" in it.message })
     }
 
 }

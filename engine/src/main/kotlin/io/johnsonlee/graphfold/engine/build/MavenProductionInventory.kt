@@ -50,7 +50,8 @@ internal class MavenProductionInventory(effectiveModels: Map<Path, Path>) {
             "runtime-classpath/$index" to "${module.id}:${classpaths[index].size}"
         }.toMap()
         resources?.publish()
-        return inventory.copy(entries = inventory.entries + boundaries, nonClassEntries = inventory.nonClassEntries + boundaries)
+        return inventory.copy(entries = inventory.entries + boundaries, nonClassEntries = inventory.nonClassEntries + boundaries,
+            resourceIndependentEntries = inventory.resourceIndependentEntries + boundaries)
     }
 
     private fun normalizeArtifact(artifact: Path, destination: Path, module: Module): Path {

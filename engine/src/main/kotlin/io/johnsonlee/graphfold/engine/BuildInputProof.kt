@@ -2,6 +2,7 @@ package io.johnsonlee.graphfold.engine
 
 import io.johnsonlee.graphfold.engine.build.ProductionInventory
 import io.johnsonlee.graphfold.engine.git.ChangedFile
+import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
 import io.johnsonlee.graphfold.engine.origin.ORIGIN_MARKER
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,15 +20,15 @@ internal class BuildInputProof(
 ) {
     val unchanged: Boolean get() = base != null && head != null && base.entries == head.entries
 
-    fun gap(): Diagnostic? {
+    fun gap(resourcesProved: Boolean = false): Diagnostic? {
         if (base == null || head == null) return Diagnostic(
             AnalysisStage.BUILD, DiagnosticCode.PRODUCTION_INVENTORY_UNAVAILABLE,
             "The build adapter did not establish production resources, runtime classpaths and package outputs " +
                 "for both revisions; cannot determine the impact of changed non-JVM inputs",
         )
-        val byteDifferences = (base.nonClassEntries.keys + head.nonClassEntries.keys).filter {
-            base.nonClassEntries[it] != head.nonClassEntries[it]
-        }
+        val oldEntries = if (resourcesProved) base.resourceIndependentEntries else base.nonClassEntries
+        val newEntries = if (resourcesProved) head.resourceIndependentEntries else head.nonClassEntries
+        val byteDifferences = (oldEntries.keys + newEntries.keys).filter { oldEntries[it] != newEntries[it] }
         val placementDifferences = base.classPlacements.keys.intersect(head.classPlacements.keys).filter {
             base.classPlacements[it] != head.classPlacements[it]
         }.map { "classPlacement/$it" }
@@ -37,6 +38,26 @@ internal class BuildInputProof(
             "Actual production resources, packages or runtime dependencies differ outside the class-folding model: " +
                 differences.take(MAXIMUM_OUTPUT_DETAILS).joinToString() + " (${differences.size} output entries)",
         )
+    }
+
+    /** Proves changed properties keys unobservable in both folded revisions; unknown loaders block. */
+    fun resourcesUnreachable(methods: List<MethodSnapshot>): Boolean {
+        if (base == null || head == null) return false
+        val scopeKnown = base.resourceConsumersKnown && head.resourceConsumersKnown &&
+            base.resourceEntries.keys == head.resourceEntries.keys
+        val reads = methods.flatMap { it.resourceReads }
+        val byteChanges = base.resourceIndependentEntries.filter { (entry, marker) ->
+            marker.startsWith("properties:") && base.nonClassEntries[entry] != head.nonClassEntries[entry]
+        }.values.map { it.removePrefix("properties:") }.toSet()
+        return scopeKnown && base.resourceEntries.all { (path, old) ->
+            val new = head.resourceEntries.getValue(path)
+            val changedKeys = (old.keys + new.keys).filter { old[it] != new[it] }
+            reads.none { read ->
+                val bundle = read.bundle
+                val matches = bundle == null || path == "$bundle.properties" || path.startsWith("${bundle}_")
+                matches && (read.key == null && path in byteChanges || read.key in changedKeys)
+            }
+        }
     }
 
     fun reasons(code: ReasonCode, scenario: String, message: String): List<VerdictReason> = changes.map {

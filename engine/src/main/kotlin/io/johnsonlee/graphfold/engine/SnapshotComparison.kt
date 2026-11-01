@@ -27,6 +27,11 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
         .groupBy({ it.value }, { it.key })
     private val nestedMethods = mutableMapOf<String, List<String>>()
     private val initializationDifferences = initializationDifferences()
+    private val changedMethods = allMethods.filterTo(hashSetOf()) { method ->
+        base.methods[method]?.referenceCanonical != head.methods[method]?.referenceCanonical ||
+            base.methods[method]?.references != head.methods[method]?.references ||
+            base.declarations[method] != head.declarations[method]
+    }
 
     fun isUnreachable(obligation: ProofObligation): Boolean = roots(aligned(obligation)).isEmpty() &&
         (obligation.kind == SymbolKind.METHOD || !ownerReachable(obligation.owner))
@@ -38,26 +43,61 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
             obligation.identity !in base.methods && obligation.identity !in head.methods
         if (missingOwner || missingMethod) return listOf("Unrepresented declaration ${obligation.identity}")
         val methods = dependencies(roots(obligation))
-        val changed = methods.filter { method ->
-            base.methods[method]?.referenceCanonical != head.methods[method]?.referenceCanonical ||
-                base.methods[method]?.references != head.methods[method]?.references ||
-                base.declarations[method] != head.declarations[method]
-        }
+        val changed = methods.filter { it in changedMethods }
         // SOURCE-retained annotations can change generated declarations without changing the annotated method's IR.
         val owners = methods.map(::methodOwner).toSet() +
             if (obligation.kind == SymbolKind.METHOD || !ownerReachable(obligation.owner)) emptySet() else setOf(obligation.owner)
         return (changed + owners.filter { classDeclaration(base, it) != classDeclaration(head, it) } +
-            initializationChanges(obligation)).distinct().sorted()
+            initializationDifferences[obligation.owner].orEmpty()).distinct().sorted()
     }
 
-    /** Checks all represented application owners when a build input cannot be attributed to one source declaration. */
-    fun wholeProgramDifferences(): List<String> = (base.declarations.keys + head.declarations.keys)
-        .filterNot { '(' in it }.flatMap { owner ->
-            differences(ProofObligation(owner, SymbolKind.CLASS, owner, emptyList()))
+    /** The union of class closures is the reachable program; compare it once, without per-owner graph walks. */
+    fun wholeProgramDifferences(): List<String> = (reachableMethods.filter { it in changedMethods } +
+        reachableByOwner.keys.filter { classDeclaration(base, it) != classDeclaration(head, it) } +
+        initializationDifferences.values.flatten()).distinct().sorted()
+
+    /** Retains both versions: a removed resource reader can still expose a changed base value. */
+    fun reachableSnapshots(): List<io.johnsonlee.graphfold.engine.graphite.MethodSnapshot> =
+        baseReachable.mapNotNull(base.methods::get) + headReachable.mapNotNull(head.methods::get)
+
+    /** Only surviving gaps on a change's dependencies/callers invalidate its proof. */
+    fun analysisGaps(original: ProofObligation? = null): List<String> {
+        val obligation = original?.let(::aligned)
+        val relevant = relevantMethods(obligation)
+        val owners = relevant.map(::methodOwner).toSet() + listOfNotNull(obligation?.owner)
+        return (activeGaps(base, baseReachable, relevant, owners) +
+            activeGaps(head, headReachable, relevant, owners)).distinct().sorted()
+    }
+
+    private fun relevantMethods(obligation: ProofObligation?): Set<String> {
+        if (obligation == null) return reachableMethods
+        val closure = dependencies(roots(obligation)).toMutableSet()
+        // Opaque consumers can inspect private state without a direct call to that state.
+        closure.addAll(reachableByOwner[obligation.owner].orEmpty())
+        val pending = ArrayDeque(closure)
+        while (pending.isNotEmpty()) {
+            callers[pending.removeFirst()].orEmpty().forEach { if (closure.add(it)) pending.addLast(it) }
+        }
+        return closure
+    }
+
+    private fun activeGaps(snapshot: ProgramSnapshot, reachable: Set<String>, relevant: Set<String>, owners: Set<String>): List<String> =
+        snapshot.methodDiagnostics.filterKeys { it in reachable }.flatMap { (identity, gaps) ->
+            gaps.filter { gap ->
+                val observes = gap.globalObservation || identity in relevant || gap.observedOwners.any { it in owners }
+                observes && (gap.callee == null || gap.callee in snapshot.methods.getValue(identity).calls)
+            }.map { it.message }
         }.distinct().sorted()
 
-    private fun initializationChanges(obligation: ProofObligation): List<String> =
-        initializationDifferences[obligation.owner].orEmpty()
+    private val callers: Map<String, Set<String>> by lazy {
+        val result = mutableMapOf<String, MutableSet<String>>()
+        reachableMethods.forEach { caller ->
+            (base.methods[caller]?.calls.orEmpty() + head.methods[caller]?.calls.orEmpty()).forEach { callee ->
+                result.getOrPut(callee) { linkedSetOf() }.add(caller)
+            }
+        }
+        result
+    }
 
     private fun initializationDifferences(): Map<String, List<String>> {
         val result = mutableMapOf<String, MutableList<String>>()
@@ -84,10 +124,12 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
         return "$shape\n$fields"
     }
 
-    private fun roots(obligation: ProofObligation): List<String> {
+    private fun roots(obligation: ProofObligation): List<String> = when {
+        // Inline bodies are copied across owners with no surviving invocation edge to the declaration.
+        obligation.inlined -> reachableMethods.toList()
         // A dead private source method must not make an unrelated public generated class relevant.
-        if (obligation.kind == SymbolKind.METHOD && !isReachable(obligation.identity)) return emptyList()
-        return when (obligation.kind) {
+        obligation.kind == SymbolKind.METHOD && !isReachable(obligation.identity) -> emptyList()
+        else -> when (obligation.kind) {
             SymbolKind.METHOD -> (listOf(obligation.identity) + reachableByOwner[obligation.owner].orEmpty()
                 .filter { syntheticDependency(it, obligation) } + nestedMethods(obligation.owner)).filter(::isReachable).distinct()
             SymbolKind.FIELD -> reachableMethods.toList() // Constant inlining can cross owner boundaries.

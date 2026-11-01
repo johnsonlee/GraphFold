@@ -18,6 +18,7 @@ import sootup.core.model.MethodModifier
  * @property initializationDependencies Classes and default-method interfaces initialized when each class initializes.
  * @property overrides Method identities implementing or overriding inherited methods.
  * @property enclosingClasses Nested-class owner to enclosing-class owner mapping.
+ * @property methodDiagnostics Method-local analysis gaps, checked against the folded change dependency closure.
  */
 data class ProgramSnapshot(
     val methods: Map<String, MethodSnapshot>,
@@ -32,6 +33,7 @@ data class ProgramSnapshot(
     val initializationDependencies: Map<String, Set<String>> = emptyMap(),
     val overrides: Set<String> = emptySet(),
     val enclosingClasses: Map<String, String> = emptyMap(),
+    val methodDiagnostics: Map<String, List<MethodAnalysisGap>> = emptyMap(),
 )
 
 /**
@@ -42,6 +44,7 @@ data class ProgramSnapshot(
  * @property calls Possible callee method identities, including dispatch targets supplied by the graph.
  * @property modifiers JVM method modifiers captured by the frontend.
  * @property lines Positive source line numbers attached to the surviving method statements.
+ * @property resourceReads Resource accesses surviving folding; unknown paths or keys conservatively denote any matching resource.
  * @property referenceCanonical Canonical IR with member references replaced by indexed placeholders.
  * @property references Member identities in placeholder order in [referenceCanonical].
  */
@@ -53,6 +56,7 @@ data class MethodSnapshot(
     val lines: Set<Int>,
     val referenceCanonical: String = canonical,
     val references: List<String> = emptyList(),
+    val resourceReads: List<ResourceRead> = emptyList(),
 )
 
 /**
@@ -68,4 +72,27 @@ data class FieldSnapshot(
     val declaration: String,
     val constant: String,
     val renameSafe: Boolean,
+)
+
+/**
+ * A surviving resource observation in a folded method.
+ *
+ * @property bundle Slash-separated ResourceBundle base name, or null when the loader/path is unknown.
+ * @property key Constant properties key, or null when the complete resource can be observed.
+ */
+data class ResourceRead(val bundle: String?, val key: String?)
+
+/**
+ * A gap in one method, retained separately from artifact-wide inventory failures.
+ *
+ * @property message Human-readable evidence explaining the missing model.
+ * @property callee Dotted JVM callee identity; a gap is inactive when folding removes all calls to it.
+ * @property globalObservation Whether an opaque access can discover arbitrary application declarations without call edges.
+ * @property observedOwners Application classes whose private state may be inspected by a bounded opaque consumer.
+ */
+data class MethodAnalysisGap(
+    val message: String,
+    val callee: String? = null,
+    val globalObservation: Boolean = false,
+    val observedOwners: Set<String> = emptySet(),
 )

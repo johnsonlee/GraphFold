@@ -50,11 +50,9 @@ class ReflectiveDependencyIntegrationTest {
         val old = analyzer.analyze(base.classes, emptyList(), base.dependencies)
         val new = analyzer.analyze(head.classes, emptyList(), head.dependencies)
         val obligation = ProofObligation("sample.Example.amount:I", SymbolKind.FIELD, "sample.Example", emptyList())
-        val differences = SnapshotComparison(old, new).differences(obligation)
-        assertTrue(
-            differences.isNotEmpty() || old.diagnostics.isNotEmpty() || new.diagnostics.isNotEmpty(),
-            "Changed externally observed private field name must retain a difference or a blocking analysis gap",
-        )
+        val comparison = SnapshotComparison(old, new)
+        assertTrue(comparison.analysisGaps(obligation).isNotEmpty(),
+            "Changed externally observed private state must retain a blocking gap scoped to this obligation")
     }
 
     private fun application(fixtures: Path, revision: String, language: String, jar: Path): Application {

@@ -222,5 +222,89 @@
   {
     "id": "kotlin_negative_extension_getter",
     "violation": false
+  },
+  {
+    "id": "kotlin_inline_member_uncontrolled",
+    "violation": true
+  },
+  {
+    "id": "kotlin_inline_member_controlled",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_member_dead",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_top_level_uncontrolled",
+    "violation": true
+  },
+  {
+    "id": "kotlin_inline_top_level_controlled",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_top_level_dead",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_property_uncontrolled",
+    "violation": true
+  },
+  {
+    "id": "kotlin_inline_property_controlled",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_property_dead",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_accessor_uncontrolled",
+    "violation": true
+  },
+  {
+    "id": "kotlin_inline_accessor_controlled",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_accessor_dead",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_setter_uncontrolled",
+    "violation": true
+  },
+  {
+    "id": "kotlin_inline_setter_controlled",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_setter_dead",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_object_member_uncontrolled",
+    "violation": true
+  },
+  {
+    "id": "kotlin_inline_object_member_controlled",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_object_member_dead",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_object_top_level_uncontrolled",
+    "violation": true
+  },
+  {
+    "id": "kotlin_inline_object_top_level_controlled",
+    "violation": false
+  },
+  {
+    "id": "kotlin_inline_object_top_level_dead",
+    "violation": false
   }
 ]

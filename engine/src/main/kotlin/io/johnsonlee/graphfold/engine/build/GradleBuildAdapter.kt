@@ -56,7 +56,8 @@ internal class GradleBuildAdapter(
         checkBuild(artifacts.isNotEmpty(), "Gradle did not export production runtime artifacts")
         val inventory = captureProductionInventory(classes, resources, runtime, artifacts)
         val groups = runtimeClasspathGroups(entries)
-        return inventory.copy(entries = inventory.entries + groups, nonClassEntries = inventory.nonClassEntries + groups)
+        return inventory.copy(entries = inventory.entries + groups, nonClassEntries = inventory.nonClassEntries + groups,
+            resourceIndependentEntries = inventory.resourceIndependentEntries + groups)
     }
 }
 

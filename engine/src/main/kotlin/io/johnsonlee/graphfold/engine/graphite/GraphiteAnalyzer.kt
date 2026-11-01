@@ -36,7 +36,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
      */
     fun analyze(artifact: Path, rules: List<FoldRule>, dependencies: List<Path> = emptyList()): ProgramSnapshot {
         val inventory = BytecodeInventory().also { it.read(artifact) }
-        inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics)
+        inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics, inventory.methodDiagnostics)
         inventory.missingReferences(dependencies).forEach { inventory.diagnostics.add("Unresolved class reference: $it") }
         return AnalysisInputs(artifact, dependencies).use { inputs ->
             analyzeInputs(inputs.path, rules, inventory, RuleAuditCapture(onAudit))
@@ -46,8 +46,10 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
     internal fun analyzeOriginProject(project: OriginProject, rules: List<FoldRule>): ProgramSnapshot {
         val compiled = project.compiled
         if (project.owners.isEmpty()) return analyze(compiled.classes, rules, compiled.dependencies)
-        val inventory = BytecodeInventory().also { it.read(compiled.classes) }
-        inventory.overrides = inventory.inheritedEntries.resolve(compiled.dependencies, inventory.diagnostics)
+        // Class names remain observable when anonymous owners were normalized for structural alignment.
+        val inventory = BytecodeInventory(normalizedRuntimeNames = project.owners.any { it.key != it.value })
+            .also { it.read(compiled.classes) }
+        inventory.overrides = inventory.inheritedEntries.resolve(compiled.dependencies, inventory.diagnostics, inventory.methodDiagnostics)
         inventory.missingReferences(compiled.dependencies).forEach {
             inventory.diagnostics.add("Unresolved class reference: $it")
         }
@@ -87,7 +89,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         val resolved = if (!selectionResolved && rules.isNotEmpty()) {
             selectInputs(artifact, rules, inventory, log, audit)
         } else rules
-        val sink = SnapshotSink(inventory.ignoredFields)
+        val sink = SnapshotSink(inventory.ignoredFields, inventory.classes)
         var report: FoldReport? = null
         val config = LoaderConfig(
             folding = resolved.takeIf { it.isNotEmpty() }?.let { FoldPlan(it) { value -> report = value } },
@@ -111,7 +113,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         return ProgramSnapshot(methods, inventory.declarations, diagnostics.distinct(),
             report?.outcomes?.map { it.matched }.orEmpty(), inventory.fields, inventory.classShapes,
             inventory.ignoredFields, inventory.entryClasses, inventory.externalEntries,
-            inventory.initialization.dependencies(), inventory.overrides, inventory.enclosingClasses)
+            inventory.initialization.dependencies(), inventory.overrides, inventory.enclosingClasses, inventory.methodDiagnostics)
     }
 
     private fun selectInputs(

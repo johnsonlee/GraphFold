@@ -13,12 +13,13 @@ internal data class ProofObligation(
     val changes: Set<ChangeKind> = emptySet(),
     val basePath: String? = null,
     val headPath: String? = null,
+    val inlined: Boolean = false,
 )
 
 internal object ProofPlanner {
     fun plan(source: IndexedSource, locations: List<SourceLocation>): List<ProofObligation> {
         val fragments = locations.flatMap { changed ->
-            val members = source.symbols.filter { it.kind != SymbolKind.CLASS || it.compilerOrigin }.mapNotNull { symbol ->
+            val members = source.symbols.filter { it.kind != SymbolKind.CLASS || it.compilerOrigin || it.inlined }.mapNotNull { symbol ->
                 intersection(changed, symbol.location)?.let { symbol to it }
             }
             val completeMember = members.filter { (_, fragment) -> fragment == changed }
@@ -35,7 +36,8 @@ internal object ProofPlanner {
         }
         return fragments.groupBy { it.first.identity }.map { (identity, grouped) ->
             val symbol = grouped.first().first
-            ProofObligation(identity, symbol.kind, symbol.owner, grouped.map { it.second }.distinct())
+            ProofObligation(identity, symbol.kind, symbol.owner, grouped.map { it.second }.distinct(),
+                inlined = grouped.any { it.first.inlined })
         }
     }
 

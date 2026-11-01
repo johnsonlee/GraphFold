@@ -244,7 +244,7 @@ class ProductionInventoryTest {
         assertFailsWith<BuildFailure> { captureProductionInventory(file, emptyList(), emptyList(), emptyList()) }
         assertFailsWith<BuildFailure> { captureProductionInventory(missing, listOf(file), emptyList(), emptyList()) }
         assertFailsWith<BuildFailure> { captureProductionInventory(missing, emptyList(), emptyList(), listOf(temporary)) }
-        assertEquals(ProductionInventory(emptyMap(), emptyMap()),
+        assertEquals(ProductionInventory(emptyMap(), emptyMap(), resourceConsumersKnown = true),
             captureProductionInventory(missing, listOf(missing), emptyList(), emptyList()))
     }
 

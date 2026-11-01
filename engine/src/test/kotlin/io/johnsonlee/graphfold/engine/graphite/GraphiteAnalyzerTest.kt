@@ -223,13 +223,23 @@ class GraphiteAnalyzerTest {
         assertEquals(listOf(1), result.matchedRules)
     }
 
+    @Test fun `ordinary class name logging has no dynamic access gap`() {
+        val classes = compile("class-names", """
+            public String name() { return getClass().getName() + String.class.getTypeName(); }
+        """.trimIndent())
+        val result = GraphiteAnalyzer().analyze(classes, emptyList())
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
+        assertTrue(result.methodDiagnostics.values.flatten().isEmpty(), result.methodDiagnostics.toString())
+    }
+
     @Test fun `reflection and private framework annotations block closed world assumptions`() {
         val classes = compile("reflect", """
             @Deprecated private void callback() { work(); }
             static void reflect() throws Exception { Sample.class.getDeclaredMethod("callback"); }
         """.trimIndent())
         val result = GraphiteAnalyzer().analyze(classes, emptyList())
-        assertTrue(result.diagnostics.any { it.contains("reflective or dynamic") }, result.diagnostics.toString())
+        assertTrue(result.methodDiagnostics.values.flatten().any { it.message.contains("reflective or dynamic") },
+            result.methodDiagnostics.toString())
         assertTrue(result.diagnostics.any { it.contains("framework entry") }, result.diagnostics.toString())
     }
 

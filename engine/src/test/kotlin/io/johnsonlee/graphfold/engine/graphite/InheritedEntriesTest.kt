@@ -97,6 +97,29 @@ class InheritedEntriesTest {
         assertTrue(diagnostics.isEmpty(), diagnostics.toString())
     }
 
+    @Test
+    fun `external escapes stay method scoped and preserve existing method gap evidence`() {
+        val child = type("sample/Child")
+        val run = method("run", "()V").also {
+            it.visitCode()
+            it.visitVarInsn(Opcodes.ALOAD, 0)
+            it.visitMethodInsn(Opcodes.INVOKESTATIC, "external/Encoder", "encode", "(Ljava/lang/Object;)V", false)
+            it.visitInsn(Opcodes.RETURN)
+            it.visitMaxs(1, 1)
+            it.visitEnd()
+        }
+        child.methods.add(run)
+        val diagnostics = mutableListOf<String>()
+        val prior = MethodAnalysisGap("prior diagnostic")
+        val methodDiagnostics = mutableMapOf("sample.Child.run()V" to listOf(prior))
+        InheritedEntries().also { it.add(child) }.resolve(emptyList(), diagnostics, methodDiagnostics)
+        assertTrue(diagnostics.isEmpty())
+        val gaps = methodDiagnostics.getValue("sample.Child.run()V")
+        assertEquals(prior, gaps.first())
+        assertEquals("external.Encoder.encode(Ljava/lang/Object;)V", gaps.last().callee)
+        assertTrue(gaps.last().globalObservation)
+    }
+
     private fun type(name: String, parent: String = "java/lang/Object") = ClassNode().also {
         it.name = name; it.superName = parent; it.access = Opcodes.ACC_PUBLIC
     }

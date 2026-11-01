@@ -200,6 +200,33 @@ class KotlinSourceIndexTest {
         }
     }
 
+    @Test
+    fun `inline functions and fieldless accessors retain copied-body obligations`() {
+        val source = """
+            class Example {
+                private inline fun bump(x: Int): Int = x + 1
+                private inline val property: Int get() = 2
+                private val accessor: Int inline get() = 3
+                @JvmName("renamed") private inline fun sourceName(x: Int): Int = x + 4
+                fun ordinary() = 5
+            }
+            private inline fun topLevel(x: Int): Int = x + 6
+        """.trimIndent()
+        KotlinSourceIndex(compile(source)).use { index ->
+            val result = index.index(temporary, "Example.kt", Revision.HEAD)
+            assertTrue(result.diagnostics.isEmpty(), result.toString())
+            assertTrue(result.symbols.single { it.identity == "Example.bump(I)I" }.inlined)
+            assertTrue(result.symbols.single { it.identity == "ExampleKt.topLevel(I)I" }.inlined)
+            assertTrue(!result.symbols.single { it.identity == "Example.ordinary()I" }.inlined)
+            listOf(2, 3, 4, 5, 8).forEach { line ->
+                val declaration = result.symbols.first { it.inlined && it.location.line.start == line }
+                val planned = ProofPlanner.plan(result, listOf(declaration.location))
+                assertTrue(planned.isNotEmpty())
+                assertTrue(planned.all { it.inlined }, "$line: $planned")
+            }
+        }
+    }
+
     private fun compile(source: String, root: Path = temporary, outputDirectory: Path = temporary.resolve("classes")): Path {
         val sourceFile = root.resolve("Example.kt")
         Files.writeString(sourceFile, source)

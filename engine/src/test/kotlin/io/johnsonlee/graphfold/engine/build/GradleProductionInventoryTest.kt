@@ -8,6 +8,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
@@ -103,14 +105,44 @@ class GradleProductionInventoryTest {
     }
 
     @Test
-    fun `additional consumable runtime feature variants leave production inventory unavailable`() {
+    fun `published documentation and Java test fixtures preserve complete production inventory`() {
+        val source = project()
+        Files.writeString(source.resolve("build.gradle"), """
+            plugins {
+                id 'java-library'
+                id 'java-test-fixtures'
+            }
+            java {
+                withSourcesJar()
+                withJavadocJar()
+            }
+        """.trimIndent())
+        val fixture = source.resolve("src/testFixtures/java/example/AppFixture.java")
+        Files.createDirectories(fixture.parent)
+        Files.writeString(fixture, "package example; public class AppFixture { public int value() { return 1; } }")
+        val readme = source.resolve("README.md")
+        Files.writeString(readme, "initial documentation")
+        val baseline = compile(source, "published-baseline")
+        val manifest = parseGradleInputs(Files.readAllLines(temporary.resolve("published-baseline/gradle-inputs.txt")))
+        assertTrue(manifest.any { it.kind == GradleInputKind.PRODUCTION_COMPLETE })
+        val artifacts = manifest.filter { it.kind == GradleInputKind.ARTIFACT }.flatMap { it.paths }
+        assertEquals(listOf("production-inventory.jar"), artifacts.map { it.fileName.toString() })
+        assertFalse(Files.exists(baseline.classes.resolve("example/AppFixture.class")))
+        Files.writeString(readme, "updated documentation")
+        Files.writeString(fixture, "package example; public class AppFixture { public int value() { return 2; } }")
+        assertEquals(baseline.production, compile(source, "published-nonproduction-change").production)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["feature", "testFixtures"])
+    fun `additional consumable runtime feature variants leave production inventory unavailable`(featureName: String) {
         val source = project()
         Files.writeString(source.resolve("build.gradle"), """
             plugins { id 'java-library' }
-            sourceSets { feature }
-            java { registerFeature('feature') { usingSourceSet(sourceSets.feature) } }
+            sourceSets { $featureName }
+            java { registerFeature('$featureName') { usingSourceSet(sourceSets.$featureName) } }
         """.trimIndent())
-        val feature = source.resolve("src/feature/java/example/Feature.java")
+        val feature = source.resolve("src/$featureName/java/example/Feature.java")
         Files.createDirectories(feature.parent)
         Files.writeString(feature, "package example; public class Feature {}")
         val result = ProjectCompiler(Duration.ofMinutes(2)).compile(source, temporary.resolve("feature-output"))

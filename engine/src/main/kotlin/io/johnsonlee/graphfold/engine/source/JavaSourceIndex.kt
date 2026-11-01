@@ -43,10 +43,12 @@ enum class SymbolKind {
  * @property kind Declaration category controlling the subsequent proof obligation.
  * @property location Enclosing declaration range in its revision; findings are narrowed to actual diff fragments later.
  * @property compilerOrigin Whether this symbol's anonymous owner was bound using validated compiler provenance.
+ * @property inlined Whether compilation can copy this declaration into callers without retaining an invocation edge.
  */
 data class SourceSymbol(
     val identity: String, val owner: String, val kind: SymbolKind, val location: SourceLocation,
     val compilerOrigin: Boolean = false,
+    val inlined: Boolean = false,
 )
 
 /**

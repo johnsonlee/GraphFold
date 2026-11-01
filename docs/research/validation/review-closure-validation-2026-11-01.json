@@ -1,0 +1,126 @@
+{
+  "date": "2026-11-01",
+  "baseCommit": "da8f1d99fdebc3957e669ad2110f5f17e48762ef",
+  "testedState": "Working tree with review fixes before commit; development version derives from baseCommit.",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :gfc:detektMain :cli:detektMain :cli:detektTest :gradle-plugin:detektMain :gradle-plugin:detektTest :cli:installDist :cli:distZip :cli:distTar publishAllPublicationsToReleaseVerificationRepository --continue --console=plain",
+  "buildSummary": "BUILD SUCCESSFUL in 23m 51s",
+  "modules": {
+    "gfc": {
+      "tests": {
+        "tests": 62,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 187,
+          "missed": 9,
+          "percent": 95.4082
+        },
+        "line": {
+          "covered": 335,
+          "missed": 5,
+          "percent": 98.5294
+        }
+      }
+    },
+    "engine": {
+      "tests": {
+        "tests": 706,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 3523,
+          "missed": 152,
+          "percent": 95.8639
+        },
+        "line": {
+          "covered": 4081,
+          "missed": 27,
+          "percent": 99.3427
+        }
+      }
+    },
+    "cli": {
+      "tests": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 33,
+          "missed": 1,
+          "percent": 97.0588
+        },
+        "line": {
+          "covered": 75,
+          "missed": 1,
+          "percent": 98.6842
+        }
+      }
+    },
+    "gradle-plugin": {
+      "tests": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 18,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 95,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "junitTests": 825,
+  "hardGates": {
+    "branchPercent": 95,
+    "linePercent": 90,
+    "productionExclusionsAdded": false
+  },
+  "corpus": {
+    "java": {
+      "cases": 130,
+      "mismatches": 0
+    },
+    "kotlin": {
+      "cases": 207,
+      "mismatches": 0
+    }
+  },
+  "regressions": [
+    "21 Kotlin inline fixtures cover member/top-level/object functions, properties and getter/setter parity, with uncontrolled/controlled/dead paths and diff-owned locations.",
+    "Method gaps retain exact callees, survive base-only edges, and follow change closures, reverse callers and bounded observed owners.",
+    "Unknown opaque observation remains global, preventing cross-owner private-code false passes; dead/folded-away calls do not block.",
+    "Immutable value factories and scalar logging have bounded models; fake sentinel class names and ConstantDynamic bootstrap effects cannot bypass escape checks.",
+    "Payload bounds reject interface inheritance, semantic metadata, exception/catch types and multidimensional arrays not included in the closed object model.",
+    "Ordinary class-name reads are modeled; normalized anonymous class names retain an observation guard.",
+    "Properties key proof covers folded reads, live changed keys, dynamic/escaping/platform readers, literal archive paths and unknown runtime consumers.",
+    "Mixed source/resource changes retain source findings even when resource proof is incomplete.",
+    "Gradle documentation and owned test-fixture variants no longer invalidate production scope; real feature variants still do.",
+    "Whole-program comparison scans the reachable union once; shared cycles, callbacks, initialization, contracts and private alignment retain correctness."
+  ],
+  "publicationVerification": {
+    "version": "0.1.0-da8f1d99fdeb",
+    "localOnly": true,
+    "releaseHelperVerify": true,
+    "zipTarSmoke": true
+  },
+  "schemaValidatedReports": 337,
+  "releaseHelperTests": 17,
+  "performanceAcceptance": false
+}

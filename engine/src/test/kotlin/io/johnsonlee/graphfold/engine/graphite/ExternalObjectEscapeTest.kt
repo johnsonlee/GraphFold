@@ -81,12 +81,11 @@ class ExternalObjectEscapeTest {
             }
         """.trimIndent())
         val diagnostics = ExternalObjectEscape(classes).diagnostics()
-        assertEquals(4, diagnostics.size, diagnostics.toString())
+        assertEquals(3, diagnostics.size, diagnostics.toString())
         assertTrue(diagnostics.any { "Sample.list" in it })
         assertTrue(diagnostics.any { "Sample.map" in it })
         assertTrue(diagnostics.any { "Sample.optional" in it })
-        // Explicit conservative gap: proving element contents requires a heap/escape model.
-        assertTrue(diagnostics.any { "Sample.valueList" in it })
+        assertTrue(diagnostics.none { "Sample.valueList" in it })
     }
 
     @Test
@@ -214,7 +213,191 @@ class ExternalObjectEscapeTest {
         assertTrue(ExternalObjectEscape(classes).diagnostics().isEmpty())
     }
 
-    private fun compile(body: String): Map<String, ClassNode> {
+    @Test
+    fun `fixed arity immutable factories prove their complete scalar object graph`() {
+        val collections = listOf("List", "Set", "Map").flatMap { collection -> (0..10).map { count ->
+            val values = (1..(count * if (collection == "Map") 2 else 1)).joinToString { "\"value$it\"" }
+            "public void ${collection.lowercase()}$count() { Encoder.encode(java.util.$collection.of($values)); }"
+        } }
+        val classes = compile("public class Sample { " + collections.joinToString("\n") + """
+            public void emptyList() { Encoder.encode(java.util.Collections.emptyList()); }
+            public void emptySet() { Encoder.encode(java.util.Collections.emptySet()); }
+            public void emptyMap() { Encoder.encode(java.util.Collections.emptyMap()); }
+            public void singletonList() { Encoder.encode(java.util.Collections.singletonList("one")); }
+            public void singletonSet() { Encoder.encode(java.util.Collections.singleton(1)); }
+            public void singletonMap() { Encoder.encode(java.util.Collections.singletonMap("one", 1)); }
+            public void optionalEmpty() { Encoder.encode(java.util.Optional.empty()); }
+            public void optionalValue() { Encoder.encode(java.util.Optional.of("one")); }
+            public void optionalNullable() { Encoder.encode(java.util.Optional.ofNullable(null)); }
+            public void nested() { Encoder.encode(java.util.List.of(java.util.Optional.of("one"))); }
+            public void left(boolean condition) { Encoder.encode(condition ? java.util.List.of("one") : "two"); }
+            public void right(boolean condition) { Encoder.encode(condition ? "two" : java.util.List.of("one")); }
+            public void collections(boolean condition) {
+                Encoder.encode(condition ? java.util.List.of("one") : java.util.Map.of("two", 2));
+            }
+            }
+        """.trimIndent())
+        assertTrue(ExternalObjectEscape(classes).methodDiagnostics().isEmpty())
+    }
+
+    @Test
+    fun `varargs mutable collections unknown contents and unsafe joins remain opaque`() {
+        val classes = compile("""
+            public class Sample {
+                public void varargs() { Encoder.encode(java.util.List.of(new String[]{"one", "two"})); }
+                public void mutable() { Encoder.encode(new java.util.ArrayList<String>()); }
+                public void unknown(java.util.List<String> value) { Encoder.encode(value); }
+                public void copy(java.util.List<String> value) { Encoder.encode(java.util.List.copyOf(value)); }
+                public void payload() { Encoder.encode(java.util.Collections.singleton(this)); }
+                public void nullable(Object value) { Encoder.encode(java.util.Optional.ofNullable(value)); }
+                public void left(boolean condition) { Encoder.encode(condition ? java.util.List.of("one") : this); }
+                public void right(boolean condition) { Encoder.encode(condition ? this : java.util.List.of("one")); }
+                public void unknownJoin(boolean condition, Object value) {
+                    Encoder.encode(condition ? java.util.List.of("one") : value);
+                }
+            }
+        """.trimIndent())
+        val diagnostics = ExternalObjectEscape(classes).methodDiagnostics()
+        assertEquals(9, diagnostics.size, diagnostics.toString())
+        assertTrue(diagnostics.values.flatten().all { it.callee == "Encoder.encode(Ljava/lang/Object;)V" })
+    }
+
+    @Test
+    fun `logging facade scalar arguments are safe while application unknown and varargs payloads block`() {
+        val logger = directory.resolve("Logger.java")
+        Files.writeString(logger, """
+            package org.slf4j;
+            public interface Logger {
+                void trace(String message);
+                void debug(String message, Object value);
+                void info(String message, Object left, Object right);
+                void warn(String message);
+                void warn(String message, Object... values);
+                void error(String message, Object value);
+                void custom(String message);
+                boolean info(String message, int value);
+            }
+        """.trimIndent())
+        val classes = compile("""
+            public abstract class Sample implements org.slf4j.Logger {
+                public void scalar(org.slf4j.Logger log) {
+                    log.trace("message"); log.debug("number {}", 1); log.info("{} {}", "one", null);
+                    log.error("value {}", "two"); log.warn("message");
+                }
+                public void payload(org.slf4j.Logger log) { log.debug("{}", this); }
+                public void unknown(org.slf4j.Logger log, Object value) { log.error("{}", value); }
+                public void varargs(org.slf4j.Logger log) { log.warn("{}", new Object[]{"one"}); }
+                public void collection(org.slf4j.Logger log) { log.debug("{}", java.util.List.of("one")); }
+                public void custom(org.slf4j.Logger log) { log.custom("message"); }
+                public void signature(org.slf4j.Logger log) { log.info("message", 1); }
+                public void self() { ((org.slf4j.Logger)this).trace("message"); }
+            }
+        """.trimIndent(), listOf(logger))
+        val diagnostics = ExternalObjectEscape(classes).methodDiagnostics()
+        assertEquals(7, diagnostics.size, diagnostics.toString())
+        assertTrue(diagnostics.keys.none { it.startsWith("Sample.scalar") })
+    }
+
+    @Test
+    fun `final DTO observations include all scalar field and behavior owners without becoming global`() {
+        val classes = compile("""
+            public class Sample {
+                public void expose() { Encoder.encode(new Payload()); }
+                public static final class Payload {
+                    private int number;
+                    private String text;
+                    private Leaf child;
+                    private static Leaf shared;
+                    private Payload next;
+                    public int size() { return text.length(); }
+                    public int childValue() { return child.value(); }
+                    public Leaf create() { return new Leaf(); }
+                    public String literal() { return "safe literal"; }
+                }
+                public static final class Leaf {
+                    private boolean flag;
+                    public int value() { return flag ? 1 : 0; }
+                }
+            }
+        """.trimIndent())
+        val gap = ExternalObjectEscape(classes).methodDiagnostics().getValue("Sample.expose()V").single()
+        assertTrue(!gap.globalObservation)
+        assertEquals(setOf("Sample${'$'}Payload", "Sample${'$'}Leaf"), gap.observedOwners)
+    }
+
+    @Test
+    fun `erased container inherited native and opaque behavior observations keep global uncertainty`() {
+        val classes = compile("""
+            public class Sample {
+                public void erased(Object value) { Encoder.encode(value); }
+                public void array() { Encoder.encode(new Payload[]{new Payload()}); }
+                public void container() { Encoder.encode(java.util.List.of(new Payload())); }
+                public void nonfinal() { Encoder.encode(new Extensible()); }
+                public void inherited() { Encoder.encode(new Inherited()); }
+                public void opaque() { Encoder.encode(new Opaque()); }
+                public void callback() { Encoder.encode(new Callback()); }
+                public void nativeMethod() { Encoder.encode(new Native()); }
+                public void unknownMethod() { Encoder.encode(new UnknownMethod()); }
+                public void token() { Encoder.encode(new Token()); }
+                public void dynamic() { Encoder.encode(new Dynamic()); }
+                public void arrayField() { Encoder.encode(new ArrayField()); }
+                public void unknownParameter() { Encoder.encode(new UnknownParameter()); }
+                public void opaqueScalarCall() { Encoder.encode(new OpaqueScalarCall()); }
+                public void foreignStaticField() { Encoder.encode(new ForeignStaticField()); }
+                public void foreignAllocation() { Encoder.encode(new ForeignAllocation()); }
+                public static final class Payload { private String text; }
+                public static class Extensible { private int number; }
+                public static final class Inherited extends Extensible {}
+                public static final class Opaque { private Object hidden; }
+                public static final class Callback { public void run() { Encoder.encode(this); } }
+                public static final class Native { public native int value(); }
+                public static final class UnknownMethod { public Object value() { return null; } }
+                public static final class Token { public void run() { Encoder.encode(Payload.class); } }
+                public static final class Dynamic { public void run() { Runnable work = () -> {}; work.run(); } }
+                public static final class ArrayField { private String[] values; }
+                public static final class UnknownParameter { public void accept(Object value) {} }
+                public static final class OpaqueScalarCall { public String text() { return String.valueOf(this); } }
+                public static final class ForeignStaticField { public void read() { Object value = System.out; } }
+                public static final class ForeignAllocation { public void allocate() { new StringBuilder(); } }
+            }
+        """.trimIndent())
+        val gaps = ExternalObjectEscape(classes).methodDiagnostics().filterKeys { it.startsWith("Sample.") }.values.flatten()
+        assertEquals(16, gaps.size, gaps.toString())
+        assertTrue(gaps.all { it.globalObservation && it.observedOwners.isEmpty() })
+    }
+
+    @Test
+    fun `aliases and checked final types preserve bounds while erased joins and collection casts stay conservative`() {
+        val classes = compile("""
+            public class Sample {
+                public void alias() { Object first = new Payload(); Object second = first; Encoder.encode(second); }
+                public void checked(Object value) { Encoder.encode((Payload) value); }
+                public void immutableAlias() {
+                    Object first = java.util.List.of(java.util.Optional.of("one")); Object second = first;
+                    Encoder.encode(second);
+                }
+                public void collectionCast() {
+                    Object value = java.util.List.of("one"); Encoder.encode((java.util.List<?>) value);
+                }
+                public void scalarCast(Object value) { Encoder.encode((String) value); }
+                public void nullable(boolean choose) { Encoder.encode(choose ? new Payload() : null); }
+                public void unknownJoin(boolean choose, Object value) { Encoder.encode(choose ? new Payload() : value); }
+                public static final class Payload { private String value; }
+            }
+        """.trimIndent())
+        val diagnostics = ExternalObjectEscape(classes).methodDiagnostics()
+        assertEquals(5, diagnostics.size, diagnostics.toString())
+        listOf("Sample.alias()V", "Sample.checked(Ljava/lang/Object;)V").forEach { method ->
+            val gap = diagnostics.getValue(method).single()
+            assertTrue(!gap.globalObservation)
+            assertEquals(setOf("Sample${'$'}Payload"), gap.observedOwners)
+        }
+        listOf("Sample.collectionCast()V", "Sample.nullable(Z)V", "Sample.unknownJoin(ZLjava/lang/Object;)V").forEach { method ->
+            assertTrue(diagnostics.getValue(method).single().globalObservation)
+        }
+    }
+
+    private fun compile(body: String, additionalSources: List<Path> = emptyList()): Map<String, ClassNode> {
         val source = directory.resolve("Sample.java")
         val dependency = directory.resolve("Encoder.java")
         Files.writeString(source, body)
@@ -223,9 +406,14 @@ class ExternalObjectEscapeTest {
             "public static void wide(long a, double b, Object value) {} } " +
             "interface Foreign { void dispatch(Object value); }")
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
-            "-d", directory.toString(), source.toString(), dependency.toString()))
-        val node = ClassNode()
-        ClassReader(Files.readAllBytes(directory.resolve("Sample.class"))).accept(node, 0)
-        return mapOf(node.name to node)
+            *(listOf("-d", directory.toString(), source.toString(), dependency.toString()) +
+                additionalSources.map(Path::toString)).toTypedArray()))
+        return Files.list(directory).use { paths ->
+            paths.filter { it.fileName.toString().matches(Regex("Sample(?:\\$.*)?\\.class")) }.toList().associate { path ->
+                val node = ClassNode()
+                ClassReader(Files.readAllBytes(path)).accept(node, 0)
+                node.name to node
+            }
+        }
     }
 }

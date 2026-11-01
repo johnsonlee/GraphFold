@@ -351,12 +351,17 @@ flowchart TD
 | 构建证据 | 处理 | verdict reason / diagnostic |
 | --- | --- | --- |
 | 仅非源码 diff，完整生产清单一致 | 所有相关输入义务证明完成；不执行图查询，审计状态记录 `NOT_EXECUTED` 及原因 | `BUILD_OUTPUT_UNCHANGED` |
-| 资源、包内非 class 内容或运行时依赖不同 | 当前 class 折叠模型不能证明其效果受控；阻断并列出实际变化的输出条目 | `PRODUCTION_OUTPUT_CHANGED` |
+| 已有 properties 资源的 key/value 不同 | 若每个变化 key 在 base/head 折叠图均没有存活 reader，且其他产物一致，则通过；否则阻断 | `FOLDED_EQUIVALENT` / `PRODUCTION_OUTPUT_CHANGED` |
+| 其他资源、包内非 class 内容或运行时依赖不同 | 未被资源模型证明的变化阻断，并列出实际变化的输出条目 | `PRODUCTION_OUTPUT_CHANGED` |
 | 非 class 清单一致，但 class 不同或同时修改源码 | 完成来源校验和 Graphite 分析，在每个场景下比较整个已建模生产程序；源码 diff 同时保留声明级义务 | 成功为 `FOLDED_EQUIVALENT` |
 | 折叠后仍有程序差异，无法归因给某个非源码输入 | 保留该输入义务为未证明；不把生成文件或未改文件伪造成 finding | `UNVERIFIED_BUILD_INPUT` |
 | 任一侧未建立完整生产清单 | 明确报告缺少构建范围证据；不能仅凭扩展名放行或声称业务违规 | `PRODUCTION_INVENTORY_UNAVAILABLE` |
 
 例如 README 和受控 Java 修改同时出现，且资源、运行时依赖及折叠后的程序均一致，可以通过。若 Java 留下差异，其 finding 仍定位到 Java diff；README 的影响没有独立因果证明时只记录分析缺口。当前不执行反事实构建来分别隔离每个输入的贡献，因此混合 PR 可能有保守的未证明 reason。
+
+**资源 key 证明的范围。** 当前支持由构建适配器导出的既有 ASCII `.properties` 文件（包括 Java Unicode 转义）。直接从折叠后 IR 提取 `ResourceBundle.getBundle(String)` 与 `getString` / `getObject` / `getStringArray` / `containsKey` 的常量 bundle 和 key。局部 bundle 必须有唯一直接定义；locale 子资源按照 basename 归属保守匹配。新增 key 只有折叠掉的 reader 使用时可通过；控制路径读取的 key 改值或删除仍阻断。资源输出与 runtime 目录/JAR/生产包内副本必须路径及字节均匹配，才允许将这些副本的内容差异交给 key 证明；布局、文件存在性、未匹配副本及其他内容仍比较。
+
+动态 bundle/key、bundle 跨方法传递或逃逸、原始文件/流读取、非明确建模的 JDK/library 调用、非 ASCII 编码、重复路径内容冲突、外部运行时库可能自行读取资源、增删整个 bundle 文件均保守阻断。资源消费者必须属于已分析的应用 class；不会因为库使用 `kotlin.*` 包名就信任它，当前 Kotlin 标准库等外部 class 同样不能作为完整资源证明的已知消费者。Kotlin 的直接 bundle/key IR 捕获已有 Java 等价测试，但完整资源放行还需要外部库的受验证模型。包内 `BOOT-INF/classes/` 等前缀也不会被猜测成 classloader 映射，只按实际资源路径匹配。此版不宣称覆盖 Spring 配置绑定、任意 Properties 流处理、Android `R.*`、自定义 ResourceBundle 控制器或框架隐式资源发现。即使资源证明失败，混合 PR 的源码义务仍继续分析，保留源码 diff finding 及 reason；不会因资源缺口提前丢弃源码证据。
 
 **适配范围。** Gradle 执行生产 `main` 输出及 `runtimeElements` 出站 artifact 的依赖任务，导出各项目实际 runtime classpath（包含应用输出）和 source-set 输出。发现额外可消费的 Java runtime variant 时，保留主源码分析，但不声明生产清单完整。Maven 使用 effective reactor 模型、单次 reactor 构建内独立导出的 runtime scope classpath，以及约定 JAR/package 输出；分析注入的 POM 仅在清单副本中还原为原 POM，真实构建输出保持可复用。自定义 Maven packaging、无法确定的资源映射或未支持的插件组合不宣称清单完整。source-only 编译器没有资源与打包模型，非源码 diff 会报告缺少生产清单。
 
@@ -628,7 +633,7 @@ Maven 同样保留项目配置的增量编译；配置未变且上次构建完�
 
 以下情况不得静默降级：缺类、方法解析失败、超过分析预算、未覆盖的语义、规则应用不完整、产物不可比、来源映射失败。诊断需要给出阶段、方法/文件（若已知）、原因及可操作建议。
 
-缺口是否影响结论本身需要依据。首版可以保守阻断整个分析；后续只有证明与本次变化和证明依赖无关，才能将其降为非阻断信息。
+缺口是否影响结论本身需要依据。方法级缺口结合折叠后可达性、义务闭包、调用方和已界定的观察 owner 判定；不能界定目标的反射和对象逃逸保留全局观察范围。只有证明与本次变化和证明依赖无关，才能不阻断。
 
 ## 12. CLI 与 Gradle plugin
 
@@ -865,7 +870,15 @@ Java/Kotlin 反射、native/JNI 回调、序列化钩子和框架入口不能仅
 
 自定义 delegate 的编译器元数据构造仅有一个窄范围例外：精确静态调用 `Reflection.property1(PropertyReference1): KProperty1`，且依赖中的 `Reflection` / `ReflectionFactory` 各有唯一一份定义、字节与引擎固定标准库一致、没有完整反射 factory 或应用覆盖。调用及属性名/签名仍保留在 IR；真正的 `KProperty` 访问仍阻断。不同标准库实现、替换类和重复定义不自动放行。
 
-对于不透明的第三方调用，当前只允许 primitive、String、boxed primitive 与 null 在没有对象逃逸模型时跨越边界。数组、集合、Optional、应用对象及未建模的 library receiver 都可能携带可被外部观察的对象图；即使 `List<String>` 也没有完整 heap/element 证明，因此保守输出 `Unmodeled external object graph escape` 阻断。受支持的 JDK/Kotlin callback 路径另行处理。这个限制会增加外部库密集项目的误拦率，必须作为能力缺口统计，不能计作正确检出的 violation。
+不透明第三方调用的 gap 按方法和实际 callee 保存；折叠删除调用，或该方法在两个版本均不可达时，不再因这个 gap 阻断。可界定的 gap 只影响义务的依赖闭包、可达调用方和被观察对象的 owner；全程序构建输入证明仍检查所有可达 gap。普通 `Class.getName/getTypeName` 保留在 IR 中参与差异比较，不再等同于任意反射访问；若项目对匿名 owner 做了名字归一化，存活的类名观察仍保留 gap，避免抹去运行时二进制名变化。尚未实现类名 token 的对象级来源缩窄，因此这类项目可能保守误拦。
+
+边界模型允许 primitive、String、boxed primitive、null，以及参数内容均已证明安全的固定参数不可变工厂（`List.of`、`Set.of`、`Map.of`、`Collections.empty/singleton`、`Optional.empty/of/ofNullable`）。集合声明类型本身不构成证明，varargs 数组、可变集合及未知来源仍不放行。精确 SLF4J `Logger` 日志方法仅在实际参数全部为标量且 receiver 不是应用实现时排除对象图逃逸；对象参数和 varargs 不在此模型内。
+
+只有完整字段与行为图均封闭的 final DTO 可以界定 `observedOwners`：继承 Object 且不实现接口（避免遗漏接口默认方法），所有字段、方法签名及相关指令都限于标量或同样可界定的应用类型。语义注解（包括类型与参数注解）、泛型签名、声明异常、带类型的异常处理器、自定义 class-file 属性及多维数组分配尚未建模，出现时放弃 DTO 范围证明；仅来源标记与无类型的 finally 处理器可保留。未知对象、数组、容器、库 receiver、native、invokedynamic 或外部调用无法界定观察目标时，存活的调用仍可能影响任意应用声明；任意反射同理。这类 gap 保留全局观察范围，不能仅因调用图没有边而忽略。这是避免跨 owner 私有状态漏报的必要保守边界，仍会误拦外部库密集项目，应作为分析缺口统计，不能计作已定位 violation。
+
+Kotlin `inline` 函数、顶层函数、属性及独立 inline getter/setter 的义务保留 inline 标记。调用方复制的指令可能没有原方法调用边，所以这类义务比较两版折叠后所有可达方法；没有存活副本差异时为 `FOLDED_EQUIVALENT`，不会误判 `UNREACHABLE`。finding 仍锚定 diff 中的定义范围。暂未实现精确复制指令来源，因此同 PR 其他可达差异可能使 inline 义务保守失败；参见 [inline fixture](../fixtures/kotlin/inline.md)。
+
+全程序比较直接扫描两版可达方法的并集、可达类声明和初始化依赖变化，方法差异每个 snapshot pair 只计算一次；不再对每个 owner 重复遍历重叠闭包。该改动有共享依赖、递归和初始化正确性回归；性能验收仍须使用代表性多图请求负载，单图测试不能充当性能证据。
 
 保守误报仍可能来自 owner 级源码映射、嵌套回调依赖展开、未支持资源/配置、全范围动态诊断、未建立 provenance 的生成代码，以及逻辑等价但 IR 不同的重写。Stream fixture 包含 terminal operation、中间调用修改、filter 增删、lambda 运算与 predicate 条件增删；不承诺任意惰性 pipeline 或 lambda 编号变化都能证明等价。
 

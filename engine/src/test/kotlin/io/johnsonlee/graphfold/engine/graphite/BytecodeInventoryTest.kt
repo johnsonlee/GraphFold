@@ -44,9 +44,9 @@ class BytecodeInventoryTest {
         assertTrue(inventory.declarations.getValue("Model").contains("type-annotation"))
         assertTrue(inventory.diagnostics.any { it.contains("callback") && it.contains("framework") })
         assertFalse(inventory.diagnostics.any { it.contains("plain") })
-        assertTrue(inventory.diagnostics.any { it.contains("MethodHandles") })
-        assertTrue(inventory.diagnostics.any { it.contains("ClassLoader") })
-        assertTrue(inventory.diagnostics.any { it.contains("reflect/Method") })
+        assertTrue(inventory.methodDiagnostics.values.flatten().any { it.message.contains("MethodHandles") })
+        assertTrue(inventory.methodDiagnostics.values.flatten().any { it.message.contains("ClassLoader") })
+        assertTrue(inventory.methodDiagnostics.values.flatten().any { it.message.contains("reflect/Method") })
         assertTrue(inventory.missingReferences(emptyList()).isEmpty(), inventory.references.toString())
     }
 
@@ -150,6 +150,19 @@ class BytecodeInventoryTest {
         kotlin.test.assertEquals(setOf("Packaged"), inventory.classes)
         assertTrue("Packaged" in inventory.entryClasses)
         assertTrue(inventory.diagnostics.isEmpty())
+    }
+
+    @Test fun `class name value model does not erase normalized anonymous runtime identities`() {
+        val ordinary = compileInventory("""
+            class Model {
+                String name() { return new Object() {}.getClass().getName(); }
+                String type() { return new Object() {}.getClass().getTypeName(); }
+            }
+        """.trimIndent())
+        assertTrue(ordinary.methodDiagnostics.isEmpty())
+        val normalized = BytecodeInventory(normalizedRuntimeNames = true).also { it.read(directory) }
+        kotlin.test.assertEquals(2, normalized.methodDiagnostics.values.flatten().size)
+        assertTrue(normalized.methodDiagnostics.values.flatten().all { it.globalObservation })
     }
 
     private fun compileInventory(source: String): BytecodeInventory {

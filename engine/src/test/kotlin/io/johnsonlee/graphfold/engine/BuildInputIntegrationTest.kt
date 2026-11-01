@@ -84,6 +84,7 @@ class BuildInputIntegrationTest {
         val repository = repository()
         val path = "src/main/resources/messages.properties"
         write(repository, path, "greeting=Hello")
+        write(repository, SOURCE, program("return java.util.ResourceBundle.getBundle(\"messages\").getString(\"greeting\").length();"))
         val base = commit(repository)
         write(repository, path, "greeting=Bonjour")
         val result = analyze(repository, base, commit(repository))
@@ -145,6 +146,50 @@ class BuildInputIntegrationTest {
         assertTrue(result.findings.isEmpty(), "Packaging differences must not invent a Java diff location")
         assertEquals("build.gradle", result.reasons.single().headPath)
         assertEquals(ReasonCode.ANALYSIS_INCOMPLETE, result.reasons.single().code)
+    }
+
+    @Test
+    fun `new properties key read only in folded branch passes while live key edit fails`() {
+        val repository = repository()
+        val path = "src/main/resources/messages.properties"
+        write(repository, path, "old=Hello")
+        write(repository, SOURCE, """
+            package sample;
+            public class Example {
+                public String value() {
+                    java.util.ResourceBundle bundle = java.util.ResourceBundle.getBundle("messages");
+                    if (Ab.enabled("feature")) return bundle.getString("new");
+                    return bundle.getString("old");
+                }
+            }
+        """.trimIndent())
+        val base = commit(repository)
+        write(repository, path, "old=Hello\nnew=Bonjour")
+        val controlled = analyze(repository, base, commit(repository))
+        assertEquals(Verdict.PASS, controlled.verdict, controlled.toString())
+        assertTrue(controlled.diagnostics.isEmpty(), controlled.toString())
+        assertEquals(1, controlled.metadata.provedObligations)
+        write(repository, path, "old=Changed\nnew=Bonjour")
+        val uncontrolled = analyze(repository, base, commit(repository))
+        assertEquals(Verdict.FAIL, uncontrolled.verdict, uncontrolled.toString())
+        assertTrue(uncontrolled.diagnostics.any { it.code == DiagnosticCode.PRODUCTION_OUTPUT_CHANGED }, uncontrolled.toString())
+    }
+
+    @Test
+    fun `mixed opaque resource and source changes retain source findings despite resource gap`() {
+        val repository = repository()
+        val path = "src/main/resources/data.txt"
+        write(repository, path, "before")
+        val base = commit(repository)
+        write(repository, path, "after")
+        write(repository, SOURCE, program("return x + 1;"))
+        val result = analyze(repository, base, commit(repository))
+        assertEquals(Verdict.FAIL, result.verdict, result.toString())
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.PRODUCTION_OUTPUT_CHANGED }, result.toString())
+        assertTrue(result.findings.isNotEmpty(), result.toString())
+        assertTrue(result.findings.flatMap { it.locations }.all { it.path == SOURCE }, result.toString())
+        assertTrue(result.reasons.any { it.headPath == path && it.code == ReasonCode.ANALYSIS_INCOMPLETE }, result.toString())
+        assertTrue(result.reasons.any { it.headPath == SOURCE && it.code == ReasonCode.SURVIVING_DIFFERENCE }, result.toString())
     }
 
     private fun repository(): Path {

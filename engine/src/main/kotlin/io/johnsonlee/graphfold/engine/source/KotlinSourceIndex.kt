@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
 import org.jetbrains.kotlin.com.intellij.psi.PsiErrorElement
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.config.CompilerConfiguration
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
@@ -26,6 +27,8 @@ import org.objectweb.asm.tree.ClassNode
  *
  * Callable declarations resolve against emitted method names and line tables, never guessed descriptors.
  * Properties map to emitted fields. Generated or ambiguous declarations retain CLASS obligations.
+ * Inline functions and properties retain a marker for comparing copied code in all reachable callers.
+ * Fieldless inline accessors conservatively retain an inline CLASS obligation.
  * File-wide fallback owners retain constructs such as constructors and compiler-generated declarations.
  * Exact diff fragments, rather than these enclosing ranges, remain the reported finding locations.
  * Close the index to dispose its headless Kotlin PSI environment.
@@ -88,6 +91,7 @@ class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List
         val result = mutableListOf<SourceSymbol>()
         PsiTreeUtil.collectElementsOfType(file, KtNamedFunction::class.java).filterNot(::isLocal).forEach { function ->
             val position = location(function)
+            val inlined = function.hasModifier(KtTokens.INLINE_KEYWORD)
             val matches = owners.flatMap { owner ->
                 owner.methods.filter { method ->
                     method.name.substringBefore('-') == function.name &&
@@ -96,10 +100,21 @@ class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List
             }
             if (matches.size == 1) {
                 val (owner, method) = matches.single()
-                result += SourceSymbol("${owner.name}.${method.name}${method.descriptor}", owner.name, SymbolKind.METHOD, position)
+                result += SourceSymbol("${owner.name}.${method.name}${method.descriptor}", owner.name, SymbolKind.METHOD, position,
+                    inlined = inlined)
+            } else if (inlined) {
+                // Renamed or ambiguous inline declarations still require checking copies in every reachable owner.
+                result += owners.map { SourceSymbol(it.name, it.name, SymbolKind.CLASS, position, inlined = true) }
             }
         }
         PsiTreeUtil.collectElementsOfType(file, KtProperty::class.java).filterNot(::isLocal).forEach { property ->
+            val inlined = property.hasModifier(KtTokens.INLINE_KEYWORD) ||
+                property.accessors.any { it.hasModifier(KtTokens.INLINE_KEYWORD) }
+            if (inlined) {
+                // Inline accessors have no backing field; avoid inventing getter/setter JVM names.
+                result += owners.map { SourceSymbol(it.name, it.name, SymbolKind.CLASS, location(property), inlined = true) }
+                return@forEach
+            }
             val declaringClass = PsiTreeUtil.getParentOfType(property, KtClassOrObject::class.java)
             val matches = owners.filter { owner ->
                 property.name in owner.fields && (declaringClass == null || owner.name.substringAfterLast('$')

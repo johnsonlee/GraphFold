@@ -217,6 +217,32 @@ class SnapshotComparisonTest {
         assertEquals(listOf(callback.identity, initializer.identity), comparison.differences(field))
     }
 
+    @Test
+    fun `inline obligation reaches copied code without invocation edges across owners`() {
+        val helper = method("PrivateFacade.bump(I)I", "old helper", isPrivate = true)
+        val oldCaller = method("Example.run()I", "copied old body")
+        val newCaller = oldCaller.copy(referenceCanonical = "copied new body")
+        val base = snapshot(oldCaller, helper).copy(entryClasses = setOf("Example"))
+        val head = snapshot(newCaller, helper.copy(referenceCanonical = "new helper")).copy(entryClasses = setOf("Example"))
+        val comparison = SnapshotComparison(base, head)
+        assertTrue(comparison.differences(obligation(helper.identity)).isEmpty())
+        val inline = obligation(helper.identity).copy(inlined = true)
+        assertEquals(listOf(oldCaller.identity), comparison.differences(inline))
+        assertTrue(!comparison.isUnreachable(inline))
+    }
+
+    @Test
+    fun `dead inline body proves reachable program equivalent instead of trusting missing invocation`() {
+        val helper = method("PrivateFacade.bump(I)I", "old helper", isPrivate = true)
+        val root = method("Example.run()I")
+        val base = snapshot(root, helper).copy(entryClasses = setOf("Example"))
+        val head = snapshot(root, helper.copy(referenceCanonical = "new helper")).copy(entryClasses = setOf("Example"))
+        val comparison = SnapshotComparison(base, head)
+        val inline = obligation(helper.identity).copy(inlined = true)
+        assertTrue(comparison.differences(inline).isEmpty())
+        assertTrue(!comparison.isUnreachable(inline))
+    }
+
     private fun differences(base: ProgramSnapshot, head: ProgramSnapshot): List<String> =
         SnapshotComparison(base, head).differences(obligation("Example.run()I"))
 

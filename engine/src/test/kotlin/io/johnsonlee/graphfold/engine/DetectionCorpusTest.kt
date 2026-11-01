@@ -43,11 +43,7 @@ class DetectionCorpusTest {
             mapper.writerWithDefaultPrettyPrinter().writeValue(report.toFile(), measurements)
             assertTrue(measurement.result.diagnostics.none { it.blocking },
                 "Operational failure is not detection evidence: $measurement")
-            if (case.id.startsWith("negative_local_") || case.id.startsWith("kotlin_negative_")) {
-                assertTrue(measurement.result.metadata.obligations > 0, "Negative needs actual proof obligations: ${case.id}")
-                assertTrue(measurement.result.reasons.any { it.code == ReasonCode.FOLDED_EQUIVALENT },
-                    "Retained execution must be proved equivalent, not only declared unreachable: $measurement")
-            }
+            verifyCaseEvidence(caseRoot, case, measurement)
         }
         if (language == "java") measurements.filter { it.id.startsWith("stream_") }.forEach(::verifyStreamLocations)
         assertTrue(measurements.all { it.expectedViolation == it.predictedViolation },
@@ -65,6 +61,18 @@ class DetectionCorpusTest {
         )
         assertTrue(precision > 0.90 && recall > 0.90,
             "precision=$precision recall=$recall; failures=${measurements.filter { it.expectedViolation != it.predictedViolation }}")
+    }
+
+    private fun verifyCaseEvidence(caseRoot: Path, case: CorpusCase, measurement: Measurement) {
+        val inline = case.id.startsWith("kotlin_inline_")
+        if (inline && case.violation) verifyInlineLocations(caseRoot, measurement)
+        val retainedNegative = case.id.startsWith("negative_local_") || case.id.startsWith("kotlin_negative_")
+        val inlineNegative = inline && !case.violation
+        if (retainedNegative || inlineNegative) {
+            assertTrue(measurement.result.metadata.obligations > 0, "Negative needs actual proof obligations: ${case.id}")
+            assertTrue(measurement.result.reasons.any { it.code == ReasonCode.FOLDED_EQUIVALENT },
+                "Retained execution must be proved equivalent, not only declared unreachable: $measurement")
+        }
     }
 
     private fun analyzeCase(
@@ -94,6 +102,20 @@ class DetectionCorpusTest {
             AnalysisRequest(repository.toString(), base, head, Files.readString(fixtures.resolve("fold.yml"))),
         )
         return Measurement(case.id, case.violation, result.verdict == Verdict.FAIL, result)
+    }
+
+    private fun verifyInlineLocations(caseRoot: Path, measurement: Measurement) {
+        assertTrue(measurement.result.findings.isNotEmpty(), measurement.toString())
+        measurement.result.findings.flatMap { it.locations }.forEach { location ->
+            val revision = location.revision.name.lowercase()
+            val text = Files.readString(caseRoot.resolve("cases/${measurement.id}/$revision/Example.kt"))
+            val otherRevision = if (revision == "base") "head" else "base"
+            val other = Files.readString(caseRoot.resolve("cases/${measurement.id}/$otherRevision/Example.kt"))
+            val declarationLine = text.lines().zip(other.lines()).indexOfFirst { (before, after) -> before != after } + 1
+            assertEquals("src/main/kotlin/sample/Example.kt", location.path)
+            assertEquals(SourceRange(declarationLine, declarationLine), location.line,
+                "Copied caller differences must remain attributed to the changed inline declaration: $measurement")
+        }
     }
 
     private fun verifyStreamLocations(measurement: Measurement) {
