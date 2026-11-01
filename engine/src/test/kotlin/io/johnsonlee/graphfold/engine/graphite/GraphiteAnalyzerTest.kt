@@ -57,6 +57,46 @@ class GraphiteAnalyzerTest {
         assertEquals(GraphiteAnalyzer().analyze(baseline, emptyList()).methods.getValue("Sample.run()V").canonical, run.canonical)
     }
 
+    @Test fun `resource graph connectivity preserves folded bodies without evaluating ordinary wrappers`() {
+        val classes = compile("wrapper", """
+            static boolean identity(boolean value) { return value; }
+            static void run() { if (identity(enabled("checkout"))) work(); tail(); }
+        """.trimIndent())
+        val ordinary = GraphiteAnalyzer().analyze(classes, listOf(rule()))
+        val resources = GraphiteAnalyzer().analyze(classes, listOf(rule()), dependencyResources = true)
+        assertTrue(ordinary.diagnostics.isEmpty(), ordinary.diagnostics.toString())
+        assertTrue(resources.diagnostics.isEmpty(), resources.diagnostics.toString())
+        assertFalse(ordinary.resourceDependenciesAnalyzed)
+        assertTrue(resources.resourceDependenciesAnalyzed)
+        assertEquals(ordinary.methods.mapValues { it.value.canonical }, resources.methods.mapValues { it.value.canonical })
+        assertEquals(ordinary.matchedRules, resources.matchedRules)
+        for (snapshot in listOf(ordinary, resources)) {
+            val calls = snapshot.methods.getValue("Sample.run()V").calls
+            assertTrue("Sample.identity(Z)Z" in calls)
+            assertTrue("Sample.work()V" in calls, "connectivity does not prove the wrapper's return value")
+            assertFalse("Sample.enabled(Ljava/lang/String;)Z" in calls)
+        }
+    }
+
+    @Test fun `ordinary folding selection follows a key through a helper return`() {
+        val classes = compile("helperSelection", """
+            static String key() { return "checkout"; }
+            static void run() { if (enabled(key())) work(); tail(); }
+        """.trimIndent())
+        val selected = FoldSites.parse(mapOf(
+            "select" to "MATCH (key:StringConstant {value: 'checkout'})-[:DATAFLOW*1..8]->" +
+                "(cs:CallSite {callee_name: 'enabled'}) RETURN DISTINCT cs",
+            "value" to false,
+        ))
+        val snapshot = GraphiteAnalyzer().analyze(classes, listOf(selected))
+        assertTrue(snapshot.diagnostics.isEmpty(), snapshot.diagnostics.toString())
+        assertFalse(snapshot.resourceDependenciesAnalyzed)
+        assertEquals(listOf(1), snapshot.matchedRules)
+        val calls = snapshot.methods.getValue("Sample.run()V").calls
+        assertFalse("Sample.work()V" in calls)
+        assertTrue("Sample.tail()V" in calls)
+    }
+
     @Test fun `actual Cypher selects nodes with where and parameter constraints`() {
         val classes = compile("query", "static void run() { if (enabled(\"checkout\")) work(); if (enabled(\"other\")) tail(); }")
         val selected = FoldSites.parse(mapOf(

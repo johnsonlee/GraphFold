@@ -109,7 +109,8 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
             folding = resolved.takeIf { it.isNotEmpty() }?.let { FoldPlan(it) { value -> report = value } },
             verbose = log,
             includePackages = if (resources != null) emptyList() else inventory.classes.toList(), includeLibraries = true,
-            interproceduralDataflow = true,
+            // Selection needs these edges independently; ordinary folded snapshots consume bodies and call sites only.
+            interproceduralDataflow = resources != null,
         )
         val loader = JavaProjectLoader(config, false)
         val folded = SnapshotExtension.capture(sink) { loader.load(artifact) }

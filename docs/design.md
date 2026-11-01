@@ -383,9 +383,9 @@ flowchart TD
 
 | 能力 | 当前状态 | GraphFold 的处理 |
 | --- | --- | --- |
-| class/JAR/Boot JAR/WAR 建图 | `JavaProjectLoader` 可用 | 复用 |
+| class/JAR/Boot JAR/WAR 建图 | `JavaProjectLoader` 可用 | 当前以应用 classes＋导出的依赖建图，最终产物参与生产输出比对；直接分析 Boot JAR/WAR 及其嵌套依赖的完整链路尚未验证 |
 | JVM Cypher 查询 | `Graph.query` 可用 | 复用 |
-| 跨过程数据流 | 配置开关，默认关闭 | 选点图与折叠后的分析图均显式开启；不将连通关系当作确定值证明 |
+| 跨过程数据流 | 配置开关，默认关闭 | 选点图显式开启；折叠后的分析图仅在资源证明时开启。普通源码比较沿用关闭配置；不将连通关系当作确定值证明 |
 | Cypher select 折叠编排 | Rust CLI 两次建图 | JVM 消费侧需实现等价的编排或抽取上游接口 |
 | 折叠规则 | `ConstantFold`、`FoldSites`、`FoldPlan` | 复用规则语义 |
 | 方法内常量传播和分支折叠 | 迭代到不动点 | 复用并验证边界 |
@@ -395,6 +395,12 @@ flowchart TD
 | 合成成员规范化 | internal `SyntheticIdentity` | 参考并验证后复用，不当作通用等价证明 |
 | 精确源码位置 | 调用点多处行号为 null，无完整列范围 | GraphFold 补源码映射 |
 | 建图完整性 | 存在跳过方法/控制流的降级路径 | 补结构化阻断诊断 |
+
+在固定依赖 Graphite 2.12.0 中，`interproceduralDataflow` 在方法体转换与函数式调用解析之后追加
+`PARAMETER_PASS` / `RETURN_VALUE` 边，不改变折叠后的方法体；lambda/callback 目标解析由独立配置控制。
+因此普通源码分析的最终图关闭该开关，继续以相同的折叠 IR 与调用关系比较；两条选点路径保持开启，
+允许 Cypher 沿 helper 的参数及返回值选点。资源分析的最终图保留开启。图的连通性不能证明一般 wrapper
+的返回值是常量，这一边界由模式一致性及 helper-return 选点回归验证，不构成性能验收。
 
 ### 7.1 已验证的范围
 

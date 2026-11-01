@@ -3,6 +3,27 @@
 Date: 2026-11-02. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
+## PR review: scope folded-graph dataflow to resource analysis (2026-11-02)
+
+The final folding loader enables interprocedural dataflow only for resource proofs;
+both selection paths continue to enable it. With Graphite 2.12.0, these optional
+edges do not change transformed bodies or callback dispatch. Two new compiled
+regressions verify equal canonical bodies in ordinary/resource modes without
+evaluating a general wrapper, and Cypher selection through a helper's return in
+ordinary mode.
+
+The following targeted rerun passed **52 tests**, with zero failures/errors/skips,
+plus type-aware production and test detekt:
+
+```sh
+./gradlew :engine:test --tests '*GraphiteAnalyzerTest' --tests '*SelectionSafetyTest' \
+  --tests '*OriginFoldSelectionTest' --tests '*DependencyResourceAnalysisTest' \
+  --tests '*DependencyGraphProbeTest' :engine:detektMain :engine:detektTest --console=plain
+```
+
+This is correctness evidence, not performance acceptance or a replacement for the
+unfiltered CI `check` and its unchanged coverage gates. The full-suite figures in
+the next section describe the preceding dependency-resource implementation.
 
 ## PR review: folded dependency resource effects (2026-11-02)
 
