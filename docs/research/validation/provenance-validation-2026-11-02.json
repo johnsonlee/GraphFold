@@ -1,0 +1,106 @@
+{
+  "date": "2026-11-02",
+  "scope": "Generated declarations and continued analysis after origin failure",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :gfc:detektMain :gfc:detektTest --console=plain",
+  "modules": {
+    "engine": {
+      "tests": {
+        "tests": 871,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "BRANCH": {
+          "covered": 4104,
+          "missed": 179,
+          "percent": 95.82068643474202
+        },
+        "LINE": {
+          "covered": 4616,
+          "missed": 30,
+          "percent": 99.3542832544124
+        }
+      }
+    },
+    "gfc": {
+      "tests": {
+        "tests": 86,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "BRANCH": {
+          "covered": 233,
+          "missed": 9,
+          "percent": 96.28099173553719
+        },
+        "LINE": {
+          "covered": 355,
+          "missed": 5,
+          "percent": 98.61111111111111
+        }
+      }
+    },
+    "cli": {
+      "tests": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "BRANCH": {
+          "covered": 33,
+          "missed": 1,
+          "percent": 97.05882352941177
+        },
+        "LINE": {
+          "covered": 75,
+          "missed": 1,
+          "percent": 98.68421052631578
+        }
+      }
+    },
+    "gradle-plugin": {
+      "tests": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "BRANCH": {
+          "covered": 18,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "LINE": {
+          "covered": 95,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "corpus": {
+    "java": {
+      "cases": 132,
+      "matching": 132
+    },
+    "kotlin": {
+      "cases": 209,
+      "matching": 209
+    }
+  },
+  "performanceAcceptance": false,
+  "schemaReportsValidated": 341,
+  "compilerProbe": {
+    "successfulCompilations": 20,
+    "unresolvedOrigins": 0,
+    "unsupportedVersionRejected": "1.9.0",
+    "providerSha256": "cdb230f3a41be6317b7ab6da44cd959a841ec06402c5304e7e307b39bab24a6c"
+  },
+  "selfAnalysisEvidence": "provenance-self-analysis-2026-11-02.json"
+}

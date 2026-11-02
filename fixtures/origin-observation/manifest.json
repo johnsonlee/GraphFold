@@ -1,0 +1,102 @@
+[
+  {
+    "id": "dead_stack_helper",
+    "language": "java",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "dead_render_helper",
+    "language": "java",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "folded_observer",
+    "language": "java",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "unrelated_capture",
+    "language": "java",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "reachable_render",
+    "language": "java",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "transitive_capture",
+    "language": "java",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "dead_stack_helper",
+    "language": "kotlin",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "dead_render_helper",
+    "language": "kotlin",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "folded_observer",
+    "language": "kotlin",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "unrelated_capture",
+    "language": "kotlin",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "reachable_render",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "transitive_capture",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "folded_concat",
+    "language": "java",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "reachable_concat",
+    "language": "java",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "cross_thread_capture",
+    "language": "java",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "folded_reference",
+    "language": "java",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "reachable_reference",
+    "language": "java",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "folded_concat",
+    "language": "kotlin",
+    "expectedVerdict": "PASS"
+  },
+  {
+    "id": "reachable_concat",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL"
+  },
+  {
+    "id": "cross_thread_capture",
+    "language": "kotlin",
+    "expectedVerdict": "FAIL"
+  }
+]

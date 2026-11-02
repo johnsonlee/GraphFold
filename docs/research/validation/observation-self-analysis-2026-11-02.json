@@ -1,0 +1,125 @@
+{
+  "date": "2026-11-02",
+  "purpose": "Real multi-module correctness probe; not performance acceptance",
+  "implementationBase": "9fd2815bbdab15de17a1da696ab084fdb3294a41",
+  "implementationDelta": "Anchored frontend diagnostics, system-module declaration reader, scoped opaque observations",
+  "base": "ce33f058eca6f23d095cbb40baf942bfb871498d",
+  "head": "5af326a5e90433b549bb6c979050f7e9cb1df7fc",
+  "change": "One line in AnalysisReports.text: GraphFold: -> GraphFold verdict:",
+  "fold": "java.nio.file.Files.isDirectory -> false",
+  "before": {
+    "total": 1024,
+    "codes": {
+      "INCOMPLETE_GRAPH": 1024
+    },
+    "externalObjectEscapes": 960,
+    "dynamicAccess": 20,
+    "unresolvedInheritedApi": 6,
+    "programTextMisdiagnosed": 22,
+    "foldHints": 16
+  },
+  "after": {
+    "total": 109,
+    "codes": {
+      "INCOMPLETE_GRAPH": 109
+    },
+    "externalObjectEscapes": 92,
+    "dynamicAccess": 1,
+    "unresolvedInheritedApi": 0,
+    "programTextMisdiagnosed": 0,
+    "foldHints": 16
+  },
+  "reportSha256": {
+    "before": "c572ea511aeda821bc846a9491b29d712498872eea9559ea1bb49aaec63a4f25",
+    "after": "550c6f5553cafb99a300850a785534d960fd7aafa10b625dbbb9b19ee2127ea5"
+  },
+  "verdict": "FAIL",
+  "metadata": {
+    "baseSha": "ce33f058eca6f23d095cbb40baf942bfb871498d",
+    "headSha": "5af326a5e90433b549bb6c979050f7e9cb1df7fc",
+    "scenarios": [
+      "baseline"
+    ],
+    "obligations": 1,
+    "provedObligations": 0,
+    "graphiteVersion": "2.12.0"
+  },
+  "ruleAudits": [
+    {
+      "revision": "BASE",
+      "selectionStatus": "SELECTED",
+      "selectedCount": 23,
+      "matchedCallCount": 23
+    },
+    {
+      "revision": "HEAD",
+      "selectionStatus": "SELECTED",
+      "selectedCount": 23,
+      "matchedCallCount": 23
+    }
+  ],
+  "findings": [
+    {
+      "id": "0d3f11213924af176177703fa6296ff0cff8c299d77692093fbb63b97884d676",
+      "kind": "UNVERIFIABLE_CHANGE",
+      "ruleId": "folded-program-equivalence",
+      "message": "Surviving program representation differs: io.johnsonlee.graphfold.engine.AnalysisReports.text(Lio/johnsonlee/graphfold/engine/AnalysisResult;)Ljava/lang/String;",
+      "locations": [
+        {
+          "revision": "HEAD",
+          "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/AnalysisReports.kt",
+          "line": {
+            "start": 42,
+            "end": 42
+          },
+          "column": {
+            "start": 30,
+            "end": 38
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "description": "Remaining difference in io.johnsonlee.graphfold.engine.AnalysisReports.text(Lio/johnsonlee/graphfold/engine/AnalysisResult;)Ljava/lang/String;",
+          "location": null
+        }
+      ],
+      "scenarios": [
+        "baseline"
+      ]
+    }
+  ],
+  "remainingDiagnosticSamples": [
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "base: java.nio.file.Files.isDirectory(java.nio.file.Path,java.nio.file.LinkOption[]) folds for every caller of io.johnsonlee.graphfold.engine.origin.OriginBytecodeNormalizerKt.normalizeOriginClasses(java.nio.file.Path,java.nio.file.Path,java.util.Map,java.util.List): argument 0 is parameter 0 of io.johnsonlee.graphfold.engine.origin.OriginBytecodeNormalizerKt.normalizeOriginClasses(java.nio.file.Path,java.nio.file.Path,java.util.Map,java.util.List) (1 call(s))",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "base: java.nio.file.Files.isDirectory(java.nio.file.Path,java.nio.file.LinkOption[]) folds for every caller of io.johnsonlee.graphfold.engine.origin.OriginHierarchy.dependencyBytes(java.nio.file.Path,java.lang.String): argument 0 is parameter 0 of io.johnsonlee.graphfold.engine.origin.OriginHierarchy.dependencyBytes(java.nio.file.Path,java.lang.String) (1 call(s))",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "Unmodeled external object graph escape: io/johnsonlee/graphfold/cli/GraphFoldCommand.run()V -> com/github/ajalt/clikt/core/BaseCliktCommand.echo$default(Lcom/github/ajalt/clikt/core/BaseCliktCommand;Ljava/lang/Object;ZZILjava/lang/Object;)V",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "Unmodeled external object graph escape: io/johnsonlee/graphfold/cli/GraphFoldCommand.run()V -> com/github/ajalt/clikt/core/ProgramResult.<init>(I)V",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "Unmodeled external object graph escape: io/johnsonlee/graphfold/engine/AnalysisReports.foldSelectionLog(Lio/johnsonlee/graphfold/engine/AnalysisResult;)Ljava/util/List; -> com/fasterxml/jackson/databind/ObjectMapper.writeValueAsString(Ljava/lang/Object;)Ljava/lang/String;",
+      "blocking": true
+    }
+  ],
+  "conclusion": "Both revisions complete graph folding and preserve the diff-owned finding. Program-text false warnings and missing JDK inherited declarations are absent. Unrelated global observations are removed, but conservative relevant-method/caller observations and fold hints still block a complete proof; FAIL/UNVERIFIABLE_CHANGE remain. No arbitrary real-project precision or performance claim."
+}

@@ -1,0 +1,20 @@
+{
+  "scope": "Graphite graph and folded IR extraction only; not GraphFold verdict or performance acceptance",
+  "graphiteVersion": "2.12.0",
+  "kotlinCompilerVersion": "2.1.20",
+  "kotlinStdlibVersion": "2.1.20",
+  "baseCommit": "11333dcb7518b9658e52d487cfbd58186420b70d",
+  "test": {
+    "name": "io.johnsonlee.graphfold.engine.graphite.DependencyGraphProbeTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-11-01T14:37:47.848Z",
+    "hostname": "johnsonlee.local",
+    "time": "7.265"
+  },
+  "command": "./gradlew :engine:test --tests '*DependencyGraphProbeTest' :engine:detektTest --console=plain",
+  "stdout": "PROBE stdlib=/Users/johnsonlee/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.1.20/aa8ca79cd50578314f6d1180c47cbe14c0fee567/kotlin-stdlib-2.1.20.jar methods=10079 calls=61407 dependencyParameterEdges=3 dependencyReturnEdges=3 bodyRecovery=0\nPROBE trim calls=[kotlin.jvm.internal.Intrinsics.checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V, java.lang.CharSequence.length()I, java.lang.CharSequence.charAt(I)C, kotlin.text.CharsKt.isWhitespace(C)Z, java.lang.CharSequence.subSequence(II)Ljava/lang/CharSequence;] reads=[ResourceRead(bundle=null, key=null)]\nPROBE application calls=[Probe.<init>()V -> java.lang.Object.<init>()V, Probe.run(Ljava/lang/String;)Ljava/lang/String; -> java.lang.Object.toString()Ljava/lang/String;, Probe.callback$lambda$0()Ljava/lang/String; -> java.util.ResourceBundle.getBundle(Ljava/lang/String;)Ljava/util/ResourceBundle;, Probe.dynamic(Ljava/lang/String;)Ljava/lang/String; -> kotlin.jvm.internal.Intrinsics.checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V, Probe.run(Ljava/lang/String;)Ljava/lang/String; -> external.Reader.identity(Ljava/lang/String;)Ljava/lang/String;, Probe.callback()Ljava/lang/String; -> Probe.callback$lambda$0()Ljava/lang/String;, Probe.run(Ljava/lang/String;)Ljava/lang/String; -> kotlin.jvm.internal.Intrinsics.checkNotNullExpressionValue(Ljava/lang/Object;Ljava/lang/String;)V, Probe.dynamic(Ljava/lang/String;)Ljava/lang/String; -> external.Reader.dynamic(Ljava/lang/String;)Ljava/lang/String;, Probe.run(Ljava/lang/String;)Ljava/lang/String; -> kotlin.jvm.internal.Intrinsics.checkNotNullParameter(Ljava/lang/Object;Ljava/lang/String;)V, Probe.callback()Ljava/lang/String; -> external.Reader.callback(Lexternal/Reader$Callback;)Ljava/lang/String;, Probe.run(Ljava/lang/String;)Ljava/lang/String; -> kotlin.text.StringsKt__StringsKt.trim(Ljava/lang/CharSequence;)Ljava/lang/CharSequence;, Probe.callback$lambda$0()Ljava/lang/String; -> java.util.ResourceBundle.getString(Ljava/lang/String;)Ljava/lang/String;]\nPROBE callback calls=[external.Reader.callback(Lexternal/Reader$Callback;)Ljava/lang/String; -> external.Reader$Callback.get()Ljava/lang/String;; derived=false, external.Reader.callback(Lexternal/Reader$Callback;)Ljava/lang/String; -> Probe.callback$lambda$0()Ljava/lang/String;; derived=true]\nPROBE incomplete=[]\n",
+  "stderr": ""
+}

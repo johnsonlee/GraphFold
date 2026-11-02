@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-31",
+  "developmentVersionRule": "baseVersion + 12-character Git HEAD read through JGit",
+  "configuredBaseVersion": "0.1.0",
+  "releaseVersion": "0.1.0-review.20261031.2",
+  "releaseHelperTests": 9,
+  "checks": [
+    {
+      "name": "source-archive-explicit",
+      "exitCode": 1,
+      "versions": [],
+      "expectedVersion": "9.8.7-configtest",
+      "expectedFailure": null,
+      "passed": false
+    },
+    {
+      "name": "source-archive-default",
+      "exitCode": 1,
+      "versions": [],
+      "expectedVersion": null,
+      "expectedFailure": "Cannot derive development version without Git metadata; supply -Pversion=<version>",
+      "passed": true
+    },
+    {
+      "name": "source-archive-explicit-without-git-dependent-publish-plugin",
+      "exitCode": 0,
+      "versions": [
+        "9.8.7-configtest",
+        "9.8.7-configtest",
+        "9.8.7-configtest",
+        "9.8.7-configtest"
+      ],
+      "expectedVersion": "9.8.7-configtest",
+      "expectedFailure": null,
+      "passed": true
+    },
+    {
+      "name": "git-default",
+      "exitCode": 0,
+      "versions": [
+        "0.1.0-7ca298545e97",
+        "0.1.0-7ca298545e97",
+        "0.1.0-7ca298545e97",
+        "0.1.0-7ca298545e97"
+      ],
+      "expectedVersion": "0.1.0-7ca298545e97",
+      "expectedFailure": null,
+      "passed": true
+    },
+    {
+      "name": "git-changed-head",
+      "exitCode": 0,
+      "versions": [
+        "0.1.0-0fbdc482b884",
+        "0.1.0-0fbdc482b884",
+        "0.1.0-0fbdc482b884",
+        "0.1.0-0fbdc482b884"
+      ],
+      "expectedVersion": "0.1.0-0fbdc482b884",
+      "expectedFailure": null,
+      "passed": true
+    },
+    {
+      "name": "git-base-override",
+      "exitCode": 0,
+      "versions": [
+        "2.3.4-0fbdc482b884",
+        "2.3.4-0fbdc482b884",
+        "2.3.4-0fbdc482b884",
+        "2.3.4-0fbdc482b884"
+      ],
+      "expectedVersion": "2.3.4-0fbdc482b884",
+      "expectedFailure": null,
+      "passed": true
+    },
+    {
+      "name": "git-linked-worktree",
+      "exitCode": 0,
+      "versions": [
+        "0.1.0-0fbdc482b884",
+        "0.1.0-0fbdc482b884",
+        "0.1.0-0fbdc482b884",
+        "0.1.0-0fbdc482b884"
+      ],
+      "expectedVersion": "0.1.0-0fbdc482b884",
+      "expectedFailure": null,
+      "passed": true
+    }
+  ],
+  "packagedCli": {
+    "embeddedJarVersionMatchesRelease": true,
+    "zipVersionSmoke": true,
+    "tarVersionSmoke": true,
+    "developmentInstalledCliVersion": "0.1.0-f7a291777760"
+  },
+  "limitation": "The existing Sonatype publication plugin requires Git metadata. Explicit version bypasses version derivation, but a full source-archive build remains unsupported.",
+  "releaseArchivesSha256": {
+    "graphfold-0.1.0-review.20261031.2.zip": "3a30f7f022194c40808b9ffe578952ad98677bb35fc82d1a415ac4f96ac0ee08",
+    "graphfold-0.1.0-review.20261031.2.tar": "6e8207182fa1c7dfcee9d0edaa3da561b4d9ea3980475d63cb15b98860912875"
+  },
+  "verificationScope": "Version integration verified before the fold audit/schema additions; archive hashes identify that version-check snapshot, not a release of the final PR tree."
+}

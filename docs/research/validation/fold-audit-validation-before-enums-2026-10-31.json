@@ -1,0 +1,205 @@
+{
+  "date": "2026-10-31",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :cli:installDist --continue --console=plain",
+  "exit": 0,
+  "duration": "20m 51s",
+  "modules": {
+    "engine": {
+      "junit": {
+        "tests": 606,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 3038,
+          "missed": 145,
+          "percent": 95.4445491674521
+        },
+        "line": {
+          "covered": 3660,
+          "missed": 33,
+          "percent": 99.10641754670999
+        }
+      }
+    },
+    "cli": {
+      "junit": {
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 29,
+          "missed": 1,
+          "percent": 96.66666666666667
+        },
+        "line": {
+          "covered": 66,
+          "missed": 1,
+          "percent": 98.50746268656717
+        }
+      }
+    },
+    "gradle-plugin": {
+      "junit": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 14,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 93,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "corpus": {
+    "java": {
+      "filtered": false,
+      "cases": 130,
+      "truePositive": 60,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "kotlin": {
+      "filtered": false,
+      "cases": 186,
+      "truePositive": 84,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "anonymousOrigins": {
+    "fixturePairs": 32,
+    "expectedPass": 18,
+    "expectedFail": 14,
+    "additionalPhysicalEncodingRuns": 4
+  },
+  "compilerOrigins": {
+    "verifiedCompilerFrontendCombinations": 5,
+    "sourceFormats": [
+      "LF",
+      "CRLF",
+      "CR",
+      "BOM-CRLF"
+    ],
+    "successfulCompilations": 20,
+    "recordsPerCompilation": 15,
+    "unresolvedRecords": 0,
+    "probeProviderSha256": "4069a38e791c5fcd9d061bb2032d5b564237376c5472b3b2bfc3fc37a8dc04c9",
+    "rejectedCompilerVersion": "1.9.0",
+    "maximumNormalizationMetadataSchema": "2.1",
+    "verifiedOutputOwnersPerCompilation": 16,
+    "verificationScope": "Previously verified compiler-provider source; matrix was not rerun for these adapter/review changes."
+  },
+  "additionalChecks": {
+    "installedCliHelp": true,
+    "releaseHelperTests": 9,
+    "compilerSpiPackaging": "isolated nested provider",
+    "gitDiffCheck": true
+  },
+  "incrementalCompilation": {
+    "gradle": [
+      "unchanged UP-TO-DATE",
+      "Java/Kotlin source edits",
+      "retained unchanged class timestamp",
+      "source deletion",
+      "own/direct/transitive implementation-hidden inline source shifts",
+      "unrelated module UP-TO-DATE",
+      "FROM-CACHE restoration",
+      "provider artifact repair"
+    ],
+    "maven": [
+      "unchanged Java reactor",
+      "configured Kotlin incremental compilation",
+      "retained unchanged class timestamp",
+      "Java/Kotlin source edits",
+      "last-source deletion",
+      "cross-file inline caller output ownership",
+      "inline source hash and offset refresh",
+      "compiler-configuration change invalidates state, rebuilds, then resumes incremental reuse",
+      "incomplete state recovery",
+      "active-profile reactor excludes fixture POMs",
+      "test-jar dependencies",
+      "same-FQCN test/production provenance isolation"
+    ],
+    "persistentCheckouts": true,
+    "performanceAcceptance": "Not performed; representative multi-graph load required"
+  },
+  "objectRenderingFlow": {
+    "scope": "method-local bytecode must-proof",
+    "java": {
+      "safeMethods": 11,
+      "blockedMethods": 25
+    },
+    "kotlin": {
+      "safeMethods": 10,
+      "blockedMethods": 18
+    }
+  },
+  "reviewThreadsAddressed": 18,
+  "releaseReview": {
+    "pythonTests": 7,
+    "signedLocalUploadGate": true,
+    "cleanRebuilds": 2,
+    "byteIdenticalPayloads": 18,
+    "remotePublication": false,
+    "verificationScope": "Prior review baseline; not rerun for capacity, version and fold audit changes."
+  },
+  "capacityConfiguration": {
+    "defaultLeaseSeconds": 1500,
+    "defaultLeaseFormula": "2 * buildTimeoutSeconds + 300",
+    "leaseScope": "Waiting for a free workspace slot only; not inactivity or held-lease duration",
+    "cliCapacityExitCode": 3,
+    "diagnostic": "WORKSPACE_CAPACITY_TIMEOUT",
+    "cliAndGradleOptions": [
+      "workspaceSlots",
+      "buildTimeout",
+      "leaseTimeout",
+      "buildEnv"
+    ],
+    "realContentionAndRecovery": true
+  },
+  "slotAffinity": {
+    "priority": [
+      "exact pair",
+      "same base and bounded head distance",
+      "other available slot"
+    ],
+    "historyLimitPerHead": 256,
+    "lockBeforeRead": true,
+    "performanceAcceptance": "Not performed; representative multi-graph load required"
+  },
+  "cliVersion": {
+    "development": "configured baseVersion plus 12-character Git HEAD via JGit",
+    "release": "explicit -Pversion",
+    "packagedResourceAndExecutableChecked": true,
+    "versionEvidence": "cli-version-validation-2026-10-31.json"
+  },
+  "foldAudit": {
+    "schemaVersion": 1,
+    "schemaId": "urn:io.johnsonlee.graphfold:verdict:1",
+    "schemaDialect": "2020-12",
+    "yamlValidationBeforeCheckout": true,
+    "rawSelectionWithoutReplay": true,
+    "structuredCliStderrAndGradleLifecycleLogs": true,
+    "bothRevisionsUnmatchedBlocks": true,
+    "actualCorpusReportsValidatedAgainstSchema": 316
+  }
+}

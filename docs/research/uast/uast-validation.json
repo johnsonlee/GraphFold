@@ -1,0 +1,214 @@
+{
+  "scope": "isolated evaluation; not adopted into main",
+  "candidate": "/tmp/graphfold-uast-integration",
+  "firstFull": {
+    "command": "./gradlew check :engine:detektTest :cli:installDist --continue --console=plain",
+    "exit": 1,
+    "engine": {
+      "tests": 279,
+      "failures": 6
+    },
+    "cli": {
+      "tests": 9,
+      "failures": 0
+    },
+    "plugin": {
+      "tests": 11,
+      "failures": 0
+    },
+    "note": "Java anonymous declaration diagnostics, three obsolete Kotlin lambda synthetic-flag assertions, plugin missing direct provider coverage; fixed in parity run"
+  },
+  "parity": {
+    "exit": 0,
+    "engine": {
+      "tests": 50,
+      "failures": 0
+    },
+    "cli": {
+      "tests": 9,
+      "failures": 0
+    },
+    "plugin": {
+      "tests": 13,
+      "failures": 0
+    },
+    "locations": {
+      "java": 8,
+      "kotlin": 14
+    },
+    "note": "Java full corpus plus changed source/frontend tests; Kotlin corpus retained from first full run"
+  },
+  "corpus": {
+    "java": {
+      "cases": 130,
+      "positive": 60,
+      "negative": 70,
+      "mismatches": 0,
+      "diagnostics": 0
+    },
+    "kotlin": {
+      "cases": 186,
+      "positive": 84,
+      "negative": 102,
+      "mismatches": 0,
+      "diagnostics": 0
+    }
+  },
+  "diagnosticCoverage": {
+    "source": "merged first-full and parity exec against current compiled classes",
+    "standardFullCheck": false,
+    "branchCovered": 1599,
+    "branchMissed": 110,
+    "branchPercent": 93.56348741954359,
+    "lineCovered": 1880,
+    "lineMissed": 18,
+    "linePercent": 99.05163329820864,
+    "gateMinimumBranchPercent": 95,
+    "gatePassed": false
+  },
+  "installedCli": [
+    {
+      "case": "callback_lambda",
+      "language": "java",
+      "exit": 1,
+      "verdict": "FAIL",
+      "diagnostics": 0,
+      "locations": [
+        {
+          "revision": "BASE",
+          "path": "src/main/java/sample/Example.java",
+          "line": {
+            "start": 4,
+            "end": 4
+          },
+          "column": {
+            "start": 74,
+            "end": 75
+          }
+        },
+        {
+          "revision": "HEAD",
+          "path": "src/main/java/sample/Example.java",
+          "line": {
+            "start": 4,
+            "end": 4
+          },
+          "column": {
+            "start": 74,
+            "end": 75
+          }
+        }
+      ]
+    },
+    {
+      "case": "gated_callback_lambda",
+      "language": "java",
+      "exit": 0,
+      "verdict": "PASS",
+      "diagnostics": 0,
+      "locations": [
+        {
+          "revision": "BASE",
+          "path": "src/main/java/sample/Example.java",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 78,
+            "end": 79
+          }
+        },
+        {
+          "revision": "HEAD",
+          "path": "src/main/java/sample/Example.java",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 78,
+            "end": 79
+          }
+        }
+      ]
+    },
+    {
+      "case": "noncapturing_lambda",
+      "language": "kotlin",
+      "exit": 1,
+      "verdict": "FAIL",
+      "diagnostics": 0,
+      "locations": [
+        {
+          "revision": "BASE",
+          "path": "src/main/kotlin/sample/Example.kt",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 27,
+            "end": 28
+          }
+        },
+        {
+          "revision": "HEAD",
+          "path": "src/main/kotlin/sample/Example.kt",
+          "line": {
+            "start": 5,
+            "end": 5
+          },
+          "column": {
+            "start": 27,
+            "end": 28
+          }
+        }
+      ]
+    },
+    {
+      "case": "controlled_lambda",
+      "language": "kotlin",
+      "exit": 0,
+      "verdict": "PASS",
+      "diagnostics": 0,
+      "locations": [
+        {
+          "revision": "BASE",
+          "path": "src/main/kotlin/sample/Example.kt",
+          "line": {
+            "start": 4,
+            "end": 4
+          },
+          "column": {
+            "start": 54,
+            "end": 55
+          }
+        },
+        {
+          "revision": "HEAD",
+          "path": "src/main/kotlin/sample/Example.kt",
+          "line": {
+            "start": 4,
+            "end": 4
+          },
+          "column": {
+            "start": 54,
+            "end": 55
+          }
+        }
+      ]
+    }
+  ],
+  "installedCliValidation": {
+    "checked": [
+      "exit",
+      "verdict",
+      "no diagnostics",
+      "BASE and HEAD revisions",
+      "repository-relative path",
+      "exact line and column"
+    ],
+    "script": "uast-installed-smoke.py"
+  }
+}

@@ -1,0 +1,26 @@
+ARTIFACTS /var/folders/sy/_tdkyl2x0gx6z5kl2wbhd9tc0000gn/T/graphfold-kotlin-origin-t1yzp9ax
+engine/src/main/kotlin/io/johnsonlee/graphfold/engine/origin/kotlin/KotlinOriginPlugin.kt:76:68: warning: 'val MESSAGE_COLLECTOR_KEY: CompilerConfigurationKey<MessageCollector!>' is deprecated. Please use CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY instead.
+    val key = org.jetbrains.kotlin.cli.common.CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY
+                                                                   ^^^^^^^^^^^^^^^^^^^^^
+SINGLE_PLUGIN_SHA256 4069a38e791c5fcd9d061bb2032d5b564237376c5472b3b2bfc3fc37a8dc04c9
+1.9.20 1.9 LF {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+1.9.20 1.9 CRLF {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+1.9.20 1.9 CR {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+1.9.20 1.9 BOM-CRLF {'compiler': 'kotlinc', 'version': '1.9.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.0.21 2.0 LF {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.0.21 2.0 CRLF {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.0.21 2.0 CR {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.0.21 2.0 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.0.21', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 2.1 LF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 2.1 CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 2.1 CR {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 2.1 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.2.10 2.2 LF {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.2.10 2.2 CRLF {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.2.10 2.2 CR {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.2.10 2.2 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.2.10', 'frontend': 'K2', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 1.9 LF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 1.9 CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 1.9 CR {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+2.1.20 1.9 BOM-CRLF {'compiler': 'kotlinc', 'version': '2.1.20', 'frontend': 'K1', 'backend': 'JVM'} records 15 unresolved 0 physical UTF16 ranges verified; emitted class/source ownership verified 16
+1.9.0 rejected explicitly; plugin SHA256 4069a38e791c5fcd9d061bb2032d5b564237376c5472b3b2bfc3fc37a8dc04c9

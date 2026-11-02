@@ -1,3 +1,25 @@
 [versions]
+kotlin = "2.1.20"
+clikt = "5.0.3"
+jackson = "2.18.3"
+javaparser = "3.26.3"
+asm = "9.7.1"
+junit = "5.12.1"
+ksp = "2.1.20-1.0.32"
 
 [libraries]
+clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
+jackson-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
+jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
+javaparser = { module = "com.github.javaparser:javaparser-symbol-solver-core", version.ref = "javaparser" }
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+asm-analysis = { module = "org.ow2.asm:asm-analysis", version.ref = "asm" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+auto-service-annotations = { module = "com.google.auto.service:auto-service-annotations", version = "1.1.1" }
+auto-service-ksp = { module = "dev.zacsweers.autoservice:auto-service-ksp", version = "1.2.0" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version = "1.23.8" }
+sonatype = { id = "io.johnsonlee.sonatype-publish-plugin", version = "2.0.1" }

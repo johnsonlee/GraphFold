@@ -1,0 +1,124 @@
+{
+  "date": "2026-11-02",
+  "baseCommit": "11333dcb7518b9658e52d487cfbd58186420b70d",
+  "testedState": "Working tree with dependency-resource review fixes before commit; development version derives from baseCommit.",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :gfc:detektMain :cli:detektMain :cli:detektTest :gradle-plugin:detektMain :gradle-plugin:detektTest :cli:installDist :cli:distZip :cli:distTar publishAllPublicationsToReleaseVerificationRepository --continue --console=plain",
+  "buildSummary": "BUILD SUCCESSFUL in 27m 57s",
+  "modules": {
+    "gfc": {
+      "tests": {
+        "tests": 62,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 187,
+          "missed": 9,
+          "percent": 95.4082
+        },
+        "line": {
+          "covered": 335,
+          "missed": 5,
+          "percent": 98.5294
+        }
+      }
+    },
+    "engine": {
+      "tests": {
+        "tests": 811,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 4020,
+          "missed": 177,
+          "percent": 95.7827
+        },
+        "line": {
+          "covered": 4505,
+          "missed": 29,
+          "percent": 99.3604
+        }
+      }
+    },
+    "cli": {
+      "tests": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 33,
+          "missed": 1,
+          "percent": 97.0588
+        },
+        "line": {
+          "covered": 75,
+          "missed": 1,
+          "percent": 98.6842
+        }
+      }
+    },
+    "gradle-plugin": {
+      "tests": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 18,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 95,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "junitTests": 930,
+  "corpus": {
+    "java": {
+      "cases": 130,
+      "mismatches": 0
+    },
+    "kotlin": {
+      "cases": 207,
+      "mismatches": 0
+    }
+  },
+  "hardGates": {
+    "branchPercent": 95,
+    "linePercent": 90,
+    "productionExclusionsAdded": false
+  },
+  "regressions": [
+    "Eleven actual Gradle Kotlin + stdlib scenarios use separate compile and runtime-only dependency JARs; safe templates, unreachable/folded readers and identity paths pass, while surviving reads, dynamic names, callbacks, initialization and unknown CharSequence paths fail.",
+    "Dependency methods participate in folded resource effects but do not become application entry points or source-comparison methods.",
+    "Inherited methods and exposed static fields preserve resource effects without invoking private constructors; an unused private-only type remains inactive. Application-only resources also activate this analysis without requiring external dependencies.",
+    "Independent declaration metadata checks omissions, field owners, inheritance, initialization and duplicate definitions. Exact Intrinsics contracts require unique byte identity; a replacement implementation retains its read.",
+    "Custom bundle providers, JPMS service factories, implicit manifest classpaths, semantic application annotations and unsupported layouts block incomplete scope.",
+    "Unknown or incomplete dispatch, bodies and initialization retain wildcard effects; no constant-pool absence or library namespace trust shortcut is used."
+  ],
+  "publicationVerification": {
+    "version": "0.1.0-11333dcb7518",
+    "localOnly": true,
+    "releaseHelperVerify": true,
+    "zipTarSmoke": true
+  },
+  "schemaValidation": "Validated 337 actual engine reports against verdict schema",
+  "publicApiDocumentation": "Kotlin public declarations: 322; missing docs: 0",
+  "releaseHelperTests": 17,
+  "workflowLint": true,
+  "performanceAcceptance": false
+}

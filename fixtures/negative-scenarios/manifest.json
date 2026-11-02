@@ -1,0 +1,40 @@
+[
+  {
+    "id": "java_multiple_ids",
+    "scenarios": [
+      "baseline"
+    ]
+  },
+  {
+    "id": "java_control_groups",
+    "scenarios": [
+      "A",
+      "NA"
+    ]
+  },
+  {
+    "id": "java_mixed_keys",
+    "scenarios": [
+      "baseline"
+    ]
+  },
+  {
+    "id": "kotlin_multiple_ids",
+    "scenarios": [
+      "baseline"
+    ]
+  },
+  {
+    "id": "kotlin_control_groups",
+    "scenarios": [
+      "A",
+      "NA"
+    ]
+  },
+  {
+    "id": "kotlin_mixed_keys",
+    "scenarios": [
+      "baseline"
+    ]
+  }
+]

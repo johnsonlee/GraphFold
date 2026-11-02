@@ -1,0 +1,10 @@
+package sample
+import java.util.function.IntUnaryOperator
+class Example {
+    companion object {
+        private val action: IntUnaryOperator
+        init { action = object : IntUnaryOperator { override fun applyAsInt(value: Int): Int = value + 2 } }
+    }
+    fun run(x: Int): Int = action.applyAsInt(x)
+    fun gate(): Boolean = Ab.enabled("feature")
+}

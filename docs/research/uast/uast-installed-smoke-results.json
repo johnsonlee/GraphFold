@@ -1,0 +1,134 @@
+[
+  {
+    "case": "callback_lambda",
+    "language": "java",
+    "exit": 1,
+    "verdict": "FAIL",
+    "diagnostics": 0,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 74,
+          "end": 75
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 74,
+          "end": 75
+        }
+      }
+    ]
+  },
+  {
+    "case": "gated_callback_lambda",
+    "language": "java",
+    "exit": 0,
+    "verdict": "PASS",
+    "diagnostics": 0,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 78,
+          "end": 79
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/java/sample/Example.java",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 78,
+          "end": 79
+        }
+      }
+    ]
+  },
+  {
+    "case": "noncapturing_lambda",
+    "language": "kotlin",
+    "exit": 1,
+    "verdict": "FAIL",
+    "diagnostics": 0,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 27,
+          "end": 28
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 5,
+          "end": 5
+        },
+        "column": {
+          "start": 27,
+          "end": 28
+        }
+      }
+    ]
+  },
+  {
+    "case": "controlled_lambda",
+    "language": "kotlin",
+    "exit": 0,
+    "verdict": "PASS",
+    "diagnostics": 0,
+    "locations": [
+      {
+        "revision": "BASE",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 54,
+          "end": 55
+        }
+      },
+      {
+        "revision": "HEAD",
+        "path": "src/main/kotlin/sample/Example.kt",
+        "line": {
+          "start": 4,
+          "end": 4
+        },
+        "column": {
+          "start": 54,
+          "end": 55
+        }
+      }
+    ]
+  }
+]

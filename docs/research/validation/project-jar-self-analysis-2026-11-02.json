@@ -1,0 +1,103 @@
+{
+  "date": "2026-11-02",
+  "purpose": "Real Gradle multi-module project-JAR correctness probe; not performance acceptance",
+  "implementationBase": "450ccf1684efbf38cc8f6497c09845fe2dc567fb",
+  "implementationDelta": "Verified Gradle project archive exclusion before origin normalization",
+  "reportSha256": "c572ea511aeda821bc846a9491b29d712498872eea9559ea1bb49aaec63a4f25",
+  "base": "ce33f058eca6f23d095cbb40baf942bfb871498d",
+  "head": "5af326a5e90433b549bb6c979050f7e9cb1df7fc",
+  "change": "One line in AnalysisReports.text: GraphFold: -> GraphFold verdict:",
+  "fold": "java.nio.file.Files.isDirectory -> false",
+  "verdict": "FAIL",
+  "metadata": {
+    "baseSha": "ce33f058eca6f23d095cbb40baf942bfb871498d",
+    "headSha": "5af326a5e90433b549bb6c979050f7e9cb1df7fc",
+    "scenarios": [
+      "baseline"
+    ],
+    "obligations": 1,
+    "provedObligations": 0,
+    "graphiteVersion": "2.12.0"
+  },
+  "diagnosticCounts": {
+    "INCOMPLETE_GRAPH": 1024
+  },
+  "diagnosticSamples": [
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "base: Unresolved inherited API: io/johnsonlee/graphfold/compiler/javac/GraphFoldOrigins -> com/sun/source/util/Plugin",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "base: Unresolved inherited API: io/johnsonlee/graphfold/compiler/javac/OriginListener$1 -> com/sun/source/util/TreePathScanner",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "base: Unresolved inherited API: io/johnsonlee/graphfold/compiler/javac/OriginListener -> com/sun/source/util/TaskListener",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "base:     Found <init> for $stack26 with 6 args: [\"ERROR_WHILE_RECONSTRUCTING_BARE_TYPE\", 26, \"Failed to reconstruct type %s\", 0, 2, null]",
+      "blocking": true
+    },
+    {
+      "stage": "GRAPH",
+      "code": "INCOMPLETE_GRAPH",
+      "message": "base:   Extracted enum value: org.jetbrains.kotlin.types.error.ErrorTypeKind.ERROR_WHILE_RECONSTRUCTING_BARE_TYPE = [Failed to reconstruct type %s, 0, 2, null]",
+      "blocking": true
+    }
+  ],
+  "ruleAudits": [
+    {
+      "revision": "BASE",
+      "selectionStatus": "SELECTED",
+      "selectedCount": 23,
+      "matchedCallCount": 23
+    },
+    {
+      "revision": "HEAD",
+      "selectionStatus": "SELECTED",
+      "selectedCount": 23,
+      "matchedCallCount": 23
+    }
+  ],
+  "findings": [
+    {
+      "id": "0d3f11213924af176177703fa6296ff0cff8c299d77692093fbb63b97884d676",
+      "kind": "UNVERIFIABLE_CHANGE",
+      "ruleId": "folded-program-equivalence",
+      "message": "Surviving program representation differs: io.johnsonlee.graphfold.engine.AnalysisReports.text(Lio/johnsonlee/graphfold/engine/AnalysisResult;)Ljava/lang/String;",
+      "locations": [
+        {
+          "revision": "HEAD",
+          "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/AnalysisReports.kt",
+          "line": {
+            "start": 42,
+            "end": 42
+          },
+          "column": {
+            "start": 30,
+            "end": 38
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "description": "Remaining difference in io.johnsonlee.graphfold.engine.AnalysisReports.text(Lio/johnsonlee/graphfold/engine/AnalysisResult;)Ljava/lang/String;",
+          "location": null
+        }
+      ],
+      "scenarios": [
+        "baseline"
+      ]
+    }
+  ],
+  "conclusion": "Both revisions complete selection/folding and produce the diff-owned report-text finding. No duplicate identity, ANALYSIS_FAILED or UNVERIFIED_ORIGIN remains. Overall FAIL and UNVERIFIABLE_CHANGE are retained because inherited API, dynamic access and other graph gaps prevent a complete proof. This does not establish arbitrary self-analysis equivalence support."
+}

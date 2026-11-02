@@ -1,0 +1,24 @@
+[
+  {
+    "id": "java_default_interface",
+    "violation": true,
+    "path": "src/main/java/sample/Marker.java"
+  },
+  {
+    "id": "kotlin_default_interface",
+    "violation": true,
+    "path": "src/main/java/sample/Marker.java"
+  },
+  {
+    "id": "java_added_default_activates_initializer",
+    "violation": true,
+    "path": "src/main/java/sample/Marker.java",
+    "change": "added-default"
+  },
+  {
+    "id": "kotlin_added_default_activates_initializer",
+    "violation": true,
+    "path": "src/main/java/sample/Marker.java",
+    "change": "added-default"
+  }
+]

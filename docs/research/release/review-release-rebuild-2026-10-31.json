@@ -1,0 +1,29 @@
+{
+  "version": "0.1.0-review.20261031.1",
+  "builds": 2,
+  "clean": true,
+  "buildCache": false,
+  "payloads": 18,
+  "match": true,
+  "artifacts": {
+    "io/johnsonlee/graphfold/cli/0.1.0-review.20261031.1/cli-0.1.0-review.20261031.1-javadoc.jar": "42cc16756543e9451c95215f79d8ee0102364c8da02707a3a7bbd667cacc3626",
+    "io/johnsonlee/graphfold/cli/0.1.0-review.20261031.1/cli-0.1.0-review.20261031.1-sources.jar": "71d797866da7480ea537f42ddfe3752822354f526d0f4fb8887a0f98a760ee5d",
+    "io/johnsonlee/graphfold/cli/0.1.0-review.20261031.1/cli-0.1.0-review.20261031.1.jar": "13cef32c5678464cf9d43860bd7a0e574e25dd4766deb07a82d494b138d7587d",
+    "io/johnsonlee/graphfold/cli/0.1.0-review.20261031.1/cli-0.1.0-review.20261031.1.module": "09613d52e79798508c2243004304837cdf3c97c512595f470dbb496b82d0cf40",
+    "io/johnsonlee/graphfold/cli/0.1.0-review.20261031.1/cli-0.1.0-review.20261031.1.pom": "e96137751ec0f11d694b3313bc4a94a9a0caf0ed0d9030dbc354a231851f293e",
+    "io/johnsonlee/graphfold/engine/0.1.0-review.20261031.1/engine-0.1.0-review.20261031.1-javadoc.jar": "ac21c45878d8a8ab430717da3ea1991668474da563d689d1e2b5431dad93233e",
+    "io/johnsonlee/graphfold/engine/0.1.0-review.20261031.1/engine-0.1.0-review.20261031.1-sources.jar": "29aadfb02f1c3e5ef1133f954cec0df160fd5318166b42f7b6db4c09f27fcf6f",
+    "io/johnsonlee/graphfold/engine/0.1.0-review.20261031.1/engine-0.1.0-review.20261031.1.jar": "89d0dd1663a2904a2ec65f240f582147d4f531530cdb1602e3db6810b71eb9b9",
+    "io/johnsonlee/graphfold/engine/0.1.0-review.20261031.1/engine-0.1.0-review.20261031.1.module": "2c35dbbc65cee90c19e9056e9a1146358d12aad6437cf81d4f0025975031de7e",
+    "io/johnsonlee/graphfold/engine/0.1.0-review.20261031.1/engine-0.1.0-review.20261031.1.pom": "649dd2e0bf740be2f586a3e8112e4c4ee24b6f7a0208ec9d9f10ce27b85bbd14",
+    "io/johnsonlee/graphfold/gradle-plugin/0.1.0-review.20261031.1/gradle-plugin-0.1.0-review.20261031.1-javadoc.jar": "d5ab93c347ecb51d520a230fd4de0d59e2fd36b76fc22a210d85dc7229e797b3",
+    "io/johnsonlee/graphfold/gradle-plugin/0.1.0-review.20261031.1/gradle-plugin-0.1.0-review.20261031.1-sources.jar": "0d03c68a596a442a3a64e3b71ec0ca7cd1957b9f217c994205cc61561572e2c2",
+    "io/johnsonlee/graphfold/gradle-plugin/0.1.0-review.20261031.1/gradle-plugin-0.1.0-review.20261031.1.jar": "1d7f0ae9bd18126393fd6a328502f4e999206cd0c42befd8bd9d49f0ad10613b",
+    "io/johnsonlee/graphfold/gradle-plugin/0.1.0-review.20261031.1/gradle-plugin-0.1.0-review.20261031.1.module": "056d7110895edff3ead9ef5d0ab69d98115e16d2a5b7dfe46ec1038c66f49cd8",
+    "io/johnsonlee/graphfold/gradle-plugin/0.1.0-review.20261031.1/gradle-plugin-0.1.0-review.20261031.1.pom": "356c5a5002615d0683ad240d77ec523c44e7a99a3bd439014699a014a6e90b05",
+    "io/johnsonlee/graphfold/io.johnsonlee.graphfold.gradle.plugin/0.1.0-review.20261031.1/io.johnsonlee.graphfold.gradle.plugin-0.1.0-review.20261031.1-javadoc.jar": "d5ab93c347ecb51d520a230fd4de0d59e2fd36b76fc22a210d85dc7229e797b3",
+    "io/johnsonlee/graphfold/io.johnsonlee.graphfold.gradle.plugin/0.1.0-review.20261031.1/io.johnsonlee.graphfold.gradle.plugin-0.1.0-review.20261031.1-sources.jar": "0d03c68a596a442a3a64e3b71ec0ca7cd1957b9f217c994205cc61561572e2c2",
+    "io/johnsonlee/graphfold/io.johnsonlee.graphfold.gradle.plugin/0.1.0-review.20261031.1/io.johnsonlee.graphfold.gradle.plugin-0.1.0-review.20261031.1.pom": "8eaaf09cb8f771312067e5111ec2dc8f13c5d2db44aefad5caf5c3463119c9ef"
+  },
+  "scope": "Local reproducibility rehearsal of a review working-tree snapshot; not a remotely published release."
+}

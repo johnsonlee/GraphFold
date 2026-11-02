@@ -1,0 +1,123 @@
+{
+  "date": "2026-11-01",
+  "baseCommit": "897c2f80f4dbac8b4d221c36cb04a11b28a0f36c",
+  "testedState": "Working tree with value-call review fixes before commit; development version derives from baseCommit.",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :gfc:detektMain :cli:detektMain :cli:detektTest :gradle-plugin:detektMain :gradle-plugin:detektTest :cli:installDist :cli:distZip :cli:distTar publishAllPublicationsToReleaseVerificationRepository --continue --console=plain",
+  "buildSummary": "BUILD SUCCESSFUL in 25m 2s",
+  "modules": {
+    "gfc": {
+      "tests": {
+        "tests": 62,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 187,
+          "missed": 9,
+          "percent": 95.4082
+        },
+        "line": {
+          "covered": 335,
+          "missed": 5,
+          "percent": 98.5294
+        }
+      }
+    },
+    "engine": {
+      "tests": {
+        "tests": 716,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 3583,
+          "missed": 153,
+          "percent": 95.9047
+        },
+        "line": {
+          "covered": 4146,
+          "missed": 27,
+          "percent": 99.353
+        }
+      }
+    },
+    "cli": {
+      "tests": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 33,
+          "missed": 1,
+          "percent": 97.0588
+        },
+        "line": {
+          "covered": 75,
+          "missed": 1,
+          "percent": 98.6842
+        }
+      }
+    },
+    "gradle-plugin": {
+      "tests": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 18,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 95,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "junitTests": 835,
+  "corpus": {
+    "java": {
+      "cases": 130,
+      "mismatches": 0
+    },
+    "kotlin": {
+      "cases": 207,
+      "mismatches": 0
+    }
+  },
+  "hardGates": {
+    "branchPercent": 95,
+    "linePercent": 90,
+    "productionExclusionsAdded": false
+  },
+  "regressions": [
+    "Real Gradle properties proofs pass with ordinary return, System.out.println, and returned string concatenation; a live resource key edit fails in every variant.",
+    "Java and Kotlin folded IR models cover scalar builders, boxing/parsing, standard output and string concatenation; object callbacks, unknown streams and platform loaders remain wildcard reads.",
+    "Dynamic concatenation validates bootstrap owner, descriptor, handle tag, scalar arguments, constants and String return; receiver provenance rejects aliases with cycles or unknown definitions.",
+    "Pure Class queries are shared by resource and reflection models; member discovery, class loading, instantiation and resource reads retain global gaps.",
+    "Anonymous-owner normalization retains runtime-name queries and failed-cast observation gaps; ordinary simple-name queries do not mask surviving source differences."
+  ],
+  "publicationVerification": {
+    "version": "0.1.0-897c2f80f4db",
+    "localOnly": true,
+    "releaseHelperVerify": true,
+    "zipTarSmoke": true
+  },
+  "schemaValidatedReports": 337,
+  "publicKotlinDeclarations": 319,
+  "missingPublicDocs": 0,
+  "releaseHelperTests": 17,
+  "performanceAcceptance": false
+}

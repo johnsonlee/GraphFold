@@ -1,0 +1,4 @@
+package sample;
+public class Example {
+    public int run(int x) { if (Ab.enabled("feature")) return x * 10; return x + 1; }
+}

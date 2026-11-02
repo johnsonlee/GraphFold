@@ -1,0 +1,164 @@
+{
+  "date": "2026-10-31",
+  "command": "./gradlew check :engine:detektMain :engine:detektTest :engine:detektTestFixtures :cli:installDist --continue --console=plain",
+  "exit": 0,
+  "duration": "20m 5s",
+  "modules": {
+    "engine": {
+      "junit": {
+        "tests": 581,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 2943,
+          "missed": 142,
+          "percent": 95.3970826580227
+        },
+        "line": {
+          "covered": 3476,
+          "missed": 32,
+          "percent": 99.08779931584948
+        }
+      }
+    },
+    "cli": {
+      "junit": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 14,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 38,
+          "missed": 1,
+          "percent": 97.43589743589743
+        }
+      }
+    },
+    "gradle-plugin": {
+      "junit": {
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "coverage": {
+        "branch": {
+          "covered": 4,
+          "missed": 0,
+          "percent": 100.0
+        },
+        "line": {
+          "covered": 54,
+          "missed": 0,
+          "percent": 100.0
+        }
+      }
+    }
+  },
+  "corpus": {
+    "java": {
+      "filtered": false,
+      "cases": 130,
+      "truePositive": 60,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "kotlin": {
+      "filtered": false,
+      "cases": 186,
+      "truePositive": 84,
+      "falsePositive": 0,
+      "falseNegative": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "anonymousOrigins": {
+    "fixturePairs": 32,
+    "expectedPass": 18,
+    "expectedFail": 14,
+    "additionalPhysicalEncodingRuns": 4
+  },
+  "compilerOrigins": {
+    "verifiedCompilerFrontendCombinations": 5,
+    "sourceFormats": [
+      "LF",
+      "CRLF",
+      "CR",
+      "BOM-CRLF"
+    ],
+    "successfulCompilations": 20,
+    "recordsPerCompilation": 15,
+    "unresolvedRecords": 0,
+    "probeProviderSha256": "4069a38e791c5fcd9d061bb2032d5b564237376c5472b3b2bfc3fc37a8dc04c9",
+    "rejectedCompilerVersion": "1.9.0",
+    "maximumNormalizationMetadataSchema": "2.1",
+    "verifiedOutputOwnersPerCompilation": 16,
+    "verificationScope": "Previously verified compiler-provider source; matrix was not rerun for these adapter/review changes."
+  },
+  "additionalChecks": {
+    "installedCliHelp": true,
+    "releaseHelperTests": 7,
+    "compilerSpiPackaging": "isolated nested provider",
+    "gitDiffCheck": true
+  },
+  "incrementalCompilation": {
+    "gradle": [
+      "unchanged UP-TO-DATE",
+      "Java/Kotlin source edits",
+      "retained unchanged class timestamp",
+      "source deletion",
+      "own/direct/transitive implementation-hidden inline source shifts",
+      "unrelated module UP-TO-DATE",
+      "FROM-CACHE restoration",
+      "provider artifact repair"
+    ],
+    "maven": [
+      "unchanged Java reactor",
+      "configured Kotlin incremental compilation",
+      "retained unchanged class timestamp",
+      "Java/Kotlin source edits",
+      "last-source deletion",
+      "cross-file inline caller output ownership",
+      "inline source hash and offset refresh",
+      "compiler-configuration change invalidates state, rebuilds, then resumes incremental reuse",
+      "incomplete state recovery",
+      "active-profile reactor excludes fixture POMs",
+      "test-jar dependencies",
+      "same-FQCN test/production provenance isolation"
+    ],
+    "persistentCheckouts": true,
+    "performanceAcceptance": "Not performed; representative multi-graph load required"
+  },
+  "objectRenderingFlow": {
+    "scope": "method-local bytecode must-proof",
+    "java": {
+      "safeMethods": 11,
+      "blockedMethods": 25
+    },
+    "kotlin": {
+      "safeMethods": 10,
+      "blockedMethods": 18
+    }
+  },
+  "reviewThreadsAddressed": 17,
+  "releaseReview": {
+    "pythonTests": 7,
+    "signedLocalUploadGate": true,
+    "cleanRebuilds": 2,
+    "byteIdenticalPayloads": 18,
+    "remotePublication": false
+  }
+}

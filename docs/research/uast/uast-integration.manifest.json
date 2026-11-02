@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "files": [
+    {
+      "path": "build.gradle.kts",
+      "baseSha256": "2123b5afd7e0531419ed8e87bc690ac44afc95011304dca4887be92e15d12557",
+      "candidateSha256": "cf7c9bd07c6a475cd1e32843c4635ae4e5fb8c56f74bd8b5ca8641bb262aaf37"
+    },
+    {
+      "path": "engine/build.gradle.kts",
+      "baseSha256": "d08d9a8930bb31236c7eb2fe015672ad2ce3b17ba4006daf29405e642c5a7ba9",
+      "candidateSha256": "8dd5b4f72a188fd95ec25387c450ffb40853a96d723e97afded320f0b8d443e7"
+    },
+    {
+      "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/build/KotlinBuildAdapter.kt",
+      "baseSha256": "1881c7ed471a96d02ac7e9e05f993da2a9dbd3ce1f29fc811c76eb5df810e7ff",
+      "candidateSha256": "eb46ea79dcbb50c96d91d99224a18bdb2e1ff80bbec73f590308db471ad5bfd5"
+    },
+    {
+      "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/AstClassifier.kt",
+      "baseSha256": null,
+      "candidateSha256": "90c28a37527f54d8d32a618b08cdf58e7a4887ef35232e9bf321e47c6401f282"
+    },
+    {
+      "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/ChangeClassifier.kt",
+      "baseSha256": "58e3fd9ceddc5c082ff502ba67c615c646854b5215ace68eed72271a85f0527b",
+      "candidateSha256": "2268f33aa1a91dabf31116040f447cd5cb7cef38935834a00d3face8fea09af5"
+    },
+    {
+      "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndex.kt",
+      "baseSha256": "df7f9370c67598ea306e8560efa211122ca20e6e81374a3a29b0ec45d002b425",
+      "candidateSha256": "c796f098ed7d8ad61abff96d4a6de972d84888617a7560f336cac8add97c5d82"
+    },
+    {
+      "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndex.kt",
+      "baseSha256": "9cf8c3d6ee4ac694b01ab947928a04917f747c41cf989a583a17029870fb466c",
+      "candidateSha256": "cf7df77d2fb52cf0ece85772fcb18ed783ef241553edd1134f2caf9885c1191b"
+    },
+    {
+      "path": "engine/src/main/kotlin/io/johnsonlee/graphfold/engine/source/UastSession.kt",
+      "baseSha256": null,
+      "candidateSha256": "3dea9b3186790682e25bc9033ec3a5382ce740467bb980ff4d86ff6ee9398190"
+    },
+    {
+      "path": "engine/src/test/kotlin/io/johnsonlee/graphfold/engine/graphite/KotlinMetadataShapeTest.kt",
+      "baseSha256": "deab2dc1fd79fdafd824aad8e618080739e08fba8b4da84599219a9cdf3b6ce0",
+      "candidateSha256": "76fa4b1c3c01fb6727622d0cf3f4469224e288c3c3cb9788aafeea4a13b9467c"
+    },
+    {
+      "path": "engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/JavaSourceIndexTest.kt",
+      "baseSha256": "96d6c300c4da8e51758457307bce012a392cfd52b82a5bff74f0898fddb3e0b4",
+      "candidateSha256": "d2ee228282b5ff6a12ffad17528d574ecce8c4b112bc89b4a61bac7c5b11d7aa"
+    },
+    {
+      "path": "engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/KotlinSourceIndexTest.kt",
+      "baseSha256": "3c093a109790a60f4b7f0b907138e608a0e072f38ec19ffd73f620ad954759cf",
+      "candidateSha256": "9b29774298b36a6afb2b3f8567788ed4acf65bda6450571dd07c36f6fd7067c1"
+    },
+    {
+      "path": "engine/src/test/kotlin/io/johnsonlee/graphfold/engine/source/UastSessionTest.kt",
+      "baseSha256": null,
+      "candidateSha256": "4b3bc696d412005f051323cffeaca634a53fd3c582b1649b61bf4b869312009e"
+    }
+  ]
+}
