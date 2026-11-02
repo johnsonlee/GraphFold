@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.JdkRuntimeClasses
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Type
 import org.objectweb.asm.Opcodes
@@ -261,8 +262,7 @@ internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = f
             methodDiagnostics.replaceAll { _, gaps -> gaps.filterNot { it in propertyTokenDiagnostics.values } }
         }
         return (references - available).filterNot { name ->
-            try { Class.forName(name, false, ClassLoader.getPlatformClassLoader()); true }
-            catch (_: ClassNotFoundException) { false }
+            JdkRuntimeClasses.contains(name.replace('.', '/'))
         }.toSet()
     }
 

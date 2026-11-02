@@ -21,6 +21,7 @@ import sootup.core.model.MethodModifier
  * @property methodDiagnostics Method-local analysis gaps, checked against the folded change dependency closure.
  * @property resourceDependenciesAnalyzed Whether resource effects include the supplied dependency bodies and initialization
  * metadata without frontend or inventory failures. Unresolved calls still contribute wildcard resource reads.
+ * @property originalOwners Normalized owner to original JVM owner, preserving rename and nested-type inventory differences.
  * @property resourceEntryReads Resource effects of inherited APIs and exposed fields, keyed by application owner.
  * Consumers activate these only for existing public entry classes or owners reached by the folded program; dependency
  * classes and newly added unused application types do not become entry points merely by appearing in this map.
@@ -41,6 +42,7 @@ data class ProgramSnapshot(
     val methodDiagnostics: Map<String, List<MethodAnalysisGap>> = emptyMap(),
     val resourceDependenciesAnalyzed: Boolean = false,
     val resourceEntryReads: Map<String, List<ResourceRead>> = emptyMap(),
+    val originalOwners: Map<String, String> = emptyMap(),
 )
 
 /**

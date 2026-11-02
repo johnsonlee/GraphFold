@@ -70,7 +70,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
                     interproceduralDataflow = true,
                     includePackages = if (dependencyResources) emptyList() else original.classes.toList(), includeLibraries = true,
                     verbose = { message ->
-                        if (listOf("Skipping method", "Skipping control-flow", "Failed to", "Recovered ").any(message::contains)) {
+                        if (isGraphiteIncompleteDiagnostic(message)) {
                             inventory.diagnostics.add(message)
                         }
                     },
@@ -80,6 +80,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         }
         return AnalysisInputs(compiled.classes, dependencies).use { inputs ->
             analyzeInputs(inputs.path, selected, inventory, audit, resources, selectionResolved = true)
+                .copy(originalOwners = project.owners.entries.associate { (original, normalized) -> normalized to original })
         }
     }
 
@@ -109,8 +110,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         diagnostics.addAll(inventory.diagnostics)
         diagnostics.addAll(resources?.diagnostics.orEmpty())
         val log: (String) -> Unit = { message ->
-            val incomplete = listOf("Skipping method", "Skipping control-flow", "Failed to", "Recovered ")
-            if (incomplete.any(message::contains)) diagnostics.add(message)
+            if (isGraphiteIncompleteDiagnostic(message)) diagnostics.add(message)
         }
         val resolved = if (!selectionResolved && rules.isNotEmpty()) {
             selectInputs(artifact, rules, resources?.classes ?: inventory.classes, log, audit)

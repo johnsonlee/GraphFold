@@ -657,7 +657,7 @@ Java 方法参数、返回值与构造参数的 descriptor 由已解析类型的
 
 以下情况不得静默降级：缺类、方法解析失败、超过分析预算、未覆盖的语义、规则应用不完整、产物不可比、来源映射失败。诊断需要给出阶段、方法/文件（若已知）、原因及可操作建议。
 
-缺口是否影响结论本身需要依据。方法级缺口结合折叠后可达性、义务闭包、调用方和已界定的观察 owner 判定；不能界定目标的反射和对象逃逸保留全局观察范围。只有证明与本次变化和证明依赖无关，才能不阻断。
+缺口是否影响结论本身需要依据。方法级缺口结合折叠后可达性、义务闭包、调用方和已界定的观察 owner 判定；普通可达方法在没有被归一化隐藏的差异时，不再因无关方法中的未知对象逃逸而阻断。字段/类义务、不可达 private callback、全程序资源证明及实际归一化差异仍保留全局观察范围。只有证明与本次变化和证明依赖无关，才能不阻断。
 
 ## 12. CLI 与 Gradle plugin
 
@@ -898,7 +898,7 @@ Java/Kotlin 反射、native/JNI 回调、序列化钩子和框架入口不能仅
 
 边界模型允许 primitive、String、boxed primitive、null，以及参数内容均已证明安全的固定参数不可变工厂（`List.of`、`Set.of`、`Map.of`、`Collections.empty/singleton`、`Optional.empty/of/ofNullable`）。集合声明类型本身不构成证明，varargs 数组、可变集合及未知来源仍不放行。精确 SLF4J `Logger` 日志方法仅在实际参数全部为标量且 receiver 不是应用实现时排除对象图逃逸；对象参数和 varargs 不在此模型内。
 
-只有完整字段与行为图均封闭的 final DTO 可以界定 `observedOwners`：继承 Object 且不实现接口（避免遗漏接口默认方法），所有字段、方法签名及相关指令都限于标量或同样可界定的应用类型。语义注解（包括类型与参数注解）、泛型签名、声明异常、带类型的异常处理器、自定义 class-file 属性及多维数组分配尚未建模，出现时放弃 DTO 范围证明；仅来源标记与无类型的 finally 处理器可保留。未知对象、数组、容器、库 receiver、native、invokedynamic 或外部调用无法界定观察目标时，存活的调用仍可能影响任意应用声明；任意反射同理。这类 gap 保留全局观察范围，不能仅因调用图没有边而忽略。这是避免跨 owner 私有状态漏报的必要保守边界，仍会误拦外部库密集项目，应作为分析缺口统计，不能计作已定位 violation。
+只有完整字段与行为图均封闭的 final DTO 可以界定 `observedOwners`：继承 Object 且不实现接口（避免遗漏接口默认方法），所有字段、方法签名及相关指令都限于标量或同样可界定的应用类型。语义注解（包括类型与参数注解）、泛型签名、声明异常、带类型的异常处理器、自定义 class-file 属性及多维数组分配尚未建模，出现时放弃 DTO 范围证明；仅来源标记与无类型的 finally 处理器可保留。未知对象、数组、容器、库 receiver、native、invokedynamic 或外部调用无法界定观察目标时，存活的调用仍可能影响任意应用声明；任意反射同理。不能仅因调用图没有边就忽略这类 gap，但也不能把每个未知对象逃逸都附加到所有方法义务。普通可达方法的完整折叠表示没有被擦除的差异时，无关 observer 不再使其证明失败；义务依赖、调用方和 `observedOwners` 的关联仍保留。以下情况仍要求全局观察保护：字段/类变更、不可达 private 方法（外部代码可能反射调用）、全程序资源证明，以及 private member 对齐、匿名 owner 原名映射增删/重编号、完整 `canonical` 不同但归一化比较相同的初始化状态变化。快照记录规范 owner 到原 JVM owner 的映射；比较完整映射而不只检查调用闭包，覆盖 class token 与已移除的 NestMembers/InnerClasses 元数据。初始化守卫复用已有完整 canonical，不把被擦掉的未读字段赋值当作无变化。这个归一化守卫目前按整个 snapshot pair 生效，仍可能让无关的归一化差异扩大 gap 范围；它不是通用堆流或反射建模。gap 应作为分析缺口统计，不能计作已定位 violation。
 
 Kotlin `inline` 函数、顶层函数、属性及独立 inline getter/setter 的义务保留 inline 标记。调用方复制的指令可能没有原方法调用边，所以这类义务比较两版折叠后所有可达方法；没有存活副本差异时为 `FOLDED_EQUIVALENT`，不会误判 `UNREACHABLE`。finding 仍锚定 diff 中的定义范围。暂未实现精确复制指令来源，因此同 PR 其他可达差异可能使 inline 义务保守失败；参见 [inline fixture](../fixtures/kotlin/inline.md)。
 
@@ -917,3 +917,9 @@ fixture 按 Java 语义族、Kotlin 对等语义族、Kotlin 独有特性、移�
 回归集指标不是独立业务样本的泛化准确率。生产验收仍需冻结真实 PR 样本、人工标注、独立评审，并分别报告误报、漏报与分析失败比例。新增未使用代码、字段、副作用初始化、静态块和重构都不是自动豁免规则。
 
 新增 negative 重点保留外层执行：Stream 的 filter/map/reduce、callback、共享 helper、循环与 finally 继续执行，仅内部受控表达式变化。Kotlin 另覆盖默认参数声明、自定义 delegate、lazy/companion 初始化与 sequence 等局部变化。多 ID、A/NA 与混合 Boolean/numeric PR_K 有独立 fixture；同一 diff 在启用受控路径后必须重新检出，避免把漏分析误当作 negative 通过。
+
+### JDK 声明与前端诊断来源
+
+JDK 声明读取使用 `ModuleFinder.ofSystem()` 和 `ModuleReader`，按运行中 JDK image 的模块包归属查找，包括由 application loader 定义的 `jdk.compiler` 等模块。不会搜索 GraphFold 自身的 application/context classpath；缺失的第三方依赖不能借用宿主依赖放行。该读取统一用于继承 API、来源层级及引用存在性检查，不扩大外部调用的安全效果模型，也不证明目标运行时采用不同 JDK 时等价。
+
+Graphite 2.12.0 暂无结构化完整性回调。适配器只接受该版本已审计的顶层诊断前缀，并按整个 verbose callback 从 offset 0 判断，不 trim、不拆分内嵌换行。枚举/常量转储中的 `Failed to` 等业务文字不能变成阻断诊断；真实跳过方法、控制流失败、依赖提取失败和恢复回退仍阻断。升级 Graphite 时必须重新审计此文本协议，结构化诊断仍是上游能力需求。

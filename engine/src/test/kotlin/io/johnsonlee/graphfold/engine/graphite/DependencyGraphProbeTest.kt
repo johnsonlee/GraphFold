@@ -70,9 +70,7 @@ class DependencyGraphProbeTest {
                 .map { "${it.caller.identity} -> ${it.callee.identity}" })
             println("PROBE callback calls=" + calls.filter { it.caller.signature.contains("Reader.callback") }
                 .map { "${it.caller.identity} -> ${it.callee.identity}; derived=${it.origin != null}" })
-            println("PROBE incomplete=" + messages.filter { message ->
-                listOf("Skipping method", "Skipping control-flow", "Failed to", "Recovered ").any(message::contains)
-            })
+            println("PROBE incomplete=" + messages.filter(::isGraphiteIncompleteDiagnostic))
         }
     }
 

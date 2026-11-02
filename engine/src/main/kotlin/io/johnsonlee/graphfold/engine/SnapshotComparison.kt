@@ -80,8 +80,10 @@ internal class SnapshotComparison(
         val provenance = if (originsVerified) emptyList() else listOf(
             "Compiler provenance is unverified; comparison uses original JVM identities without anonymous-owner alignment",
         )
-        return (provenance + activeGaps(base, baseReachable, relevant, owners) +
-            activeGaps(head, headReachable, relevant, owners)).distinct().sorted()
+        val global = obligation == null || obligation.kind != SymbolKind.METHOD ||
+            !isReachable(obligation.identity) || opaqueNormalization
+        return (provenance + activeGaps(base, baseReachable, relevant, owners, global) +
+            activeGaps(head, headReachable, relevant, owners, global)).distinct().sorted()
     }
 
     private fun relevantMethods(obligation: ProofObligation?): Set<String> {
@@ -96,12 +98,23 @@ internal class SnapshotComparison(
         return closure
     }
 
-    private fun activeGaps(snapshot: ProgramSnapshot, reachable: Set<String>, relevant: Set<String>, owners: Set<String>): List<String> =
+    // Opaque code can invoke private callbacks, inspect unread state or observe normalized names/nest metadata.
+    // Ordinary reachable method bodies are compared without these erasures: unrelated opaque callers add no
+    // missing dependency to that proof. Whole-program, field/class and unreachable-method proofs stay global.
+    private val opaqueNormalization: Boolean by lazy {
+        alignment.names.isNotEmpty() || base.originalOwners != head.originalOwners || allMethods.any { method ->
+            method !in changedMethods && base.methods[method]?.canonical != head.methods[method]?.canonical
+        }
+    }
+
+    private fun activeGaps(
+        snapshot: ProgramSnapshot, reachable: Set<String>, relevant: Set<String>, owners: Set<String>, global: Boolean,
+    ): List<String> =
         snapshot.methodDiagnostics.filterKeys { it in reachable }.flatMap { (identity, gaps) ->
             gaps.filter { gap ->
                 val frameActive = !gap.requiresObservedFrame ||
                     (if (snapshot === base) baseFrames else headFrames).contains(identity, gap.observedOwners)
-                val observes = gap.globalObservation || identity in relevant || gap.observedOwners.any { it in owners }
+                val observes = gap.globalObservation && global || identity in relevant || gap.observedOwners.any { it in owners }
                 val method = snapshot.methods.getValue(identity)
                 frameActive && observes && (gap.callee == null || gap.callee in method.calls) &&
                     (gap.dynamicCall == null || gap.dynamicCall in method.dynamicCalls)

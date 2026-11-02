@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.JdkRuntimeClasses
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipFile
@@ -57,7 +58,7 @@ internal class InheritedEntries {
 
     private fun load(name: String, dependencies: List<Path>): ClassNode? {
         val resource = "$name.class"
-        val platform = ClassLoader.getPlatformClassLoader().getResourceAsStream(resource)?.use { it.readBytes() }
+        val platform = JdkRuntimeClasses.bytes(name)
         val bytes = platform ?: dependencies.firstNotNullOfOrNull { dependency ->
             if (Files.isDirectory(dependency)) {
                 dependency.resolve(resource).takeIf(Files::isRegularFile)?.let(Files::readAllBytes)

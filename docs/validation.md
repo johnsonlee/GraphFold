@@ -3,6 +3,47 @@
 Date: 2026-11-02. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
+## PR review: diagnostic provenance, JDK modules and observation scope (2026-11-02)
+
+Frontend warnings now recognize the pinned Graphite diagnostic prefixes at callback
+offset zero. An analyzed enum/string literal, including embedded newlines, cannot
+fabricate a blocking warning; genuine method/control-flow skips, dependency
+extraction failures and recovery messages remain recognized. Real Java/Kotlin
+controlled/uncontrolled enum fixtures cover this through the engine.
+
+JDK declarations use system-module readers from the running JDK image, including
+`jdk.compiler`; they never borrow GraphFold's application/context classpath.
+Actual javac Plugin, TaskListener and TreePathScanner inheritance resolves, while
+an absent third-party superclass remains unresolved until explicitly supplied.
+The same reader serves missing references and origin hierarchy checks without
+expanding the safe-effects model for opaque calls.
+
+Unrelated global observations no longer poison ordinary reachable method proofs.
+Private callbacks without call edges, field/class and whole-program resource proofs
+retain global observation. Private rename alignment, changed original anonymous
+owner maps (including added/removed nested owners) and canonical initializer
+changes hidden by field normalization also retain it. The normalization guard is
+conservative across the snapshot pair; it does not claim complete heap/reflective
+flow analysis. Sixteen real Java/Kotlin engine fixtures and seventeen snapshot
+cases cover these positive and negative boundaries.
+
+The focused run passed **192 JUnit tests**, zero failures/errors/skips, together
+with type-aware engine production/test detekt and CLI installation. The unfiltered
+root check and all unchanged 95% branch / 90% line gates are required separately.
+This evidence is correctness validation, not performance acceptance.
+
+The same real GraphFold self-analysis now has **109** blocking diagnostics rather
+than 1,024: string-literal false warnings **22 → 0**, missing inherited JDK APIs
+**6 → 0**, external object escapes **960 → 92**, dynamic access **20 → 1**;
+the 16 fold hints remain. Both revisions select/match 23 sites and the diff-owned
+finding remains. The remaining related/caller observations and fold hints still
+make the final verdict FAIL with an UNVERIFIABLE_CHANGE; this is not a full proof
+of self-analysis equivalence. Its actual JSON report validates against the schema.
+
+See [diagnostic fixtures](../fixtures/frontend-diagnostics/README.md),
+[observation fixtures](../fixtures/observation-scope/README.md) and
+[self-analysis evidence](research/validation/observation-self-analysis-2026-11-02.json).
+
 ## PR review: Gradle project JAR variants (2026-11-02)
 
 The adapter now excludes an exported project artifact from graph dependencies only

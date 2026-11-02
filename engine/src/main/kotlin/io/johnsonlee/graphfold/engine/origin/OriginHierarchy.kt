@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin
 
+import io.johnsonlee.graphfold.engine.JdkRuntimeClasses
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -36,7 +37,7 @@ internal class OriginHierarchy(nodes: List<ClassNode>, private val dependencies:
         definitions[owner]?.let { return it }
         return if (owner in absent) null else {
             val bytes = try {
-                platformBytes(owner) ?: dependencies.firstNotNullOfOrNull { dependencyBytes(it, owner) }
+                JdkRuntimeClasses.bytes(owner) ?: dependencies.firstNotNullOfOrNull { dependencyBytes(it, owner) }
             } catch (_: UnverifiedOriginHierarchy) {
                 null // A dependency cannot establish a unique ancestry under the recorded compilation environment.
             }
@@ -47,9 +48,6 @@ internal class OriginHierarchy(nodes: List<ClassNode>, private val dependencies:
             definitions[owner]
         }
     }
-
-    private fun platformBytes(owner: String): ByteArray? =
-        ClassLoader.getPlatformClassLoader().getResourceAsStream("$owner.class")?.use { it.readAllBytes() }
 
     private fun dependencyBytes(path: Path, owner: String): ByteArray? = try {
         when {
