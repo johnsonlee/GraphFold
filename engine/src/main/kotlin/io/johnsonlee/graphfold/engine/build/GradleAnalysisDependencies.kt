@@ -29,7 +29,8 @@ private fun duplicatesApplicationClasses(artifact: Path, classes: Path): Boolean
         val classEntries = entries.filter { !it.isDirectory && it.name.endsWith(".class") }
         val ordinary = names.distinct().size == names.size && classEntries.isNotEmpty() &&
             names.none { it.substringAfterLast('.').lowercase() in NESTED_ARCHIVES }
-        ordinary &&
+        val rootLayout = classEntries.none { entry -> NON_ROOT_CLASS_PREFIXES.any(entry.name::startsWith) }
+        ordinary && rootLayout &&
             entries.filter { it.name.equals("META-INF/MANIFEST.MF", ignoreCase = true) }.all { entry ->
                 archive.getInputStream(entry).use { Manifest(it).mainAttributes.getValue(Attributes.Name.CLASS_PATH).isNullOrBlank() }
             } && classEntries.all { entry ->
@@ -45,3 +46,4 @@ private fun duplicatesApplicationClasses(artifact: Path, classes: Path): Boolean
 private fun Path.normalized(): Path = toAbsolutePath().normalize()
 
 private val NESTED_ARCHIVES = setOf("jar", "zip", "war")
+private val NON_ROOT_CLASS_PREFIXES = listOf("META-INF/", "BOOT-INF/", "WEB-INF/")

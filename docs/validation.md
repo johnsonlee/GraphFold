@@ -14,9 +14,11 @@ placements and runtime ordering still consume the original inventory.
 The real two-module fixture forces `LibraryElements.JAR` and verifies the exported
 classpath/artifact overlap, the resulting graph dependencies and retained packaged
 resources. Four engine cases cover folded/live source changes and folded/live
-ResourceBundle keys, including resource-mode graph expansion. Nineteen adapter
-cases cover equivalent archives and conservative rejection boundaries. The focused
-run passes all **29 tests** (24 new and five existing production-inventory tests),
+ResourceBundle keys, including resource-mode graph expansion. Twenty-three adapter
+cases cover equivalent archives and conservative rejection boundaries, including
+reserved `META-INF/`, `BOOT-INF/` and `WEB-INF/` class paths even when identical
+paths and bytes also exist in merged classes. The focused run passes all
+**33 tests** (28 new and five existing production-inventory tests),
 with zero failures/errors/skips, plus `:engine:detektMain` and `:engine:detektTest`.
 The unfiltered check and unchanged coverage hard gates are required separately.
 

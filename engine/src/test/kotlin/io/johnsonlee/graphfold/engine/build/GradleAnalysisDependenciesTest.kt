@@ -50,6 +50,20 @@ class GradleAnalysisDependenciesTest {
         return contents
     }
 
+    @ParameterizedTest
+    @EnumSource(NonRootLayout::class)
+    fun `reserved class layouts remain dependencies even when identical paths and bytes exist in merged output`(layout: NonRootLayout) {
+        val classes = classes()
+        val path = layout.prefix + CLASS
+        val matchingOutput = classes.resolve(path)
+        Files.createDirectories(matchingOutput.parent)
+        Files.writeString(matchingOutput, ORIGINAL)
+        val artifact = archive("project.jar", mapOf(CLASS to ORIGINAL, path to ORIGINAL))
+        assertEquals(listOf(artifact), gradleAnalysisDependencies(
+            listOf(input(GradleInputKind.ARTIFACT, artifact), input(GradleInputKind.DEPENDENCY, artifact)), classes,
+        ))
+    }
+
     @Test fun `duplicate ZIP entries are not accepted as a complete equivalent project artifact`() {
         val classes = classes()
         val artifact = archive("duplicate.jar", mapOf(CLASS to ORIGINAL, "a.txt" to "first", "b.txt" to "second"))
@@ -88,6 +102,10 @@ class GradleAnalysisDependenciesTest {
     }
 
     private fun input(kind: GradleInputKind, path: Path) = GradleInput(kind, listOf(path))
+
+    enum class NonRootLayout(val prefix: String) {
+        META_INF("META-INF/"), VERSIONED("META-INF/versions/17/"), BOOT("BOOT-INF/classes/"), WEB("WEB-INF/classes/"),
+    }
 
     enum class ArtifactCase(val contents: Map<String, String> = emptyMap(), val includeApplicationClass: Boolean = true) {
         UNIQUE(mapOf("sample/Added.class" to "unique")),

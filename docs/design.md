@@ -625,7 +625,7 @@ Maven 同样保留项目配置的增量编译；配置未变且上次构建完�
 
 Java 方法参数、返回值与构造参数的 descriptor 由已解析类型的声明包含关系构造 JVM binary name，并处理数组和泛型擦除；不能直接把源码限定名中的 `.` 全部换成 `/`，否则嵌套 enum 等类型会与实际字节码脱节。测试分别以源码、class 目录和依赖 JAR 解析，并与真实 javac 产物对照。
 
-**多模块产物重叠边界。** Gradle 的 compile classpath 可能引用同一项目的 JAR variant，而合并的应用 classes 已包含该项目输出。GraphFold 在来源归一化之前，先按 `ARTIFACT` 导出的实际项目产物路径识别候选 JAR，再验证其中非空 class 集合的每个条目都与合并输出具有相同路径和相同字节；只有完全匹配才从图的依赖列表排除，并保留其余依赖顺序。原始 production/runtime inventory 不变，资源、manifest 和 class placement 仍参加比较。外部同内容 JAR、含独有或改写 class 的 shaded JAR、嵌套归档、重定位/版本化条目、manifest Class-Path 或异常布局均不满足证明，保留后仍可能因重复 identity 阻断；不能静默丢弃未知 class 或忽略重复方法。真实多模块 JAR variant fixture 同时覆盖源码与资源的受控/未受控变更，并验证资源分析不会重新加入已经证明重复的普通项目 JAR。
+**多模块产物重叠边界。** Gradle 的 compile classpath 可能引用同一项目的 JAR variant，而合并的应用 classes 已包含该项目输出。GraphFold 在来源归一化之前，先按 `ARTIFACT` 导出的实际项目产物路径识别候选 JAR，再验证其中非空 class 集合的每个条目都与合并输出具有相同路径和相同字节；只有完全匹配才从图的依赖列表排除，并保留其余依赖顺序。原始 production/runtime inventory 不变，资源、manifest 和 class placement 仍参加比较。外部同内容 JAR、含独有或改写 class 的 shaded JAR、嵌套归档、重定位/版本化条目、manifest Class-Path 或异常布局均不满足证明（`META-INF/`、`BOOT-INF/`、`WEB-INF/` 下的 class 即使两侧路径和字节均匹配，也显式保留），保留后仍可能因重复 identity 阻断；不能静默丢弃未知 class 或忽略重复方法。真实多模块 JAR variant fixture 同时覆盖源码与资源的受控/未受控变更，并验证资源分析不会重新加入已经证明重复的普通项目 JAR。
 
 **生成类分类。** Java 的 `ACC_SYNTHETIC` enum-switch holder 不是源码匿名对象，不要求匿名表达式来源，但仍保留在编译 owner 清单和分析图中。Kotlin callable/property reference 的实际 backend origin 分别作为声明处理，真实 object literal 仍要求匿名来源。对库 inline 生成且没有 checkout IR 的类，只在实际输出具有唯一 Kotlin synthetic metadata（`k=3`）、`EnclosingMethod` 精确指向本次编译且来源已验证的声明方法时接受其生成类别。class 字节来自编译器明确报告的本次输出路径，不扫描旧输出目录；存在冲突 marker、不完整 emission、无法验证的 enclosing method 或来自外部库的普通匿名 object（`k=1`）时仍阻断。此分类不虚构物理匿名表达式，不按生成名称或 body hash 配对；这些类保留实际 JVM 身份，编号变化仍可能导致保守差异。
 
