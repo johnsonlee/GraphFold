@@ -7,8 +7,8 @@ Its `gated_` counterpart is a negative (controlled change): both revisions execu
 changed construct only when that same gate is true and return zero otherwise.
 The labels describe semantics; they must not be changed to accommodate analyzer output.
 
-The shared manifest contains 130 Java scenarios (60 positive, 70 negative), each with
-a Kotlin counterpart. Kotlin adds 56 language-specific scenarios. These fixtures
+The shared manifest contains 132 Java scenarios (61 positive, 71 negative), each with
+a Kotlin counterpart. Kotlin adds 77 language-specific scenarios. These fixtures
 supplement the existing Stream positive/negative pairs. They run through
 the full Git diff, build, source location, Cypher fold, comparison, and verdict pipeline.
 A diagnostic is an analysis failure, not a successfully detected positive.
@@ -19,6 +19,7 @@ A diagnostic is an analysis failure, not a successfully detected positive.
 | `condition_else_if` | `gated_condition_else_if` | else-if boundary at ten |
 | `condition_ternary` | `gated_condition_ternary` | conditional expression boundary |
 | `condition_switch` | `gated_condition_switch` | switch statement case behavior |
+| `enum_switch` | `gated_enum_switch` | enum switch with compiler-generated switch-map holder (Kotlin enum `when` counterpart) |
 | `condition_switch_expression` | `gated_condition_switch_expression` | Java 17 switch expression |
 | `condition_and_add` | `gated_condition_and_add` | add short-circuit conjunction |
 | `condition_and_remove` | `gated_condition_and_remove` | remove short-circuit conjunction |

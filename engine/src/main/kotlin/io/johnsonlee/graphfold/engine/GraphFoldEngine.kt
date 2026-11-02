@@ -108,7 +108,6 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             compiled.base, compiled.head, workspace.baseDirectory, workspace.headDirectory, changes, run.resolve("normalized"),
         )
         origins.diagnostics.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.UNVERIFIED_ORIGIN, it) }
-        if (origins.diagnostics.isNotEmpty()) return
         val oldProject = requireNotNull(origins.base)
         val newProject = requireNotNull(origins.head)
         val obligations = changes.filter { it.isJvmSourceChange() }
@@ -117,7 +116,8 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         val passed = BooleanArray(obligations.size) { true }
         var inputsProved = true
         scenarios.forEach { scenario ->
-            val comparison = compareScenario(oldProject, newProject, scenario, state, inputProof.requiresResourceAnalysis)
+            val comparison = compareScenario(oldProject, newProject, scenario, state, inputProof.requiresResourceAnalysis,
+                origins.diagnostics.isEmpty())
             val inputPassed = checkBuildInputs(inputProof, comparison, scenario.name, state)
             inputsProved = inputsProved && inputPassed
             obligations.forEachIndexed { index, obligation ->
@@ -135,10 +135,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         val failures = readOrigins(compiled.base, workspace.baseDirectory).diagnostics.map { "base: $it" } +
             readOrigins(compiled.head, workspace.headDirectory).diagnostics.map { "head: $it" }
         return when {
-            failures.isNotEmpty() -> {
-                failures.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.UNVERIFIED_ORIGIN, it) }
-                true
-            }
+            failures.isNotEmpty() -> false // prepareOrigins retains the blockers and permits independent graph evidence.
             proof.unchangedClasses(compiled.base.classes, compiled.head.classes) -> {
                 recordUnchangedInputs(proof, scenarios, state,
                     "Production outputs are unchanged after validating and removing GraphFold compiler-origin instrumentation")
@@ -209,6 +206,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
 
     private fun compareScenario(
         base: OriginProject, head: OriginProject, scenario: FoldScenario, state: RunState, dependencyResources: Boolean,
+        originsVerified: Boolean,
     ): SnapshotComparison {
         state.stage = AnalysisStage.GRAPH
         val old = GraphiteAnalyzer { index, update -> state.audit(scenario.name, Revision.BASE, index, update) }
@@ -226,7 +224,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             }
         }
         state.stage = AnalysisStage.COMPARE
-        return SnapshotComparison(old, new)
+        return SnapshotComparison(old, new, originsVerified)
     }
 
     private fun obligations(
@@ -308,7 +306,9 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNLOCATED_MOVE_DIFFERENCE,
                 "Moving ${obligation.basePath} to ${obligation.headPath} changes JVM representation: ${differences.joinToString()}")
         } else if (differences.isNotEmpty()) {
-            val message = "Surviving program representation differs: ${differences.joinToString()}"
+            val prefix = if (comparison.originsVerified) "Surviving program representation differs" else
+                "Unverified compiler provenance; original JVM identity representations differ (not a confirmed behavior change)"
+            val message = "$prefix: ${differences.joinToString()}"
             state.findings += Finding(
                 digest("$scenario|${obligation.locations}|$message"), FindingKind.UNVERIFIABLE_CHANGE,
                 "folded-program-equivalence", message, obligation.locations,

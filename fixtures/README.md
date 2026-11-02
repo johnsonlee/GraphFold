@@ -10,11 +10,11 @@ semantics and must not be changed merely to accommodate analyzer output.
 
 | Fixture input | Cases | Positive | Negative | Test code |
 | --- | ---: | ---: | ---: | --- |
-| `manifest.json` + `cases/` | 130 | 60 | 70 | `DetectionCorpusTest` Java test |
-| Same manifest + `kotlin/cases/` | 130 | 60 | 70 | `DetectionCorpusTest` Kotlin test |
-| `kotlin/features.json` + `kotlin/cases/` | 56 | 24 | 32 | `DetectionCorpusTest` Kotlin test |
+| `manifest.json` + `cases/` | 132 | 61 | 71 | `DetectionCorpusTest` Java test |
+| Same manifest + `kotlin/cases/` | 132 | 61 | 71 | `DetectionCorpusTest` Kotlin test |
+| `kotlin/features.json` + `kotlin/cases/` | 77 | 31 | 46 | `DetectionCorpusTest` Kotlin test |
 
-These are 316 language-specific scenarios, including 130 explicitly authored Kotlin
+These are 341 language-specific scenarios, including 132 explicitly authored Kotlin
 counterparts of Java cases. Counts identify checked-in coverage, not a claim that the
 latest test run passed. `DetectionCorpusTest` creates real Git commits, compiles both
 worktrees, executes Cypher selection and Graphite folding, and compares verdicts with
@@ -71,7 +71,7 @@ increase the number of independent detection scenarios.
 ## Generated-code location regressions
 
 The separate source-location matrix contains **22 base/head pairs: Java 8 and
-Kotlin 14**. These do not increase the **316-case detection corpus** or its accuracy
+Kotlin 14**. These do not increase the **341-case detection corpus** or its accuracy
 sample size. They are checked-in regression inputs; their presence alone is not a
 claim that validation has passed.
 

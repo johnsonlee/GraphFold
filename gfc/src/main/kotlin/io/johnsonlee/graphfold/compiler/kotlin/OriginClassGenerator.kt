@@ -69,7 +69,9 @@ internal class OriginClassGenerator(
     }
 }
 
-// Backend-generated lambda/continuation classes also satisfy IrClass.isAnonymousObject.
+// Backend-generated lambdas, continuations and callable references also satisfy IrClass.isAnonymousObject.
 // Only these explicit compiler origins are exempt; an unknown source anonymous object remains required.
 // IrDeclarationOrigin.name is ABI-stable across K1/K2; JvmLoweredDeclarationOrigin singleton layout is not.
-private enum class GeneratedClassOrigin { LAMBDA_IMPL, SUSPEND_LAMBDA, CONTINUATION_CLASS }
+private enum class GeneratedClassOrigin {
+    LAMBDA_IMPL, SUSPEND_LAMBDA, CONTINUATION_CLASS, FUNCTION_REFERENCE_IMPL, GENERATED_PROPERTY_REFERENCE,
+}

@@ -131,7 +131,7 @@ internal fun registerOutputCapture(configuration: CompilerConfiguration, collect
                 require(path.startsWith(directory)) { "Compiler output is outside configured output directory: $path" }
                 val relative = directory.relativize(path)
                 collector.output(relative.toString().removeSuffix(".class").replace(java.io.File.separatorChar, '.'),
-                    output.sourceFiles.map { it.toPath() })
+                    output.sourceFiles.map { it.toPath() }, path)
             }
             if (report || severity != org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity.OUTPUT) {
                 delegate.report(severity, message, location)

@@ -83,13 +83,15 @@ class EngineIntegrationTest {
     }
 
     @Test
-    fun `ambiguous anonymous source origins block without inventing diff findings`() {
+    fun `ambiguous anonymous origins block while independent arithmetic differences are reported`() {
         val result = analyze("new Object() {}; new Object() {}; return x;",
             "new Object() {}; new Object() {}; return x + 1;")
         assertEquals(Verdict.FAIL, result.verdict)
         assertTrue(result.diagnostics.any { it.blocking && it.code == DiagnosticCode.UNVERIFIED_ORIGIN }, result.toString())
         assertTrue(result.diagnostics.any { it.message.contains("Ambiguous") }, result.toString())
-        assertTrue(result.findings.isEmpty(), "An analysis gap is not a confirmed diff violation")
+        assertTrue(result.findings.isNotEmpty(), "The changed arithmetic must still be compared")
+        assertTrue(result.findings.all { it.kind == FindingKind.UNVERIFIABLE_CHANGE })
+        assertTrue(result.ruleAudits.all { it.selectionStatus == RuleSelectionStatus.SELECTED })
         assertEquals(0, result.metadata.provedObligations)
     }
 

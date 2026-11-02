@@ -3,6 +3,51 @@
 Date: 2026-11-02. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
+## PR review: generated declarations and origin-failure continuation (2026-11-02)
+
+Compiler provenance distinguishes Java synthetic enum-switch holders, Kotlin callable/property
+references, and library-inline synthetic implementations from source anonymous objects. The last
+category uses completed compiler outputs, unique synthetic metadata and a verified enclosing
+method; it does not invent source identities or align generated names/body hashes. Marker
+corruption and incomplete emission remain blocking. K1/K2 provider tests compile and execute
+real reference and stdlib examples; engine positive/negative fixtures verify graph consequences.
+
+When provenance genuinely fails, selection and diff comparison continue from original JVM
+identities with only private instrumentation removed. Blockers remain, no dependent obligation
+is credited as proved, and raw identity differences are explicitly unverified observations.
+Java/Kotlin tests include unrelated ambiguous origins and folded anonymous renumbering.
+The enum-switch negative fixture also exposed nested Java descriptor resolution; source,
+directory and JAR tests compare signatures against actual javac outputs. JarTypeSolver's
+existing literal-dollar nested-name limitation remains an explicit unresolved diagnostic.
+
+The unfiltered root check and type-aware engine/gfc detekt passed **1,014 JUnit tests**,
+with zero failures/errors/skips. All modules retain the **95% branch / 90% line** hard gates,
+without new production exclusions.
+
+| Module | JUnit tests | Line coverage | Branch coverage |
+| --- | ---: | ---: | ---: |
+| engine | 871 | 99.3543% | 95.8207% (4104/4283) |
+| gfc | 86 | 98.6111% | 96.2810% (233/242) |
+| cli | 28 | 98.6842% | 97.0588% (33/34) |
+| gradle-plugin | 29 | 100.0000% | 100.0000% (18/18) |
+
+All **132 Java + 209 Kotlin** corpus cases match their labels; all **341** actual
+reports validate against the verdict JSON Schema. The same current provider binary
+also passes the existing 20-compilation compatibility matrix with zero unresolved
+origins and explicit unsupported-version rejection. These are correctness checks,
+not representative multi-graph performance acceptance.
+
+Real GraphFold multi-module self-analysis builds both revisions, reports zero
+`UNVERIFIED_ORIGIN`, and reaches graph selection. It then encounters a separate,
+pre-existing application-class/project-JAR overlap and fails with `Duplicate method
+identity`. This is not an end-to-end success; artifact-aware dependency deduplication
+remains required for that layout. The original review's local fixture SHAs were
+unavailable, so this probe uses `ce33f05` plus an isolated one-line report-text change.
+
+See [full-check evidence](research/validation/provenance-validation-2026-11-02.json),
+[self-analysis evidence](research/validation/provenance-self-analysis-2026-11-02.json),
+and [compiler matrix](research/compiler/verified-2026-11-02.log).
+
 ## PR review: scope folded-graph dataflow to resource analysis (2026-11-02)
 
 The final folding loader enables interprocedural dataflow only for resource proofs;

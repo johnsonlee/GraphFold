@@ -152,9 +152,11 @@ private class OriginReader(private val project: CompiledProject, private val roo
     private fun anonymousObject(node: ClassNode): Boolean {
         if (node.innerClasses.none { it.name == node.name && it.innerName == null }) return false
         val metadata = node.visibleAnnotations.orEmpty().singleOrNull { it.desc == "Lkotlin/Metadata;" }
+        // javac's enum-switch tables have anonymous InnerClasses entries but no source allocation.
+        // A Java source anonymous class is never ACC_SYNTHETIC; retain Kotlin's metadata classification.
         val values = metadata?.values.orEmpty().chunked(2).associate { it[0].toString() to it[1] }
         // Kotlin lambdas and state machines use synthetic metadata, not anonymous object declarations.
-        return metadata == null || (values["k"] ?: 1) == 1
+        return if (metadata == null) node.access and Opcodes.ACC_SYNTHETIC == 0 else (values["k"] ?: 1) == 1
     }
 
     @Suppress("TooGenericExceptionCaught") // Invalid or stale provenance must block, never silently remove an obligation.

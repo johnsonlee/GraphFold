@@ -16,7 +16,6 @@ import org.objectweb.asm.tree.ClassNode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class OriginProjectsTest {
@@ -57,25 +56,33 @@ class OriginProjectsTest {
         assertEquals(listOf(1), snapshot.matchedRules)
     }
 
-    @Test fun `missing compilation provenance prevents publishing either prepared revision`() {
+    @Test fun `missing provenance retains blockers while exposing original identities for partial analysis`() {
         val source = compile("source", "java", "class Example { public Object value() { return new Object() {}; } }")
         val projects = prepareOrigins(source.project.copy(originDirectory = null), source.project,
             source.root, source.root, emptyList(), temporary.resolve("prepared"))
-        assertNull(projects.base)
-        assertNull(projects.head)
+        listOf(assertNotNull(projects.base), assertNotNull(projects.head)).forEach {
+            assertTrue(it.owners.isEmpty())
+            assertTrue(it.catalog.origins.isEmpty())
+            assertTrue(nodes(it.compiled.classes).none(::hasMarker))
+        }
         assertTrue(projects.diagnostics.any { it.startsWith("base:") && it.contains("manifest is missing") })
-        assertFalse(Files.exists(temporary.resolve("prepared")), "No partly verified artifact may be published")
+        assertEquals(nodes(source.project.classes).map { it.name }.toSet(),
+            nodes(assertNotNull(projects.base).compiled.classes).map { it.name }.toSet())
     }
 
-    @Test fun `ambiguous repeated source allocations block preparation before normalization`() {
+    @Test fun `ambiguous repeated allocations retain raw identities instead of partial normalization`() {
         val text = "class Example { void use(Object value) {} public void run() { use(new Object() {}); use(new Object() {}); } }"
         val before = compile("base", "java", text)
         val after = compile("head", "java", text)
         val projects = prepareOrigins(before.project, after.project, before.root, after.root, emptyList(), temporary.resolve("prepared"))
-        assertNull(projects.base)
-        assertNull(projects.head)
+        listOf(assertNotNull(projects.base), assertNotNull(projects.head)).forEach {
+            assertTrue(it.owners.isEmpty())
+            assertTrue(it.catalog.origins.isEmpty())
+            assertTrue(nodes(it.compiled.classes).none(::hasMarker))
+        }
         assertTrue(projects.diagnostics.any { it.contains("Ambiguous") }, projects.diagnostics.toString())
-        assertFalse(Files.exists(temporary.resolve("prepared")))
+        assertEquals(nodes(before.project.classes).map { it.name }.toSet(),
+            nodes(assertNotNull(projects.base).compiled.classes).map { it.name }.toSet())
     }
 
     @Test fun `preparation preserves stable serializable names but reports observable renumbering`() {

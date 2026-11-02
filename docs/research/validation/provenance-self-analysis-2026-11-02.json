@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-02",
+  "purpose": "Real Gradle multi-module compiler-origin correctness probe; not performance acceptance",
+  "base": "ce33f058eca6f23d095cbb40baf942bfb871498d",
+  "head": "5af326a5e90433b549bb6c979050f7e9cb1df7fc",
+  "change": "One line in AnalysisReports.text: GraphFold: -> GraphFold verdict:",
+  "fold": "java.nio.file.Files.isDirectory -> false",
+  "verdict": "FAIL",
+  "metadata": {
+    "baseSha": "ce33f058eca6f23d095cbb40baf942bfb871498d",
+    "headSha": "5af326a5e90433b549bb6c979050f7e9cb1df7fc",
+    "scenarios": [
+      "baseline"
+    ],
+    "obligations": 1,
+    "provedObligations": 0,
+    "graphiteVersion": "2.12.0"
+  },
+  "diagnostics": [
+    {
+      "stage": "GRAPH",
+      "code": "ANALYSIS_FAILED",
+      "message": "Duplicate method identity io.johnsonlee.graphfold.compiler.kotlin.OriginClassGenerator.<init>(Lorg/jetbrains/kotlin/backend/jvm/extensions/ClassGenerator;Lorg/jetbrains/kotlin/ir/declarations/IrClass;Lio/johnsonlee/graphfold/compiler/kotlin/KotlinOriginCollector;Ljava/lang/String;)V",
+      "blocking": true
+    }
+  ],
+  "ruleAudits": [
+    {
+      "revision": "BASE",
+      "selectionStatus": "SELECTED",
+      "selectedCount": 23,
+      "matchedCallCount": null
+    },
+    {
+      "revision": "HEAD",
+      "selectionStatus": "NOT_EXECUTED",
+      "selectedCount": null,
+      "matchedCallCount": null
+    }
+  ],
+  "conclusion": "Both builds succeed and UNVERIFIED_ORIGIN is absent. Graph selection starts; snapshot capture then blocks on a pre-existing project class-directory/JAR overlap. This is not end-to-end equivalence success.",
+  "rootCause": "engine selects the gfc project JAR variant while merged application classes include gfc. The exported dependency JAR is retained and the same method reaches SnapshotSink twice.",
+  "normalizationPolicy": "Do not silently discard duplicate identities. Artifact-aware deduplication remains a separate gap."
+}

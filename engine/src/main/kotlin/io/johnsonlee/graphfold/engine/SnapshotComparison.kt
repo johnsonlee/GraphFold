@@ -6,7 +6,9 @@ import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 
 /** Conservative structural proof over each obligation's dependencies. Unknown frontend edges block upstream. */
-internal class SnapshotComparison(private val base: ProgramSnapshot, originalHead: ProgramSnapshot) {
+internal class SnapshotComparison(
+    private val base: ProgramSnapshot, originalHead: ProgramSnapshot, val originsVerified: Boolean = true,
+) {
     private val alignment = PrivateMemberAlignment(base, originalHead)
     private val head = alignment.aligned()
     val resourceDependenciesAnalyzed: Boolean get() = base.resourceDependenciesAnalyzed && head.resourceDependenciesAnalyzed
@@ -75,7 +77,10 @@ internal class SnapshotComparison(private val base: ProgramSnapshot, originalHea
         val obligation = original?.let(::aligned)
         val relevant = relevantMethods(obligation)
         val owners = relevant.map(::methodOwner).toSet() + listOfNotNull(obligation?.owner)
-        return (activeGaps(base, baseReachable, relevant, owners) +
+        val provenance = if (originsVerified) emptyList() else listOf(
+            "Compiler provenance is unverified; comparison uses original JVM identities without anonymous-owner alignment",
+        )
+        return (provenance + activeGaps(base, baseReachable, relevant, owners) +
             activeGaps(head, headReachable, relevant, owners)).distinct().sorted()
     }
 

@@ -518,5 +518,13 @@
   {
     "id": "negative_local_stream_reduce",
     "violation": false
+  },
+  {
+    "id": "enum_switch",
+    "violation": true
+  },
+  {
+    "id": "gated_enum_switch",
+    "violation": false
   }
 ]

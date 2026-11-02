@@ -18,6 +18,8 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.JarTypeSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
 import com.github.javaparser.resolution.UnsolvedSymbolException
+import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration
+import com.github.javaparser.resolution.types.ResolvedType
 import io.johnsonlee.graphfold.engine.Revision
 import io.johnsonlee.graphfold.engine.SourceLocation
 import io.johnsonlee.graphfold.engine.SourceRange
@@ -76,14 +78,13 @@ class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoC
 
     init {
         val solver = CombinedTypeSolver()
+        val parserConfiguration = ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17)
+            .setSymbolResolver(JavaSymbolSolver(solver))
         solver.add(ReflectionTypeSolver())
-        sourceRoots.forEach { solver.add(JavaParserTypeSolver(it)) }
+        sourceRoots.forEach { solver.add(JavaParserTypeSolver(it, parserConfiguration)) }
         dependencies.filterNot(Files::isDirectory).forEach { solver.add(JarTypeSolver(it)) }
         solver.add(ClassLoaderTypeSolver(dependencyLoader))
-        parser = JavaParser(
-            ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17)
-                .setSymbolResolver(JavaSymbolSolver(solver)),
-        )
+        parser = JavaParser(parserConfiguration)
     }
 
     /** Releases the dependency class loader and its open resources. */
@@ -147,21 +148,45 @@ class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoC
     private fun memberSymbols(member: BodyDeclaration<*>, owner: String, path: String, revision: Revision): List<SourceSymbol> {
         val position = location(member, path, revision)
         return when (member) {
-            is MethodDeclaration -> listOf(SourceSymbol(
-                "$owner.${member.nameAsString}${member.resolve().toDescriptor()}", owner, SymbolKind.METHOD, position,
-            ))
+            is MethodDeclaration -> {
+                val resolved = member.resolve()
+                val methodDescriptor = (0 until resolved.numberOfParams).joinToString("", "(", ")") {
+                    descriptor(resolved.getParam(it).type)
+                } + descriptor(resolved.returnType)
+                listOf(SourceSymbol("$owner.${member.nameAsString}$methodDescriptor", owner, SymbolKind.METHOD, position))
+            }
             is ConstructorDeclaration -> {
                 val resolved = member.resolve()
-                val descriptor = (0 until resolved.numberOfParams).joinToString("", "(" + constructorPrefix(member), ")V") {
-                    resolved.getParam(it).type.erasure().toDescriptor()
+                val methodDescriptor = (0 until resolved.numberOfParams).joinToString("", "(" + constructorPrefix(member), ")V") {
+                    descriptor(resolved.getParam(it).type)
                 }
-                listOf(SourceSymbol("$owner.<init>$descriptor", owner, SymbolKind.METHOD, position))
+                listOf(SourceSymbol("$owner.<init>$methodDescriptor", owner, SymbolKind.METHOD, position))
             }
             is FieldDeclaration -> member.variables.map { variable ->
                 SourceSymbol("$owner.${variable.nameAsString}", owner, SymbolKind.FIELD, position)
             }
             else -> emptyList()
         }
+    }
+
+    /** Build reference names from resolved containment; qualified source names do not encode JVM nesting. */
+    private fun descriptor(type: ResolvedType): String {
+        val erased = type.erasure()
+        return when {
+            erased.isArray -> "[" + descriptor(erased.asArrayType().componentType)
+            erased.isReferenceType -> {
+                val declaration = erased.asReferenceType().typeDeclaration.orElseThrow {
+                    UnsupportedOperationException("Missing declaration for JVM descriptor: ${erased.describe()}")
+                }
+                "L" + binaryName(declaration).replace('.', '/') + ";"
+            }
+            else -> erased.toDescriptor()
+        }
+    }
+
+    private fun binaryName(type: ResolvedReferenceTypeDeclaration): String {
+        val container = type.containerType().orElse(null)
+        return if (container == null) type.qualifiedName else binaryName(container) + "$" + type.name
     }
 
     private fun constructorPrefix(constructor: ConstructorDeclaration): String {

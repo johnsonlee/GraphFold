@@ -158,6 +158,44 @@ class KotlinOriginPluginIntegrationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = ["1.9", "2.1"])
+    fun `callable reference implementations retain declaration provenance without masking actual objects`(language: String) {
+        val fixture = requireNotNull(javaClass.getResource("/kotlin/callable-references/References.kt")).readText()
+        val source = source("References.kt", fixture)
+        val result = compile(listOf(source), language)
+        assertEquals(ExitCode.OK, result.exit, result.log)
+        val document = Files.list(temporary.resolve("origins")).use { files ->
+            jacksonObjectMapper().readTree(files.filter { it.toString().endsWith(".json") }.toList().single().toFile())
+        }
+        assertTrue(document["complete"].asBoolean())
+        assertTrue(document["unresolved"].isEmpty, document.toString())
+        val nodes = Files.walk(temporary.resolve("classes")).use { files ->
+            files.filter { it.toString().endsWith(".class") }.map { file ->
+                ClassNode().also { ClassReader(Files.readAllBytes(file)).accept(it, 0) }
+            }.toList()
+        }
+        val references = nodes.filter { it.superName.contains("Reference") }
+        assertEquals(8, references.size, references.map { it.name }.toString())
+        val slices = references.map { reference ->
+            val record = document["records"].single { it["owner"].asText() == reference.name.replace('/', '.') }
+            assertEquals("DECLARATION", record["originKind"].asText(), record.toString())
+            assertEquals("DIRECT_IR", record["provenance"].asText())
+            val marker = reference.invisibleAnnotations.single { it.desc == KotlinOriginCollector.MARKER }
+            assertEquals("DECLARATION", marker.values.chunked(2).associate { it[0] to it[1] }["originKind"])
+            fixture.substring(record["allocation"]["start"].asInt(), record["allocation"]["end"].asInt())
+        }
+        assertEquals(setOf("::top", "receiver::member", "Receiver::member", "Files::isRegularFile",
+            "receiver::value", "Receiver::value", "receiver::mutable", "Receiver::mutable"), slices.toSet())
+        val actualObject = document["records"].single { it["originKind"].asText() == "ANONYMOUS_OBJECT" }
+        assertTrue(fixture.substring(actualObject["allocation"]["start"].asInt(),
+            actualObject["allocation"]["end"].asInt()).startsWith("object : java.util.function.IntSupplier"))
+        URLClassLoader(arrayOf(temporary.resolve("classes").toUri().toURL()), javaClass.classLoader).use { loader ->
+            val type = loader.loadClass("sample.Example")
+            assertEquals(38, type.getMethod("run").invoke(type.getDeclaredConstructor().newInstance()))
+        }
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = ["output", "runId"])
     fun `missing required compiler options fail before accepting a provenance artifact`(omitted: String) {
         val result = compile(listOf(source("Example.kt", "class Example")), "2.1", omitted)
@@ -173,6 +211,40 @@ class KotlinOriginPluginIntegrationTest {
         ))
         assertNotEquals(ExitCode.OK, result.exit, result.log)
         assertTrue("unknown" in result.log, result.log)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["1.9", "2.1"])
+    fun `stdlib sortedBy generated comparator retains JVM identity without requiring external library IR`(language: String) {
+        val source = source("Ordering.kt", """
+            package sample
+            class Ordering {
+                fun order(values: List<String>): List<String> = values.sortedBy { it.length }
+            }
+        """.trimIndent())
+        val result = compile(listOf(source), language)
+        assertEquals(ExitCode.OK, result.exit, result.log)
+        val document = Files.list(temporary.resolve("origins")).use { files ->
+            jacksonObjectMapper().readTree(files.filter { it.toString().endsWith(".json") }.toList().single().toFile())
+        }
+        assertTrue(document["complete"].asBoolean())
+        assertTrue(document["unresolved"].isEmpty, document.toString())
+        val nodes = Files.walk(temporary.resolve("classes")).use { files ->
+            files.filter { it.toString().endsWith(".class") }.map { file ->
+                ClassNode().also { ClassReader(Files.readAllBytes(file)).accept(it, 0) }
+            }.toList()
+        }
+        val comparator = nodes.single { "java/util/Comparator" in it.interfaces }
+        assertEquals("sample/Ordering", comparator.outerClass)
+        assertEquals("order", comparator.outerMethod)
+        assertEquals("(Ljava/util/List;)Ljava/util/List;", comparator.outerMethodDesc)
+        assertTrue(document["records"].none { it["owner"].asText() == comparator.name.replace('/', '.') })
+        assertTrue(document["outputs"].any { it["owner"].asText() == comparator.name.replace('/', '.') }, document.toString())
+        URLClassLoader(arrayOf(temporary.resolve("classes").toUri().toURL()), javaClass.classLoader).use { loader ->
+            val type = loader.loadClass("sample.Ordering")
+            assertEquals(listOf("a", "bb", "ccc"),
+                type.getMethod("order", List::class.java).invoke(type.getDeclaredConstructor().newInstance(), listOf("ccc", "a", "bb")))
+        }
     }
 
     private fun source(name: String, contents: String): Path = temporary.resolve(name).also { Files.writeString(it, contents) }

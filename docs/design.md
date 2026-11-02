@@ -623,6 +623,14 @@ Maven 同样保留项目配置的增量编译；配置未变且上次构建完�
 
 **校验。** 引擎检查成功构建的 runId、schema、完成标记、源码 hash、文件归属、范围、实际 class 和 Kotlin marker，并将编译范围与 AST 表达式精确匹配。找不到、重复或过期的记录产生 `UNVERIFIED_ORIGIN`，不能变成 PASS。Kotlin 编译器会折叠 CRLF 并去掉开头 BOM，provider 先将 IR 偏移转换回原始 UTF16 边界；inline marker 中的物理坐标不再转换。headless PSI 使用保持文本长度的输入预处理，token 与报告坐标仍取原文。sidecar 范围使用从零开始、末端不包含的 UTF16 offset；报告仍保留 diff 的文件与一基起止行列。来源绑定不依赖 SourceFile/LineNumberTable；普通 Kotlin 方法的现有索引仍有自己的调试信息限制。
 
+Java 方法参数、返回值与构造参数的 descriptor 由已解析类型的声明包含关系构造 JVM binary name，并处理数组和泛型擦除；不能直接把源码限定名中的 `.` 全部换成 `/`，否则嵌套 enum 等类型会与实际字节码脱节。测试分别以源码、class 目录和依赖 JAR 解析，并与真实 javac 产物对照。
+
+**多模块产物重叠边界。** 当前 Gradle 导出的 compile classpath 可能同时包含某个项目的 class 目录与该项目的 JAR，例如 GraphFold 自身对 gfc 强制使用 JAR variant。合并的应用 classes 与该 JAR 一同加载时，可能在 Graphite 快照阶段产生 `Duplicate method identity` 并阻断。2026-11-02 自分析已确认三类生成代码来源错误消失，但随后遇到这一独立问题，不能声称该布局全链路可用。后续需要按实际项目产物归属去重，并保持依赖顺序、归一化一致性与冲突检测；不能用静默忽略重复方法替代这个证明。
+
+**生成类分类。** Java 的 `ACC_SYNTHETIC` enum-switch holder 不是源码匿名对象，不要求匿名表达式来源，但仍保留在编译 owner 清单和分析图中。Kotlin callable/property reference 的实际 backend origin 分别作为声明处理，真实 object literal 仍要求匿名来源。对库 inline 生成且没有 checkout IR 的类，只在实际输出具有唯一 Kotlin synthetic metadata（`k=3`）、`EnclosingMethod` 精确指向本次编译且来源已验证的声明方法时接受其生成类别。class 字节来自编译器明确报告的本次输出路径，不扫描旧输出目录；存在冲突 marker、不完整 emission、无法验证的 enclosing method 或来自外部库的普通匿名 object（`k=1`）时仍阻断。此分类不虚构物理匿名表达式，不按生成名称或 body hash 配对；这些类保留实际 JVM 身份，编号变化仍可能导致保守差异。
+
+**来源失败后的部分分析。** 缺失、过期或歧义来源仍产生 blocking `UNVERIFIED_ORIGIN`；但不再因此提前跳过整个图分析。引擎从原始编译输出创建隔离副本，仅删除 GraphFold 私有 marker，保留原始 JVM 名称、指令和 metadata，并继续 Cypher 选点、diff 义务与表示比较。失败情况下不使用部分来源归一化，也不声称任何依赖该比较的义务已被证明；比较携带 `ANALYSIS_INCOMPLETE`，最终仍为 FAIL。发现的差异定位到本次 diff，并明确标记为基于原始 JVM 身份的未验证表示差异，因为匿名类重编号也可能产生这种差异。这使独立修改仍可见，同时不把来源缺口降级为安全证明；尚未实现把来源失败精确收窄到特定义务的影响闭包。
+
 **跨版本配对。** 文件对应关系（包括 Git rename）、命名声明、匿名父表达式和 AST 上下文共同约束候选。唯一上下文可以绑定内容发生改变的对象；在同一命名作用域内，唯一的未变表达式可辅助识别上下文移动。结构相同不是单独的身份依据。重复同形表达式无法区分时阻断，不按出现顺序配对。一个定义被 inline 成多个类时，定义范围本身不够；仅当真实字节码的分配调用方上下文可唯一地区分副本才配对。同一调用方法内的多个不可区分副本仍阻断，不能把多个 emitted owner 合并成一个类。实际 `InnerClasses`/`EnclosingMethod` 关系用于嵌套依赖，不再以 `$` 名称前缀推断。匿名类 body 内的改动可以建立类义务；allocation 的构造参数可能在调用方执行（Java fixture 已验证），不能因整个表达式绑定到类而遗漏参数变化。参数区保留外层义务及其构造调用依赖；Kotlin 的实际 lowering 可能将表达式放进生成构造器，不能照搬 Java 的字节码假设。
 
 **归一化边界。** 仅在隔离的分析产物中通过 ASM typed remapping 改写 owner、descriptor、类型和引用，并通过 Kotlin metadata 的结构化读写改写类型身份。临时 annotation 被移除，用户字符串常量及普通 annotation 字符串保持原值。保留声明自身的访问标志、enclosing method 和代码；外层类型的匿名类索引项不作为执行行为差异。Cypher 在原始编译身份的图上求值，然后将选中的实际调用 key 映射至比较身份，不能让内部比较名称改变用户的选点范围。

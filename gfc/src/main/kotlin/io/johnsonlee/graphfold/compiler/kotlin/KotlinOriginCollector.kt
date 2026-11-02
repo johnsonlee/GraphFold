@@ -19,13 +19,15 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
     private val failures = linkedMapOf<String, String>()
     private val sources = linkedMapOf<String, Source>()
     private val outputs = linkedMapOf<String, String>()
+    private val outputClasses = linkedMapOf<String, Path>()
 
-    fun output(owner: String, sourceFiles: List<Path>) {
+    fun output(owner: String, sourceFiles: List<Path>, classFile: Path? = null) {
         val inputs = sourceFiles.distinct().map { file ->
             val path = file.toRealPath().toString()
             val source = requireNotNull(readSource(path)) { "Compiler output source is unreadable: $path" }
             "{\"path\":${json(path)},\"hash\":${json(source.hash)}}"
         }
+        if (classFile != null) outputClasses[owner] = classFile
         outputs[owner] = "{\"owner\":${json(owner)},\"sources\":[${inputs.joinToString(",")}] }"
     }
 
@@ -70,11 +72,20 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
     fun completed(owner: String) { emitted.getValue(owner).complete = true }
 
     fun finish() {
+        // Library inline bodies have no checkout IR. Synthetic metadata plus a verified emitted
+        // enclosing declaration establishes their category, not an anonymous source identity.
+        val verifiedEnclosingOwners = emitted.values.filter {
+            it.origin != null && it.markers == 1 && it.complete
+        }.mapTo(mutableSetOf()) { it.owner }
+        // IR backend output is already written when its finalizer runs; ClassFileFactory can be empty.
+        // Only explicit outputs reported by this compilation are eligible, never a directory scan.
+        val classFiles = if (emitted.values.any { it.missingIr }) outputClasses.values.map { Files.readAllBytes(it) } else emptyList()
+        val generated = generatedDeclarationOwners(classFiles, verifiedEnclosingOwners)
         val records = mutableListOf<String>()
         val unresolved = mutableListOf<String>()
         emitted.values.sortedBy { it.owner }.forEach { emission ->
             val origin = emission.origin
-            if (emission.ignorable()) return@forEach
+            if (emission.ignorable() || emission.generatedDeclaration(generated)) return@forEach
             if (origin == null || emission.markers != 1 || !emission.complete) {
                 unresolved += "{\"owner\":${json(emission.owner.replace('/', '.'))},\"reason\":" +
                     json(failures[emission.owner] ?: "Emitted class has no unique verified compiler provenance") + "}"
@@ -134,6 +145,9 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
 
     private fun validRange(source: Source, start: Int, end: Int): Boolean =
         start >= 0 && end in start..source.text.length
+
+    private fun Emission.generatedDeclaration(generated: Set<String>): Boolean =
+        missingIr && origin == null && markers == 0 && complete && owner in generated
 
     private fun Emission.ignorable(): Boolean {
         val needsOrigin = missingIr || anonymous
