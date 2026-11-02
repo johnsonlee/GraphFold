@@ -1,0 +1,13 @@
+import org.gradle.api.attributes.LibraryElements
+
+subprojects { apply plugin: 'java-library' }
+project(':app') {
+    dependencies {
+        implementation(project(':library')) {
+            attributes {
+                attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+                    objects.named(LibraryElements, LibraryElements.JAR))
+            }
+        }
+    }
+}

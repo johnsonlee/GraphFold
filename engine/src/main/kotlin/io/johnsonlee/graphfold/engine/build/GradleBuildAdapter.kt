@@ -32,12 +32,10 @@ internal class GradleBuildAdapter(
             val entries = parseGradleInputs(Files.readAllLines(manifest))
             val outputs = entries.filter { it.kind == GradleInputKind.CLASSES }.map { it.paths.single() }
             val roots = entries.filter { it.kind == GradleInputKind.SOURCE }.map { it.paths.single() }.filter(Files::isDirectory)
-            val dependencies = entries.filter { it.kind == GradleInputKind.DEPENDENCY }.map { it.paths.single() }
-                .filterNot { it in outputs }.distinct()
-            checkBuild(dependencies.all { Files.exists(it) }, "Gradle exported missing dependencies")
             val sourceOutputs = entries.filter { it.kind == GradleInputKind.SOURCE_OUTPUT }
                 .groupBy({ it.paths[0] }, { it.paths[1] })
             val classes = collectClasses(output, outputs)
+            val dependencies = gradleAnalysisDependencies(entries, classes)
             val production = productionInventory(entries, classes)
             return CompiledProject(classes, roots.distinct(), dependencies, origins, runId, sourceOutputs, production)
         } finally {

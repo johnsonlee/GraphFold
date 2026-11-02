@@ -3,6 +3,35 @@
 Date: 2026-11-02. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
+## PR review: Gradle project JAR variants (2026-11-02)
+
+The adapter now excludes an exported project artifact from graph dependencies only
+when its nonempty class inventory exactly matches merged raw application classes,
+including paths and bytes. External archives, transformed/unique classes and
+unknown layouts remain dependencies. Production resources, manifests, class
+placements and runtime ordering still consume the original inventory.
+
+The real two-module fixture forces `LibraryElements.JAR` and verifies the exported
+classpath/artifact overlap, the resulting graph dependencies and retained packaged
+resources. Four engine cases cover folded/live source changes and folded/live
+ResourceBundle keys, including resource-mode graph expansion. Nineteen adapter
+cases cover equivalent archives and conservative rejection boundaries. The focused
+run passes all **29 tests** (24 new and five existing production-inventory tests),
+with zero failures/errors/skips, plus `:engine:detektMain` and `:engine:detektTest`.
+The unfiltered check and unchanged coverage hard gates are required separately.
+
+The same isolated GraphFold self-analysis fixture now completes selection and
+folding on **both revisions, 23 sites each**, with no duplicate identity,
+`ANALYSIS_FAILED` or `UNVERIFIED_ORIGIN`. It returns the changed report-text line as
+an `UNVERIFIABLE_CHANGE`. Overall verdict remains **FAIL** with `INCOMPLETE_GRAPH`
+diagnostics, including unresolved compiler inherited APIs and dynamic access.
+This establishes the project-JAR fix, not complete self-analysis equivalence.
+These runs are correctness checks, not performance acceptance.
+
+See [self-analysis evidence](research/validation/project-jar-self-analysis-2026-11-02.json)
+and [fixture](../fixtures/project-jar/README.md). The preceding origin probe below
+is retained as historical evidence of the duplicate-identity failure.
+
 ## PR review: generated declarations and origin-failure continuation (2026-11-02)
 
 Compiler provenance distinguishes Java synthetic enum-switch holders, Kotlin callable/property
