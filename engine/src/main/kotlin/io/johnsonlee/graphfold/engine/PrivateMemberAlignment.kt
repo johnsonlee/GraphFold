@@ -50,6 +50,7 @@ internal class PrivateMemberAlignment(private val base: ProgramSnapshot, private
             val identity = names[field.identity] ?: field.identity
             identity to field.copy(identity = identity)
         },
+        initializationTriggerMethods = head.initializationTriggerMethods.map { names[it] ?: it }.toSet(),
         ignoredFields = head.ignoredFields.map { names[it] ?: it }.toSet(),
         methodDiagnostics = head.methodDiagnostics.mapKeys { names[it.key] ?: it.key }.mapValues { (_, gaps) ->
             gaps.map { it.copy(callee = names[it.callee] ?: it.callee) }

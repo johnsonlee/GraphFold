@@ -30,7 +30,7 @@ internal class ResourceIndependentCalls(private val definitions: Map<Value, Valu
             it.declClassType.fullyQualifiedName == "java.lang.System" && it.name in setOf("out", "err") &&
                 it.type.toString() == "java.io.PrintStream"
         } == true
-        val scalarObject = signature in objectOutputContracts && call.args.singleOrNull()?.type?.toString() in scalarObjects
+        val scalarObject = signature in objectOutputContracts && call.args.singleOrNull()?.let { it.type.toString() } in scalarObjects
         return (signature in outputContracts || scalarObject) && systemStream
     }
 

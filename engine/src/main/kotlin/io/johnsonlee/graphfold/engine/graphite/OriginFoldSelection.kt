@@ -12,8 +12,10 @@ import org.objectweb.asm.commons.Remapper
 internal fun originFoldSelection(
     graph: Graph, rules: List<FoldRule>, owners: Map<String, String>,
     resolve: (Graph, FoldSites, Int) -> FoldSites, audit: RuleAuditCapture,
+    validate: (FoldRule) -> Unit = {},
 ): List<FoldSites> = rules.mapIndexed { index, rule ->
     runCatching {
+        validate(rule)
         val selected = when (rule) {
             is FoldSites -> resolve(graph, rule, index)
             is ConstantFold -> {
@@ -33,14 +35,16 @@ internal fun constantSelection(graph: Graph, rule: ConstantFold): List<CallSiteN
 private fun constantSites(rule: ConstantFold, sites: List<CallSiteNode>): FoldSites = FoldSites(
     select = rule.cypher,
     selected = sites.map { CallSiteKey(it.caller.signature, it.caller.descriptor, it.callee.signature,
-        it.callee.descriptor, requireNotNull(it.ordinal)) }.toSet(),
+        it.callee.descriptor, java.util.Objects.requireNonNull<Int>(it.ordinal)) }.toSet(),
     value = rule.value, arguments = rule.arguments,
 )
 
 internal fun remapOriginSelection(rule: FoldSites, owners: Map<String, String>): FoldSites {
     val remapper = object : Remapper(org.objectweb.asm.Opcodes.ASM9) {
-        override fun map(internalName: String): String = owners[internalName.replace('/', '.')]
-            ?.replace('.', '/') ?: internalName
+        override fun map(internalName: String): String {
+            val mapped = owners[internalName.replace('/', '.')] ?: return internalName
+            return mapped.replace('.', '/')
+        }
     }
     fun type(name: String): String {
         val element = name.removeSuffix("[]")
@@ -71,5 +75,6 @@ private fun CallSiteNode.foldProperties(): Map<String, String> = mapOf(
     "caller_signature" to caller.signature, "caller_descriptor" to caller.descriptor,
     "callee_class" to callee.declaringClass.className, "callee_name" to callee.name,
     "callee_signature" to callee.signature, "callee_descriptor" to callee.descriptor,
-    "ordinal" to requireNotNull(ordinal).toString(),
+    // constantSelection already rejects absent and synthetic ordinals.
+    "ordinal" to java.util.Objects.requireNonNull<Int>(ordinal).toString(),
 )

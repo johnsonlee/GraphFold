@@ -9,7 +9,7 @@ internal data class OriginProject(
     val methodDiagnostics: Map<String, List<io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap>> = emptyMap(),
 )
 
-internal data class OriginProjects(val base: OriginProject?, val head: OriginProject?, val diagnostics: List<String>)
+internal data class OriginProjects(val base: OriginProject, val head: OriginProject, val diagnostics: List<String>)
 
 /** Failed provenance stays blocking; raw identities still permit reporting independent diff observations. */
 internal fun prepareOrigins(

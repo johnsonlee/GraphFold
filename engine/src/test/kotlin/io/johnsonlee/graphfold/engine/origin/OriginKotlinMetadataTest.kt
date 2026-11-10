@@ -243,6 +243,24 @@ class OriginKotlinMetadataTest {
         assertEquals(KmClassifier.TypeAlias("library/Alias"), result.abbreviatedType?.classifier)
     }
 
+    @Test fun `generic constructor without an inferable JVM descriptor preserves absent signature and remaps its bound`() {
+        val declaration = base().apply {
+            typeParameters.add(KmTypeParameter("T", 0, KmVariance.INVARIANT).apply { upperBounds.add(type()) })
+            constructors.add(KmConstructor().apply {
+                valueParameters.add(KmValueParameter("value").apply {
+                    type = KmType().apply { classifier = KmClassifier.TypeParameter(0) }
+                })
+            })
+        }
+        val annotation = annotation(declaration)
+        assertEquals(null, decode(annotation).constructors.single().signature)
+        remap(annotation)
+        val result = decode(annotation)
+        assertEquals(null, result.constructors.single().signature)
+        assertEquals(KmClassifier.TypeParameter(0), result.constructors.single().valueParameters.single().type.classifier)
+        assertEquals(KmClassifier.Class("sample/Stable"), result.typeParameters.single().upperBounds.single().classifier)
+    }
+
     private fun base() = KmClass().apply { name = ".sample/Host\$1"; supertypes.add(type("kotlin/Any")) }
     private fun type(name: String = "sample/Host\$1") = KmType().apply { classifier = KmClassifier.Class(name) }
     private fun parameter(name: String) = KmValueParameter(name).apply { type = type() }

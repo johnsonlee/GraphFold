@@ -195,6 +195,26 @@ class OriginAlignmentTest {
         assertTrue(result.headOwners.getValue("Example$4$1") !in result.baseOwners.values)
     }
 
+    @Test fun `comparison label digest collisions block on either revision`() {
+        val origins = java("class Example { Object first = new Object() {}; Object second = new Object() {}; }",
+            "Example$1", "Example$2")
+        val collisionDigest: (ByteArray) -> ByteArray = { byteArrayOf(0) }
+        val base = alignOrigins(origins, emptyList(), digest = collisionDigest)
+        val head = alignOrigins(emptyList(), origins, digest = collisionDigest)
+        assertTrue(base.diagnostics.any { "collides with another class" in it })
+        assertTrue(head.diagnostics.any { "collides with another class" in it })
+    }
+
+    @Test fun `identical physical offsets in separate files cannot acquire each others anonymous parents`() {
+        val text = "class Example { Object outer = new Object() { Object inner = new Object() {}; }; }"
+        val first = java(text, "First$1", "First$1$1").map { it.copy(path = "first/Example.java") }
+        val second = java(text, "Second$1", "Second$1$1").map { it.copy(path = "second/Example.java") }
+        val result = alignOrigins(first + second, first + second)
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
+        assertEquals(4, result.baseOwners.values.toSet().size)
+        assertEquals(result.baseOwners, result.headOwners)
+    }
+
     private fun java(text: String, vararg owners: String): List<SourceOrigin> {
         val syntax = originSyntax("Example.java", text).sortedBy { it.range.start }
         assertEquals(owners.size, syntax.size, text)

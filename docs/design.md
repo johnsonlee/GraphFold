@@ -2,9 +2,9 @@
 
 状态：设计与实现并行收敛。已实现 engine、CLI、Gradle plugin，并扩展 Java/Kotlin 检测与解释能力；扩展后的全量回归仍在验证。已执行证据见 [validation.md](validation.md)，旧版本验收不能替代新增能力的验证。本文中的目标能力不等于已经交付的保证，当前边界见第 18 节。
 
-日期：2026-10-30。
+初稿日期：2026-10-30；Graphite observer 接入更新：2026-11-07。
 
-Graphite 上游需求与验收范围见 [dependency-aware proof problem statement](graphite-problem-statement.md)。
+Graphite 上游需求与交付状态见 [dependency-aware proof problem statement](graphite-problem-statement.md)。当前目标依赖为 `2.15.0`，采用同次建图的 folded-body observer、结构化 completeness 与 method receipts。当前依赖正式发布的 Maven 制品；历史 alpha1 隔离源码构建记录与当前回归、覆盖率及 CI 验收见 [validation.md](validation.md)。
 
 ## 1. 目标与判定契约
 
@@ -90,7 +90,7 @@ CLI 和 Gradle plugin 不互相调用，不复制分析逻辑。引擎不依赖 
 
 四个模块共享同一个版本号、同一次发布。engine 声明同版本 `gfc` 依赖，并直接定位解析出的 JAR；CLI 分发包携带该独立 JAR，Gradle plugin 通过传递依赖取得它。不再从 engine 编译结果筛选插件类或内嵌插件 JAR。发布门禁验证插件 SPI、engine POM 的同版本依赖及 CLI 分发包中的插件版本。javac 入口和共享协议只依赖 JDK，Kotlin compiler API 为 compile-only，由被分析项目的编译器提供。
 
-所有运行时 SPI 统一使用 `@AutoService` 注解，由 KSP 生成注册文件：engine 的 `SnapshotExtension`，以及 gfc 的 javac 入口、Kotlin registrar 和 command-line processor。不维护手写的 `META-INF/services` 配置。
+gfc 的三个运行时 SPI（javac 入口、Kotlin registrar 和 command-line processor）统一使用 `@AutoService` 注解，由 KSP 生成注册文件，不维护手写的 `META-INF/services` 配置。engine 的方法捕获改为直接调用 Graphite `loadObserved`，不再注册 `SnapshotExtension` 服务；observer 的状态只属于当前一次 load。
 
 Gradle 和直接 Kotlin 编译使用解析出的插件 JAR；Maven 为保留既有 annotation processor 配置并支持本地构建，将相同 JAR 按内容摘要暂存到分析工作区的本地 Maven 仓库。该内部坐标只用于缓存隔离，不是独立发布的插件版本。来源 schema、runId 和源码/class hash 校验继续保留，用于识别陈旧或不完整的产物；同步发布不替代目标 JDK、Kotlin 编译器及第三方插件组合的兼容性验证。
 
@@ -367,42 +367,46 @@ flowchart TD
 
 存在外部 class 不再直接否决资源证明。生产清单记录需要分析的实际 runtime 依赖；资源 diff 需要这些依赖时，Graphite 同时装载编译与运行时依赖，展开其方法体并启用跨方法数据流。应用入口仍由应用清单决定，依赖方法不提升为入口，也不参与应用源码差异归属。资源效果沿折叠后调用关系反向传播，纳入已捕获的 callback 目标、应用继承的可调用 API、类初始化、父类/default 接口初始化及字段声明者初始化。继承 API 的效果仅附着到对应应用 owner 的激活路径，并按 JVM 方法签名处理覆盖/隐藏，不扩大其他依赖类的入口。仅存在于依赖 JAR、但没有存活激活路径的读取，不会否决证明。两侧都取得依赖图证据且资源读取与变化 key 不相交，才可忽略对应资源内容差异。
 
-缺失方法体、native/abstract 目标、未闭合分派、未知初始化或动态名称保留 wildcard；图中的候选 callback 不等于分派已穷尽，不能据此删除原有未知目标。调用间的 bundle/key 参数尚未做上下文敏感求解，bundle 跨方法传递或逃逸仍可能保守误拦。`trim(CharSequence)` 的实际 receiver 未被证明为安全实现时仍阻断，不能仅因使用 Kotlin 字符串 API 放行。标准 JVM 标量模型按具体签名匹配；Kotlin Intrinsics 的模型另要求唯一类定义与引擎固定 stdlib 的字节一致，替换实现必须分析实际方法体。目录/JAR 内的自定义 ResourceBundle、Control、provider、含 `provides` 的 JPMS 模块、隐式 manifest Class-Path、普通类的多版本布局、嵌套归档、混合或转换后的应用 class、损坏的 class 仍不能声明资源消费者范围完整。
+缺失方法体、native/abstract 目标、未闭合分派、未知初始化或动态名称保留 wildcard；图中的候选 callback 不等于分派已穷尽，不能据此删除原有未知目标。只有已由具体签名、接收者和参数模型覆盖的直接调用，才能标记 `resourceEffectModeled`，免除该调用额外的资源不确定性。这个标记只用于资源证明；结构比较仍保留原有 dispatch gap，也不能借此豁免缺失方法体、失败捕获或 recovery。调用间的 bundle/key 参数尚未做上下文敏感求解，bundle 跨方法传递或逃逸仍可能保守误拦。`trim(CharSequence)` 的实际 receiver 未被证明为安全实现时仍阻断，不能仅因使用 Kotlin 字符串 API 放行。标准 JVM 标量模型按具体签名匹配；Kotlin Intrinsics 的模型另要求唯一类定义与引擎固定 stdlib 的字节一致，替换实现必须分析实际方法体。目录/JAR 内的自定义 ResourceBundle、Control、provider、含 `provides` 的 JPMS 模块、隐式 manifest Class-Path、普通类的多版本布局、嵌套归档、混合或转换后的应用 class、损坏的 class 仍不能声明资源消费者范围完整。
 
 应用中的未建模语义注解（含字段、参数和类型注解）可能引入配置注入或框架拦截，因此也使资源消费者范围保持未知；精确的编译器标记和 GraphFold 来源注解除外。无关依赖类的注解不会据此污染整个应用。原始文件/流读取、未建模 JDK 调用、非 ASCII 编码、重复路径内容冲突和增删整个 bundle 文件继续保守阻断。包内 `BOOT-INF/classes/` 等前缀也不会被猜测成 classloader 映射，只按实际资源路径匹配。此版不宣称覆盖 Spring 配置绑定、任意 Properties 流处理、Android `R.*`、自定义 ResourceBundle 控制器或框架隐式资源发现。即使资源证明失败，混合 PR 的源码义务仍继续分析，保留源码 diff finding 及 reason；不会因资源缺口提前丢弃源码证据。
 
-依赖资源分析仅在需要它的非源码证明中启用；当前实现会展开提供的依赖 class，尚未实现按需加载和跨分析结果缓存。任意 frontend/inventory 遗漏都会使这次依赖证据无效，因此无关依赖的前端失败仍可能保守阻断。实际能力探针与端到端回归见 [依赖分析记录](research/dependencies/README.md)；这些正确性测试不构成大型仓库性能验收，代表性多图负载、按方法完整性证据及上下文精度仍是上游协作与后续优化边界。
+依赖资源分析仅在需要它的非源码证明中启用。应用身份由应用清单界定，依赖体范围通过 `DependencyBodyScope.Declared(artifacts = listOf("*"))` 独立声明，当前仍 eager 展开提供的依赖。Graphite 已提供 `Reachable` 范围与预算证据，但 GraphFold 暂不切换：应用继承的 API、对外暴露的静态字段及其初始化可能没有普通调用点，必须先证明这些隐式入口也纳入展开。目录依赖单独暂存为确定性 JAR，避免与应用 loose classes 合并；编号按依赖数量补零，保留 Graphite 按路径排序时的 classpath 顺序。
+
+资源方法快照与图来自同一次 `loadObserved` 调用。observer 不需要把依赖提升为 application，也不需要第二张捕获图；返回的 final completeness 和 method receipts 共同约束快照使用。方法/dispatch 缺口按所属调用和资源效果传播；缺少 completeness、类解析失败、重复定义或不支持的 multi-release 布局仍可能产生全局阻断。multi-release 仅有版本化模块描述符时，须独立检查实际 archive：versioned class 必须是合法、无 service provider 的 `module-info.class`，并拒绝可执行类变体、损坏或重复条目及嵌套归档。该例外只消除模块元数据引起的 class-variant 缺口，不证明其他资源、module 或运行时布局安全。历史能力探针与端到端回归见 [依赖分析记录](research/dependencies/README.md)，新版本验收另行记录。按需展开、跨分析缓存和上下文精度仍是 GraphFold 后续工作；observer-enabled 代表性多图性能尚未验收。
 
 **适配范围。** Gradle 执行生产 `main` 输出及 `runtimeElements` 出站 artifact 的依赖任务，导出各项目实际 runtime classpath（包含应用输出）和 source-set 输出。发现额外可消费的 Java runtime variant 时，保留主源码分析，但不声明生产清单完整。Maven 使用 effective reactor 模型、单次 reactor 构建内独立导出的 runtime scope classpath，以及约定 JAR/package 输出；分析注入的 POM 仅在清单副本中还原为原 POM，真实构建输出保持可复用。自定义 Maven packaging、无法确定的资源映射或未支持的插件组合不宣称清单完整。source-only 编译器没有资源与打包模型，非源码 diff 会报告缺少生产清单。
 
 **增量与局限。** 不禁用增量编译或任务缓存；复用 checkout 时必须验证删除资源不会残留。Maven 对受支持的资源复制保存输入、目标和输出 hash，只有旧输入已删除且目标仍匹配所有权记录时才清理旧资源，不能删除任意生成输出。这个证明覆盖适配器明确导出的生产范围，不覆盖仓库外部署步骤、未声明的运行时文件读取、容器构建或外部 CI 发布逻辑。Gradle `runtimeElements` 未声明的自定义部署任务需要独立适配；不能把清单一致解释为所有部署环境的行为等价。完整清单哈希有额外 I/O 成本，尚无代表性多图负载的性能验收。
 
-## 7. Graphite 能力基线
+## 7. Graphite 能力基线与当前接入
 
-调研基线为本地 Graphite commit `5f1fd66543d617eb23a2258f3c14141383a33cc9`。以下结论是该版本的事实，不代表未来版本承诺。
+最初调研基线为 Graphite commit `5f1fd66543d617eb23a2258f3c14141383a33cc9`，随后在 2.12.0 验证旧 SPI 接入；这些记录保留为历史证据。当前目标依赖为 2.15.0；以下表格描述该版本的接入契约；测试是否执行及结果以 validation.md 的对应版本记录为准。
 
 | 能力 | 当前状态 | GraphFold 的处理 |
 | --- | --- | --- |
 | class/JAR/Boot JAR/WAR 建图 | `JavaProjectLoader` 可用 | 当前以应用 classes＋导出的依赖建图，最终产物参与生产输出比对；直接分析 Boot JAR/WAR 及其嵌套依赖的完整链路尚未验证 |
 | JVM Cypher 查询 | `Graph.query` 可用 | 复用 |
 | 跨过程数据流 | 配置开关，默认关闭 | 选点图显式开启；折叠后的分析图仅在资源证明时开启。普通源码比较沿用关闭配置；不将连通关系当作确定值证明 |
-| Cypher select 折叠编排 | Rust CLI 两次建图 | JVM 消费侧需实现等价的编排或抽取上游接口 |
+| Cypher select 折叠编排 | 未折叠选点图与 folded build 分离 | 每个 revision 独立选点，再以 `loadObserved` 同时取得折叠图与方法快照；observer 不替代选点图 |
 | 折叠规则 | `ConstantFold`、`FoldSites`、`FoldPlan` | 复用规则语义 |
 | 方法内常量传播和分支折叠 | 迭代到不动点 | 复用并验证边界 |
 | 跨过程常量传播、wrapper 专门化 | 不是现成通用能力 | 作为独立扩展，不假定已支持 |
-| 原始/折叠后 IR 成对输出 | 无完整的公共快照接口 | 优先明确最小输出接口 |
-| class 扩展 SPI | 已在固定版本 2.12.0 验证折叠后 body 捕获 | `SnapshotExtension` 使用 `@AutoService(GraphiteExtension::class)`，由 KSP 生成 ServiceLoader 注册文件；测试从打包后的 engine JAR 验证加载，升级必须重跑集成测试 |
+| 折叠后方法输出 | `JavaProjectLoader.loadObserved` 与 `FoldedBodyObserver` | 同一次 load 观察应用及依赖方法，接收 immutable snapshot 和 method receipt；不保存可变前端 body |
+| 原始/折叠后来源 | method folding/recovery receipt 与 final FoldReport | 不把方法级 receipt 当作任意源码表达式到 IR 的完整多对多映射 |
+| class 扩展 SPI | 旧 2.12.0 接入使用 `SnapshotExtension` | 当前方法捕获不再依赖扩展发现，也不构建辅助捕获图；gfc 的编译器 SPI 保留 |
+| 依赖体范围 | `DependencyBodyScope.None`、`Declared`、`Reachable` | 资源证明先用 Declared eager 范围，保留继承/字段等隐式入口；按需展开另行验证 |
 | 合成成员规范化 | internal `SyntheticIdentity` | 参考并验证后复用，不当作通用等价证明 |
 | 精确源码位置 | 调用点多处行号为 null，无完整列范围 | GraphFold 补源码映射 |
-| 建图完整性 | 存在跳过方法/控制流的降级路径 | 补结构化阻断诊断 |
+| 建图完整性 | `AnalysisCompleteness` 提供 scope、artifact/class/method 状态及 call-site gaps | 以 final evidence 校验同次 load 的 receipts；成功捕获 body 不覆盖分派缺口，缺失证据不能证明无副作用 |
 
-在固定依赖 Graphite 2.12.0 中，`interproceduralDataflow` 在方法体转换与函数式调用解析之后追加
+历史 2.12.0 源码审计确认，`interproceduralDataflow` 在方法体转换与函数式调用解析之后追加
 `PARAMETER_PASS` / `RETURN_VALUE` 边，不改变折叠后的方法体；lambda/callback 目标解析由独立配置控制。
 因此普通源码分析的最终图关闭该开关，继续以相同的折叠 IR 与调用关系比较；两条选点路径保持开启，
 允许 Cypher 沿 helper 的参数及返回值选点。资源分析的最终图保留开启。图的连通性不能证明一般 wrapper
 的返回值是常量，这一边界由模式一致性及 helper-return 选点回归验证，不构成性能验收。
 
-### 7.1 已验证的范围
+### 7.1 历史版本已验证的范围
 
 调研期间运行了以下六个测试类，共 98 个测试，全部通过：
 
@@ -413,14 +417,14 @@ flowchart TD
 - `ConstantEqualsFoldTest`：10。
 - `JavaProjectLoaderTest`：38。
 
-这些测试验证了现有功能的特定行为，不是 GraphFold 的端到端验收，也不是性能证据。后续 GraphFold 集成测试已验证 SPI 捕获、Java 源码列映射与规范化 IR 比较；真实业务仓库及一般语义等价仍未验证。
+这些测试验证了当时版本的特定行为，不是当前 observer 接入的端到端验收，也不是性能证据。后续旧版 GraphFold 集成测试验证了 SPI 捕获、Java 源码列映射与规范化 IR 比较；它们不能代替 2.15.0 的 observer、receipt 与完整性回归。真实业务仓库及一般语义等价仍未验证。
 
 ### 7.2 不能直接继承的保证
 
 - 关系图不完整保留算术、数组索引和语句级控制流，图哈希相等不足以通过。
 - `--fold-strict` 只处理 unmatched，不能替代对 unsupported 的检查。
-- adapter 可能在方法级 OOM/解析问题后继续建图；超过 2,000 条语句的方法会跳过关系图控制流提取。必须将这些情况结构化报告。
-- `bodyInterceptionFallbackCount` 是 APK 专用计数，不代表 Java 分析完整性。
+- adapter 的方法级 OOM/解析降级不能被图节点的存在掩盖。`INCOMPLETE`、`RESOLUTION_FAILED` 等状态显式保留；`ANALYZED_WITHOUT_CONTROL_FLOW` 只表示 body/dataflow 已读，不代表关系图 branch scope 完整。observer 或快照构造失败会中止当前 load，已收到的临时观察结果必须丢弃。
+- `bodyInterceptionFallbackCount` 是 APK 专用计数，不代表 Java 分析完整性。GraphFold 显式拒绝 APK 文件输入（名称以 `.apk` 结尾的 JVM class 目录仍允许），JVM 路径仍使用方法 receipt 中的 recovery 证据阻断不完整证明。
 - 调用点 ordinal 是同 caller 内同 callee 的调用排名，不是完整执行顺序。
 - 方法身份使用包含返回类型的 `identity`，不能仅用 `signature`。
 - 声明了 `buildCallGraph` 或分析算法枚举不代表有完整可达性证明；当前附加 call graph 结果并不直接补入图，部分算法配置回退到 CHA。
@@ -434,7 +438,9 @@ flowchart TD
 3. 解析稳定调用点 key：caller/callee 的完整描述符及 ordinal；不得跨 revision 复用局部节点 ID。
 4. 保留派生 lambda 调用的 origin，并检查选中范围是否覆盖同一实际调用可能运行的目标；不能把部分目标选择扩大成全部目标折叠。
 5. 校验 `args`、`receiver_args` 和 provenance，形成该 revision 的 resolved plan。
-6. 通过同一前端重新物化方法体并执行折叠，输出折叠后 IR、变换记录和完整性状态。首版可以保持现有完整第二次构建；深入比较由证明义务及其依赖选择，不假定现有 loader 已支持按需局部折叠。
+6. 调用 `loadObserved` 执行完整 folded build，在该次调用内接收方法快照与 receipt；成功返回后，将其与同次 graph、FoldReport 和 final completeness 对账，再用于证明。选点图不是辅助捕获图，不得跨两次 load 混用 callback 或 receipt。深入比较由证明义务及其依赖选择，生产资源范围仍为 declared eager scope。
+
+选点完整性先依据 Graphite 解析出的 Cypher AST 分类，不靠字符串或正则猜测查询语义。仅认证单个 CallSite 节点的固有属性与标量谓词、并返回该节点的窄查询形式；它不依赖 native 实现、branch scope 或已解析 callback targets，因此无关的这些缺口不会否决此类选点。方法提取失败仍阻断，派生目标还须通过独立的分派完整性检查。关系路径、聚合、其他图属性及未认证表达式保守要求完整图证据，不能用后续折叠消失的缺口倒推之前查询正确。
 
 原始选点图可以在多个假定场景间复用，前提是查询选择不依赖折叠后的结果且所有输入身份一致。base/head 各自选点，不能强求调用数量相等。
 
@@ -489,7 +495,7 @@ enabled(OTHER_K);
 
 ### 9.1 方法快照
 
-建议输出独立、不可变、可逐方法消费的快照，包含：
+当前通过 `loadObserved` 在同一次 folded build 中接收独立、不可变、可逐方法消费的 `FoldedBodySnapshot` 和 `MethodObservationEvidence`。GraphFold 在 callback 中转换为自己的比较表示，收集器分别属于 base/head 的一次 load。回调顺序不是方法身份；在 load 成功返回前，观察结果都不能作为完整证明。比较表示需要包含：
 
 - 完整方法身份、声明属性及相关注解。
 - 有类型的操作、操作符、有序操作数、常量精确值。
@@ -503,7 +509,7 @@ enabled(OTHER_K);
 
 方法之外必须另有 class/field 声明清单：继承与接口关系、类与成员可见性、static/final/volatile 等属性、字段 ConstantValue、注解及泛型 metadata，以及初始化方法。只有方法快照不能覆盖纯声明变更；这些属性是否影响特定程序的行为需要对应规则，不得直接忽略。
 
-推荐的上游扩展位置是：折叠 mutation 前、全部 cleanup 后、未触及方法的处理位置。当前固定版本的 class SPI 已通过正确性原型验证，可捕获 cleanup 后的 IR；折叠前后 provenance 和稳定的上游快照契约仍是缺口。
+Graphite 2.15.0 的 observer 独立于 class SPI，覆盖该 load 实际处理的应用和依赖方法，并在同一返回值提供 graph、FoldReport 与 completeness。方法 receipt 记录 identity、origin/role、application 分类、处理状态及可用的 folding/recovery 证据；最终 call-site gaps 仍以返回图为准。无 body、未展开、未解析或缺失 callback 不能被当成成功的空方法。此接口仍暴露 SootUp 类型，不是 backend-neutral IR；完整的源码/指令多对多 provenance、跨分析缓存和落盘策略仍需 GraphFold 自身实现与验证。
 
 ### 9.2 分层比较
 
@@ -519,6 +525,16 @@ enabled(OTHER_K);
 SSA、内存依赖和别名分析是提高精度的候选手段，不是声称现有 Graphite 已提供的能力。未支持的变化必须进入 `UNVERIFIABLE_CHANGE` 或阻断诊断。
 
 局部比较成立还需要证明所选范围足以覆盖本次变化的影响。某个方法折叠后一致，不能单独解除同一声明变化对其他使用者的义务。多个义务共享比较结果时，必须携带该结果的假定、上下文及完整性前提。
+
+源码证明可用独立的 dispatch coverage 论证免除单个 `dispatchOnly` 缺口：实际比较闭包之外的所有应用方法，其未经过成员对齐或比较规范化的 folded canonical 必须未变；全局类/字段声明、入口、初始化、override 及来源/嵌套元数据必须一致，compiler provenance 已验证，且不存在 alignment 或 normalization 擦除的差异。闭包之内的方法仍须逐项完成比较。这样证明的是遗漏的 dispatch edge 不会隐藏闭包外另一项应用实现变化，不是已经穷尽未知调用目标。body 提取失败、recovery、opaque observation 及其他 gap 不由此免除；资源效果证明和选点完整性检查也不使用此例外，`resourceEffectModeled` 本身不能授权源码证明。
+
+另有两个独立且用途不同的论证。第一，扫描全部已提供应用／依赖 class header 和所需 JDK 祖先声明；只有完整、无重复、无循环、无缺失祖先的输入集合，才能证明某个具体应用类没有任何子类型；没有 superclass 的普通 class 和覆盖运行中 JDK 类型的输入定义均拒绝该证明。调用必须是折叠后 body 中实际存活的 direct call，且目标方法由该非抽象、非接口应用类直接声明；派生 target、继承方法和未检查布局不能借用此证明。该 leaf-owner 证明只消除这一个调用的 dispatch 不确定性，不消除目标 body、recovery、资源效果或来源观察缺口，也不参与 Cypher 选点。它依赖封闭的构建输入集合；运行时生成／加载的新子类仍属于未建模能力边界，不能声称已被 class header 扫描排除。
+
+第二，当当前 diff 义务自己的方法已有存活表示差异，并且在既定入口／初始化／构造对象模型下，不经过剩余未知 dispatch 边即可到达，或当前 CLASS 义务 owner 自己的初始化依赖边发生变化，且该 owner 在包含新增／删除边的同一版本可独立到达时，该义务已经比较失败。METHOD 义务还有一个精确的初始化特例：实际字节码证明该接口非 abstract、非 static 方法（包括 private 方法）的集合从空变为仅包含当前义务的方法，或反向移除；两侧 class shape 完全一致，并且同一版本独立到达的类新增／删除了该接口初始化依赖。这覆盖无需调用这些接口方法就能激活接口静态初始化的 JVM 语义。已有触发方法的 body／metadata 修改、static／abstract 方法、一次新增多个触发方法或同时改变类层次时，不借用此证明。新增／删除字段也可以提供独立差异：字段必须只存在于一侧，并且在字段存在的同一版本中独立到达的已变更方法，保留至少一次该字段引用，而且引用次数与另一版本不同；源码字段以精确 owner＋名称连接到两版本联合清单中的唯一 JVM 字段描述符；同名多 descriptor 或 descriptor 改变不使用此证明。未使用字段、只在未知 dispatch 后到达的写入、仅修改现有字段或无关方法差异都不能借用这个证明。未穷尽的调用目标不能消除这个独立差异，报告以 `SURVIVING_DIFFERENCE` 解释 FAIL；不会把另一个义务的差异借给本义务，也不会因此产生 PASS。为避免借用 partial dispatch 的派生 target，独立 witness 可达性不沿带有任何剩余 dispatch 缺口的方法的出边传播。未知目标证据仍保留于快照；body/recovery、未验证 provenance、归一化擦除和资源证明继续使用原有阻断规则。这是表示差异证据，不是对任意 JVM 行为不等价的确认。
+
+Kotlin 的 class 级源码范围只在文件内所有 emitted owner 都能通过受支持 Kotlin metadata 的完整类名唯一对应到非 local PSI 声明时收窄；同一顶层声明中的 outer、companion 和 nested owner 共用顶层声明范围，以保留跨 owner 的 compiler lowering。出现 facade、lambda、local／匿名、重复或未知 metadata owner 时，整个文件的 class 范围保持原有保守 fallback，避免较小范围把未知 owner 的义务排除。named object／companion 的 init 块仅在同文件／模块内有唯一 `<clinit>` 的实际行表证据、候选 owner 的 metadata 必须唯一对应该 object 或其 companion 的真实 enclosing class，且初始化块不与其他初始化块、property／delegate／accessor 或 function 的源码共享行时生成 METHOD 义务；instance init、构造器重载、缺失行表或多候选仍保留 class 义务。
+
+代价是保守误拦：某个看似不可达但发生变化的方法若位于实际比较闭包之外，与 unknown call 同时出现仍可能阻断。原始方法变化集合和全局元数据比较在 snapshot pair 的 coverage 对象中计算一次，各义务只检查其真实比较集合是否覆盖所有变化；这避免每个义务重复扫描全库，但不是经过验收的性能收益。
 
 ### 9.3 可达性与方法增删
 
@@ -639,7 +655,7 @@ Java 方法参数、返回值与构造参数的 descriptor 由已解析类型的
 
 **Kotlin 兼容性必须分层声明。** 相同 provider binary 已实测 1.9.20/K1、2.0.21/K2、2.1.20/K2、2.2.10/K2，以及 2.1.20 使用 language 1.9/K1；覆盖同一行多个 object、嵌套、初始化器、companion、inline 复制与 suspend callback。每个组合都验证 LF、CRLF、CR、BOM+CRLF 四种输入，共 20 次成功编译，每次产生 15 条已核对的物理来源记录且无 unresolved；未支持版本（测试 1.9.0）明确拒绝。可复现脚本与日志见 [编译器验证](research/compiler/README.md)。这只证明来源捕获，不证明不同编译器的 lowering 产物行为等价。当前 metadata 归一化最高验证至 2.1 schema；2.2 来源捕获成功不代表 2.2 的完整检测已支持。contracts、type aliases、类型 annotation 的额外 metadata 模型尚未实现，遇到时明确阻断。
 
-验收同时覆盖正例与反例：新增 32 组 Java/Kotlin 配对 fixture，包含重编号、同一行多个对象、重复对象、嵌套、字段/实例/静态初始化、super 构造参数、受 gate 控制和未调用代码；另有真实编译的缺失调试信息、损坏 sidecar、inline 副本及原始 Cypher 选点测试。22 组历史生成符号定位 fixture 仍保留。最新全量测试与各模块 95% 分支硬门禁状态以 [validation.md](validation.md) 为准，不能以单独的编译器探针替代全链路验收。
+验收同时覆盖正例与反例：新增 32 组 Java/Kotlin 配对 fixture，包含重编号、同一行多个对象、重复对象、嵌套、字段/实例/静态初始化、super 构造参数、受 gate 控制和未调用代码；另有真实编译的缺失调试信息、损坏 sidecar、inline 副本及原始 Cypher 选点测试。22 组历史生成符号定位 fixture 仍保留。最新全量测试与各模块 100% 分支硬门禁状态以 [validation.md](validation.md) 为准，不能以单独的编译器探针替代全链路验收。
 
 ## 11. 完整性与 verdict 汇总
 
@@ -704,7 +720,7 @@ CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他�
 
 ## 14. 验证计划
 
-优先验证从真实 Java 源码到 verdict 和位置的完整链路，SPI 验证不在优先路径。
+优先验证从真实 Java/Kotlin 源码到 verdict 和位置的完整链路。当前方法捕获改为 observer，应验证同次 load 的 receipt、final completeness 及应用/依赖身份；编译器 SPI 兼容性另行保留回归。
 
 ### 14.1 成对程序语料
 
@@ -742,7 +758,7 @@ CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他�
 
 1. 固定输入规则编码、位置契约、首版构建与源码语言范围，建立 diff → 类/字段/方法/表达式 → 证明义务的源码索引原型与语料。
 2. 完整构建两侧 Graphite 图，验证 Cypher 选点、双向依赖展开与真实 Java 用例折叠结果，明确 unsupported 边界。
-3. 验证义务驱动的 IR 比较、精确源码关联与内联常量等隐式依赖，确定最小前端输出接口；固定版本 SPI 已验证，但不把其行为外推到未测试版本。
+3. 验证义务驱动的 IR 比较、精确源码关联与内联常量等隐式依赖；在固定版本上验证 observer 输出、receipt 对账和失败路径，不用旧 SPI 结果代替新接口验收。
 4. 完成完整性诊断与逐场景证明账本，证明 diff 或依赖未覆盖的改动不会被放行。
 5. 实现引擎编排、Git 缓存/隔离 checkout、构建适配及结构化 findings。
 6. 接入 CLI、Gradle plugin 和 CI 正确性验证。
@@ -756,26 +772,34 @@ CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他�
 | 构建系统 | 已有 Gradle wrapper/Maven/plain JVM 适配；扩展布局需独立验证 |
 | Git 实现 | JGit 7.8，共享 bare objects、独立元数据与 alternates checkout |
 | JVM select 编排 | 复用现有 Kotlin Cypher，补齐 Rust 流程中的选点与来源校验 |
-| IR 输出接口 | 已验证 Graphite 2.12.0 SPI 捕获；流式快照尚未实现 |
+| IR 输出接口 | Graphite 2.15.0 `loadObserved` 方法回调；同次 load 的 immutable snapshot、receipt 与 final evidence；GraphFold 落盘尚未实现 |
 | 精确源码映射 | 当前 JavaParser + Kotlin PSI/ASM；不采用 UAST，多对多 IR 来源映射仍需扩展 |
 | 框架入口 | 首版保守处理；由目标 backend 的实际框架决定适配顺序 |
-| 依赖发布 | 已固定 Graphite 2.12.0；升级须重新验证 SPI 与折叠语义 |
+| 依赖发布 | 目标为 Graphite 2.15.0 正式发布制品；优先 Central，再使用按 group 限定的 GitHub Packages；凭据与验收见 README 和 validation.md |
 
 ## 16. Graphite 源码索引
 
-以下路径均相对于 [Graphite](https://github.com/johnsonlee/graphite/tree/5f1fd66543d617eb23a2258f3c14141383a33cc9) 的调研基线：
+历史调研路径相对于 [Graphite 基线](https://github.com/johnsonlee/graphite/tree/5f1fd66543d617eb23a2258f3c14141383a33cc9)，不能据此推定当前 API 未变化：
 
 - `frontend/jvm/core/src/main/kotlin/io/johnsonlee/graphite/input/ProjectLoader.kt`：loader 配置。
 - `frontend/jvm/core/src/main/kotlin/io/johnsonlee/graphite/input/ConstantFold.kt`：规则、选点身份、provenance、报告。
 - `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/JavaProjectLoader.kt`：输入布局与建图入口。
 - `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/ConstantFolding.kt`：Jimple 折叠与清理。
 - `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/SootUpAdapter.kt`：图投影、方法生命周期和降级路径。
-- `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/GraphiteExtension.kt`：当前固定版本已验证的 SPI 接入点。
+- `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/GraphiteExtension.kt`：历史 SPI 接入点，当前 engine 不再依赖它捕获方法。
 - `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/SyntheticIdentity.kt`：合成成员规范化。
 - `frontend/jvm/cypher/src/main/kotlin/io/johnsonlee/graphite/cypher/GraphCypherExtensions.kt`：JVM 查询入口。
 - `frontend/jvm/query/src/main/kotlin/io/johnsonlee/graphite/cli/BuildCommand.kt`：JVM build 和 strict 检查。
 - `cli/src/build.rs`、`cli/src/fold.rs`：两阶段 select 编排。
 - `docs/constant-folding.md`：折叠语义与限制。
+
+当前 [2.15.0](https://github.com/johnsonlee/graphite/tree/v2.15.0) 接入另读取：
+
+- `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/FoldedBodyObserver.kt`：逐方法观察、receipt 和 callback 失败契约。
+- `frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/FoldedBodySnapshot.kt`：独立方法快照。
+- `frontend/jvm/core/src/main/kotlin/io/johnsonlee/graphite/input/ObservedJavaLoad.kt`：同次建图的最终结果。
+- `frontend/jvm/core/src/main/kotlin/io/johnsonlee/graphite/input/DependencyBodyScope.kt`：独立依赖体范围与展开预算。
+- `frontend/jvm/core/src/main/kotlin/io/johnsonlee/graphite/graph/AnalysisCompleteness.kt`：结构化状态、来源、重复定义与分派缺口。
 
 ## 17. 高精度检测的能力边界、gap 与 trade-off
 
@@ -799,9 +823,9 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 
 | Gap | 当前已有基础 | 为高精度还需要什么 | 未解决时的行为 | 优先级 |
 | --- | --- | --- | --- | --- |
-| 完整比较表示 | Jimple 方法体存在，关系图有投影缺失 | 流式 IR、声明清单、异常/同步/内存操作、覆盖检查 | 涉及未建模变化则 FAIL | P0 |
+| 完整比较表示 | 同次 load 的 immutable folded-body snapshot；关系图仍有投影缺失 | GraphFold 表示覆盖检查、声明清单及落盘/内存策略 | 涉及未建模变化则 FAIL | P0 |
 | 选点到实际调用的对应 | CallSite key、origin、args、receiver_args、provenance | JVM 编排与 Rust 选点约束一致，避免部分目标扩大折叠 | 拒绝不可靠选点 | P0 |
-| 分析完整性 | 部分日志、FoldReport | 方法/类/控制流解析状态、跳过原因、严格模式 | 缺失证据阻断，不能只看图是否产出 | P0 |
+| 分析完整性 | 结构化 completeness、method receipt、FoldReport | 验证 receipt 与 final evidence 一致，并把相关缺口绑定到证明义务 | 缺失证据阻断，不能只看图是否产出 | P0 |
 | 变换来源 | 调用点身份及折叠统计 | 折叠前后操作来源，多对多映射、删除依据 | 无法归因则阻断 | P0 |
 | 精确行列与 diff 归属 | Git diff、源码可得 | JavaParser/Kotlin PSI 源码适配器、descriptor/调试信息关联、范围校验 | 不猜位置，用阻断诊断 | P0 |
 | 方法外变化 | 部分声明/注解/资源图 | class/field inventory、配置/依赖/构建变更处置 | 未支持的语义变化 FAIL | P0 |
@@ -814,7 +838,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 | 多场景组合 | 多条规则可共同折叠 | 场景枚举、共享分析、可证明的场景归并 | 超预算 FAIL，不抽样通过 | P0 正确执行，P1 优化 |
 | 大仓库资源 | 共享对象 checkout 方案、mmap builder、方法流式处理基础 | 全流程预算、缓存身份、按需源码索引、故障清理 | 资源耗尽明确 FAIL | P0 可用性，后续性能验收 |
 | Diff 到证明对象 | Git 行级 diff、源码索引候选 | 类/字段/方法/表达式映射、双侧对象配对、联合义务与全量变更覆盖 | 未绑定或未分类变化保持未决 | P0 |
-| 依赖范围完整性 | Graphite 关系索引 | 双向展开、常量内联与初始化等隐式依赖、未知边界和闭合证明 | 扩大范围或 FAIL，不能裁剪后通过 | P0 |
+| 依赖范围完整性 | 独立 dependency body scope、来源与展开状态 | GraphFold 隐式入口闭合、按需范围及预算接入、未知边界模型 | 扩大范围或 FAIL，不能裁剪后通过 | P0 |
 
 ### 17.3 明确的 trade-off
 
@@ -825,7 +849,7 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 | 不确定性处理 | 无法证明就失败，避免已知缺口漏放 | 首版可能较多误拦，需报告具体原因 | 把 unsupported 或空 findings 当 PASS |
 | 图与 IR 分工 | Graphite 保留查询优势，IR 保留完整语义 | 两种表示的身份和来源需要维护 | 仅靠关系图相同判等价 |
 | Cypher 两阶段 | 保持现有选点与折叠语义 | 对每侧需要原图构建及折叠处理 | 未证明一致就直接从源码猜选点 |
-| 方法级流式接口 | 降低重复物化和全库常驻需求 | 需要上游明确接口与生命周期契约 | 全库保留可变 body，或未经验证依赖 SPI |
+| 方法级 observer | 同次 load 输出 immutable body 与 receipt，无需辅助捕获图 | 仍耦合 SootUp；GraphFold 当前保留比较快照，observer-enabled 资源/性能尚未验收 | 全库保留可变 body，或忽略 final completeness |
 | 保守可达性 | 未知入口的方法保留 | treatment helper 可能被误拦 | 所有已知调用点死就宣称方法死 |
 | 上下文分析 | 更精确处理共享 wrapper | 状态数量、内存和计算成本增加 | 为提升折叠率把所有 caller 混为同一假定 |
 | JavaParser / Kotlin PSI | 通过统一源码索引提供精确文本范围 | 两套适配器的一致性、PSI 版本和依赖成本；仍有来源映射 gap | 把 AST 范围或字节码行号当作完整 IR 来源映射 |
@@ -858,10 +882,10 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 - Git 使用 JGit 7.8、共享 bare object cache 与 alternates checkout，原始 blob materialization 不调用 checkout hook 或 smudge filter。Git 可执行文件不是运行前提；无 Git 的测试及清理验证结果以 validation.md 为准。checkout 使用持久排他租约，关闭后保留增量状态；进程退出释放文件锁，但任意崩溃点恢复、磁盘配额和自动淘汰尚未完整验收，不提供未经测量的大仓库内存或吞吐 SLA。
 - Java 使用 JavaParser；Kotlin 使用固定 2.1.20 的 headless PSI，并从 ASM 清单获取实际 JVM 身份。不采用 UAST。统一使用 UTF-16、一基、结束位置不包含的坐标；Kotlin 歧义映射可回退 CLASS obligation，缺失 ownership 则阻断。
 - 构建适配包含约定布局的 Java/Kotlin/混合源码、Gradle wrapper 与 Maven。任意 compiler plugin、生成器、Multiplatform、自定义 source set、依赖锁定及环境 provenance 不属于已验证的通用保证。
-- Graphite 固定 2.12.0。两次建图完成 Cypher 选点与折叠，通过公开 SPI 捕获折叠后 Jimple，以 ASM 清单交叉检查缺类、缺方法及声明信息，无需修改 Graphite 上游。
-- 当前快照保存在内存。未实现流式落盘、增量图、跨过程常量专门化、一般符号等价证明或自动场景缩减。
+- Graphite 目标版本固定为 2.15.0。需要 Cypher 选点时仍构建 plain selection graph，随后 `loadObserved` 在同一次 folded build 返回方法快照、method receipts、图及最终完整性证据。`SnapshotExtension` SPI 和辅助捕获图均不再使用；ASM 清单仍独立检查缺类、缺方法及声明信息。新版本的测试结果以 validation.md 对应记录为准。
+- 当前快照保存在内存。未实现流式落盘、增量图、跨过程常量专门化、一般符号等价证明或自动场景缩减。源码侧的 `dispatchOnly` 例外要求第 9.2 节的独立覆盖证明；资源模型不能代替它，结构/元数据变化或未完成 body 证据不会因此被忽略。
 - 存活结构差异输出 `UNVERIFIABLE_CHANGE`，不冒充已确认业务反例。基础设施失败、变化的非 class 生产产物或缺失分析信息通过 blocking diagnostic 阻断；非源码 diff 按第 6.1 节的实际产物证据判断。
-- 质量门禁要求各模块行覆盖率至少 90%、分支覆盖率至少 95%，测试与 detekt 同属 `check`。不能以此前 90% 门禁的历史结果代替当前验收；各模块最新覆盖率及执行记录见 [validation.md](validation.md)。
+- 质量门禁要求各模块行覆盖率 100%、分支覆盖率 100%，测试与 detekt 同属 `check`。不能以此前 90% 门禁的历史结果代替当前验收；各模块最新覆盖率及执行记录见 [validation.md](validation.md)。
 - 发布 workflow 支持 tag 发布与 dry-run。已完成的本地产物验收不代表已经执行远程发布。
 
 ### 18.1 变更分类与判定原因
@@ -922,4 +946,4 @@ fixture 按 Java 语义族、Kotlin 对等语义族、Kotlin 独有特性、移�
 
 JDK 声明读取使用 `ModuleFinder.ofSystem()` 和 `ModuleReader`，按运行中 JDK image 的模块包归属查找，包括由 application loader 定义的 `jdk.compiler` 等模块。不会搜索 GraphFold 自身的 application/context classpath；缺失的第三方依赖不能借用宿主依赖放行。该读取统一用于继承 API、来源层级及引用存在性检查，不扩大外部调用的安全效果模型，也不证明目标运行时采用不同 JDK 时等价。
 
-Graphite 2.12.0 暂无结构化完整性回调。适配器只接受该版本已审计的顶层诊断前缀，并按整个 verbose callback 从 offset 0 判断，不 trim、不拆分内嵌换行。枚举/常量转储中的 `Failed to` 等业务文字不能变成阻断诊断；真实跳过方法、控制流失败、依赖提取失败和恢复回退仍阻断。升级 Graphite 时必须重新审计此文本协议，结构化诊断仍是上游能力需求。
+2.12.0 的旧适配以已审计的顶层日志前缀识别遗漏，并防止业务字符串伪造诊断；这是历史行为。当前 2.15.0 接入使用 final `AnalysisCompleteness` 与同次 load 的方法 receipt，结构化状态不是通过业务字符串匹配得到。`methods` 状态表为稀疏表，缺项不能脱离类状态及图中声明直接当成 ANALYZED。`ANALYZED_WITHOUT_CONTROL_FLOW` 不证明 branch scope 完整；native/no-body、解析/提取失败和未闭合 dispatch 仍须模型或阻断。一个成功的 body callback 不能消除最终图中的 `DISPATCH_UNRESOLVED`、`DISPATCH_PARTIAL` 或 `DISPATCH_SATURATED`。类解析失败、重复类定义、未知运行时版本选择等全局范围问题仍保守阻断；这些证据也不替代 GraphFold 的入口、资源语义和义务关联。

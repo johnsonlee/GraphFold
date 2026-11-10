@@ -36,7 +36,21 @@ val artifactVersion = providers.gradleProperty("version").orElse(providers.provi
 allprojects {
     group = "io.johnsonlee.graphfold"
     version = artifactVersion
-    repositories { mavenCentral() }
+    repositories {
+        mavenCentral()
+        // The upstream release publishes independently to Central and GitHub Packages.
+        maven {
+            name = "graphitePackages"
+            url = uri("https://maven.pkg.github.com/johnsonlee/graphite")
+            content { includeGroup("io.johnsonlee.graphite") }
+            credentials {
+                username = providers.gradleProperty("graphitePackagesUsername")
+                    .orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                password = providers.gradleProperty("graphitePackagesToken")
+                    .orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+            }
+        }
+    }
 }
 
 subprojects {
@@ -80,15 +94,32 @@ subprojects {
         dependsOn(tasks.withType<Test>())
         violationRules {
             rule {
-                limit { counter = "LINE"; minimum = "0.90".toBigDecimal() }
-                limit { counter = "BRANCH"; minimum = "0.95".toBigDecimal() }
+                limit { counter = "LINE"; minimum = "1.00".toBigDecimal() }
+                limit { counter = "BRANCH"; minimum = "1.00".toBigDecimal() }
             }
         }
     }
     tasks.named("check") { dependsOn("jacocoTestReport", "jacocoTestCoverageVerification") }
     plugins.withId("maven-publish") {
         extensions.configure<PublishingExtension> {
-            repositories { maven { name = "releaseVerification"; url = rootProject.layout.buildDirectory.dir("repository").get().asFile.toURI() } }
+            repositories {
+                maven {
+                    name = "releaseVerification"
+                    url = rootProject.layout.buildDirectory.dir("repository").get().asFile.toURI()
+                }
+                maven {
+                    name = "GitHubPackages"
+                    url = uri(providers.gradleProperty("githubPackagesRepository")
+                        .orElse("https://maven.pkg.github.com/johnsonlee/graphfold").get())
+                    // File repositories exercise the exact publication tasks without remote credentials.
+                    if (url.scheme != "file") credentials {
+                        username = providers.gradleProperty("githubPackagesUsername")
+                            .orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                        password = providers.gradleProperty("githubPackagesPassword")
+                            .orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+                    }
+                }
+            }
 
         }
     }

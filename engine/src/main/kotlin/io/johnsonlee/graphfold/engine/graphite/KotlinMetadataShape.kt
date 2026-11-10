@@ -19,8 +19,6 @@ internal object KotlinMetadataShape {
             normalizeMetadata(annotation)
         } catch (_: IllegalArgumentException) {
             null // Caller must retain the raw annotation and emit a blocking metadata diagnostic.
-        } catch (_: IllegalStateException) {
-            null // Strict writer may reject metadata decoded from an unsupported version.
         }
     }
 
@@ -39,9 +37,11 @@ internal object KotlinMetadataShape {
             else -> return annotation // Lambda and multifile facade metadata are retained in full.
         }
         removePrivateDeclarations(container)
+// The pinned metadata writer wraps malformed state in IllegalArgumentException.
         val encoded = decoded.write()
         return AnnotationNode(annotation.desc).also { normalized ->
-            normalized.values = annotation.values.orEmpty().toMutableList()
+            // Successful version validation requires an existing nonempty annotation value list.
+            normalized.values = annotation.values.toMutableList()
             replace(normalized, "d1", encoded.data1.toList())
             replace(normalized, "d2", encoded.data2.toList())
         }

@@ -276,6 +276,8 @@ class ExternalObjectEscapeTest {
                 void error(String message, Object value);
                 void custom(String message);
                 boolean info(String message, int value);
+                void info(Object message);
+                static void debug(Object payload) {}
             }
         """.trimIndent())
         val classes = compile("""
@@ -291,10 +293,12 @@ class ExternalObjectEscapeTest {
                 public void custom(org.slf4j.Logger log) { log.custom("message"); }
                 public void signature(org.slf4j.Logger log) { log.info("message", 1); }
                 public void self() { ((org.slf4j.Logger)this).trace("message"); }
+                public void nonString(org.slf4j.Logger log) { log.info((Object)"message"); }
+                public void staticLogger() { org.slf4j.Logger.debug(this); }
             }
         """.trimIndent(), listOf(logger))
         val diagnostics = ExternalObjectEscape(classes).methodDiagnostics()
-        assertEquals(7, diagnostics.size, diagnostics.toString())
+        assertEquals(9, diagnostics.size, diagnostics.toString())
         assertTrue(diagnostics.keys.none { it.startsWith("Sample.scalar") })
     }
 
@@ -358,11 +362,13 @@ class ExternalObjectEscapeTest {
                 public static final class UnknownParameter { public void accept(Object value) {} }
                 public static final class OpaqueScalarCall { public String text() { return String.valueOf(this); } }
                 public static final class ForeignStaticField { public void read() { Object value = System.out; } }
+                public void objectBehavior() { Encoder.encode(new ObjectBehavior()); }
+                public static final class ObjectBehavior { public int value() { return super.hashCode(); } }
                 public static final class ForeignAllocation { public void allocate() { new StringBuilder(); } }
             }
         """.trimIndent())
         val gaps = ExternalObjectEscape(classes).methodDiagnostics().filterKeys { it.startsWith("Sample.") }.values.flatten()
-        assertEquals(16, gaps.size, gaps.toString())
+        assertEquals(17, gaps.size, gaps.toString())
         assertTrue(gaps.all { it.globalObservation && it.observedOwners.isEmpty() })
     }
 

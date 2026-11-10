@@ -115,6 +115,14 @@ class JavaSourceIndexTest {
         }
     }
 
+    @Test
+    fun `unsupported frontend declarations preserve a diagnostic instead of inventing a method identity`() {
+        val diagnostics = mutableListOf<String>()
+        val symbols = resolveJavaDeclaration("Example.java", diagnostics) { throw UnsupportedOperationException("unavailable erasure") }
+        assertTrue(symbols.isEmpty())
+        assertEquals(listOf("Unsupported declaration in Example.java: unavailable erasure"), diagnostics)
+    }
+
     private fun index(source: String, revision: Revision = Revision.HEAD): IndexedSource {
         Files.writeString(temporary.resolve("Example.java"), source)
         return JavaSourceIndex(listOf(temporary), emptyList()).use { it.index(temporary, "Example.java", revision) }

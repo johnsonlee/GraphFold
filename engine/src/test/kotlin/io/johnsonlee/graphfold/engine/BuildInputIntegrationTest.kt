@@ -226,6 +226,33 @@ class BuildInputIntegrationTest {
         }
     }
 
+    @Test
+    fun `a failed resource scenario does not prevent later scenarios from being checked`() {
+        val repository = repository()
+        val path = "src/main/resources/messages.properties"
+        write(repository, path, "greeting=Hello")
+        write(repository, SOURCE, program("return java.util.ResourceBundle.getBundle(\"messages\").getString(\"greeting\").length();"))
+        val base = commit(repository)
+        write(repository, path, "greeting=Bonjour")
+        val scenarios = listOf("first", "second").joinToString("\n") { name ->
+            """
+              - name: $name
+                folds:
+                  - match: {CallSite: {callee_class: sample.Ab, callee_name: enabled}}
+                    args: {0: feature}
+                    value: false
+            """.trimIndent().prependIndent("  ")
+        }
+        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+            AnalysisRequest(repository.toString(), base, commit(repository), "scenarios:\n$scenarios"),
+        )
+        assertEquals(Verdict.FAIL, result.verdict)
+        assertEquals(listOf("first", "second"), result.reasons.map { it.scenario })
+        assertTrue(result.reasons.all { it.code == ReasonCode.ANALYSIS_INCOMPLETE }, result.toString())
+        assertEquals(4, result.ruleAudits.size)
+        assertTrue(result.ruleAudits.all { it.selectionStatus == RuleSelectionStatus.SELECTED }, result.toString())
+    }
+
     private fun repository(): Path {
         val root = Files.createDirectory(temporary.resolve("repository"))
         val project = Path.of(System.getProperty("user.dir")).let { if (Files.exists(it.resolve("gradlew"))) it else it.parent }

@@ -85,15 +85,7 @@ class GitWorkspaceManager(
             GitWorkspace(lease.directory.resolve("base"), lease.directory.resolve("head"), base, head, bare) {
                 lease.close()
             }
-        }.onFailure {
-            val interrupted = Thread.interrupted()
-            try {
-                runCatching { deleteDirectory(lease.directory) }
-            } finally {
-                lease.close()
-                if (interrupted) Thread.currentThread().interrupt()
-            }
-        }.getOrThrow()
+        }.onFailure { discardWorkspace(lease) }.getOrThrow()
     }
 
     private fun initialize(bare: Path) {
@@ -144,6 +136,20 @@ class GitWorkspaceManager(
         val COMMIT = Regex("[0-9a-fA-F]{7,40}")
         val LOCKS = ConcurrentHashMap<Path, ReentrantLock>()
         const val FULL_SHA_LENGTH = 40
+    }
+}
+
+/** Failed materialization discards the slot, releases its lease, and preserves cancellation. */
+internal fun discardWorkspace(lease: WorkspaceLease) {
+    val interrupted = Thread.interrupted()
+    try {
+        runCatching { deleteDirectory(lease.directory) }
+    } finally {
+        try {
+            lease.close()
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
+        }
     }
 }
 

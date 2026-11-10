@@ -30,8 +30,12 @@ jobs:
   prepare:
     needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     env:
       RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -61,8 +65,12 @@ jobs:
     if: github.event_name != 'workflow_dispatch'
     needs: [validate, prepare]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     env:
       RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -101,9 +109,55 @@ jobs:
             --init-script .github/scripts/verified-publication.gradle -Dgraphfold.verifiedRepository="$PWD/verified/repository" \
             -Pversion="$RELEASE_VERSION" -Psigning.keyId="$ORG_GRADLE_PROJECT_signingKeyId" \
             -Psigning.password="$ORG_GRADLE_PROJECT_signingPassword" -Psigning.secretKeyRingFile="$KEY_FILE"
+  github-packages:
+    needs: [validate, prepare]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ env.RELEASE_TAG }}
+          path: release-assets
+      - name: Restore verified publications
+        run: |
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          mkdir verified
+          tar -xzf "release-assets/graphfold-maven-$RELEASE_VERSION.tar.gz" -C verified
+      - name: Reproduce and compare GitHub Packages publication payloads
+        run: |
+          ./gradlew publishAllPublicationsToReleaseVerificationRepository --no-daemon --stacktrace -Pversion="$RELEASE_VERSION"
+          python3 .github/scripts/release.py verify build/repository "$RELEASE_VERSION"
+          python3 .github/scripts/release.py compare verified/repository build/repository
+      - name: Rehearse guarded GitHub Packages upload locally
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          ./gradlew publishAllPublicationsToGitHubPackagesRepository --no-daemon --stacktrace \
+            --init-script .github/scripts/verified-publication.gradle -Dgraphfold.verifiedRepository="$PWD/verified/repository" \
+            -Pversion="$RELEASE_VERSION" -PgithubPackagesRepository="file://$RUNNER_TEMP/github-packages"
+          python3 .github/scripts/release.py verify "$RUNNER_TEMP/github-packages" "$RELEASE_VERSION"
+          python3 .github/scripts/release.py compare verified/repository "$RUNNER_TEMP/github-packages"
+      - name: Publish modules and plugin marker to GitHub Packages
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./gradlew publishAllPublicationsToGitHubPackagesRepository --no-daemon --stacktrace \
+            --init-script .github/scripts/verified-publication.gradle -Dgraphfold.verifiedRepository="$PWD/verified/repository" \
+            -Pversion="$RELEASE_VERSION"
   release:
     if: github.event_name != 'workflow_dispatch'
-    needs: [validate, prepare, maven]
+    needs: [validate, prepare]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -122,3 +176,32 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: release-assets/*
+  publication-summary:
+    if: always()
+    needs: [validate, prepare, maven, github-packages, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record independent publication results
+        env:
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+          PREPARATION_RESULT: ${{ needs.prepare.result }}
+          CENTRAL_RESULT: ${{ needs.maven.result }}
+          PACKAGES_RESULT: ${{ needs.github-packages.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+        run: |
+          {
+            echo '## Publication channels'
+            if [ "$DRY_RUN" = true ]; then
+              echo 'Dry run: GitHub Packages result covers a local file repository only; nothing was published remotely.'
+              echo ''
+            fi
+            echo '| Channel | Result |'
+            echo '| --- | --- |'
+            echo "| Validation | $VALIDATION_RESULT |"
+            echo "| Preparation | $PREPARATION_RESULT |"
+            echo "| Maven Central | $CENTRAL_RESULT |"
+            echo "| GitHub Packages | $PACKAGES_RESULT |"
+            echo "| GitHub Release | $RELEASE_RESULT |"
+            echo ''
+            echo 'Failed channels remain failed; independent channels do not wait for them.'
+          } >> "$GITHUB_STEP_SUMMARY"

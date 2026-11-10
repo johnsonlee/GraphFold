@@ -234,6 +234,20 @@ class OriginObjectFlowBoundaryTest {
         assertTrue(blocked(method), "Object-flow evidence must not disable the independent stack guard")
     }
 
+    @Test fun `malformed instance handle cannot borrow the static Objects rendering contract`() {
+        val method = method().apply {
+            allocate(instructions::add)
+            instructions.add(InvokeDynamicInsnNode("apply", "(Ljava/lang/Object;)Ljava/util/function/Function;",
+                LAMBDA, Type.getMethodType("(Ljava/lang/Object;)Ljava/lang/Object;"),
+                Handle(Opcodes.H_INVOKEVIRTUAL, "java/util/Objects", "toString",
+                    "(Ljava/lang/Object;)Ljava/lang/String;", false),
+                Type.getMethodType("(Ljava/lang/Object;)Ljava/lang/String;")))
+            instructions.add(InsnNode(Opcodes.POP))
+            instructions.add(InsnNode(Opcodes.RETURN))
+        }
+        assertTrue(blocked(method), "An incompatible descriptor must not acquire the Object.toString summary")
+    }
+
     private fun blocked(method: MethodNode): Boolean {
         val caller = definition("sample/Caller").apply { methods.add(method) }
         return originNameMessages(listOf(caller, definition("sample/Renamed")),

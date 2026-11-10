@@ -43,7 +43,7 @@ class WorkspaceCapacityTest {
             val failure = assertFailsWith<GitOperationException> {
                 leaseWorkspace(temporary, 1, Duration.ofMillis(1))
             }
-            assertTrue(failure.message.orEmpty().contains("Workspace capacity exhausted"))
+            assertTrue(failure.message.contains("Workspace capacity exhausted"))
             assertFalse(Files.exists(temporary.resolve("slot-1.lock")))
         }
         leaseWorkspace(temporary, 1).close()

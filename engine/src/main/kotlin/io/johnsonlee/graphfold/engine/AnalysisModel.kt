@@ -217,7 +217,7 @@ data class AnalysisMetadata(
     val scenarios: List<String>,
     val obligations: Int,
     val provedObligations: Int,
-    val graphiteVersion: String = "2.12.0",
+    val graphiteVersion: String = "2.15.0",
 )
 
 /**

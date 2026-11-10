@@ -3,6 +3,8 @@ package io.johnsonlee.graphfold.engine
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assertions.assertAll
+import org.junit.jupiter.api.function.Executable
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -37,14 +39,16 @@ class DetectionCorpusTest {
         Files.createDirectories(report.parent)
         Files.deleteIfExists(report.resolveSibling("metrics.json"))
         val measurements = mutableListOf<Measurement>()
-        selected.forEach { case ->
-            val measurement = analyzeCase(fixtures, caseRoot, language, extension, case)
-            measurements += measurement
-            mapper.writerWithDefaultPrettyPrinter().writeValue(report.toFile(), measurements)
-            assertTrue(measurement.result.diagnostics.none { it.blocking },
-                "Operational failure is not detection evidence: $measurement")
-            verifyCaseEvidence(caseRoot, case, measurement)
-        }
+        assertAll("Every $language fixture must retain complete analysis and exact evidence", selected.map { case ->
+            Executable {
+                val measurement = analyzeCase(fixtures, caseRoot, language, extension, case)
+                measurements += measurement
+                mapper.writerWithDefaultPrettyPrinter().writeValue(report.toFile(), measurements)
+                assertTrue(measurement.result.diagnostics.none { it.blocking },
+                    "Operational failure is not detection evidence: $measurement")
+                verifyCaseEvidence(caseRoot, case, measurement)
+            }
+        })
         if (language == "java") measurements.filter { it.id.startsWith("stream_") }.forEach(::verifyStreamLocations)
         assertTrue(measurements.all { it.expectedViolation == it.predictedViolation },
             "Every labelled regression must match: ${measurements.filter { it.expectedViolation != it.predictedViolation }}")

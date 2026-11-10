@@ -7,6 +7,7 @@ import java.nio.file.Path
 import java.time.Duration
 import javax.tools.DiagnosticCollector
 import javax.tools.JavaFileObject
+import javax.tools.JavaCompiler
 import javax.tools.ToolProvider
 import kotlin.io.path.extension
 
@@ -89,21 +90,23 @@ class ProjectCompiler(
         return CompiledProject(classes, roots, dependencies, output.resolve("origins"), CompilerOriginPlugin.runId(output),
             roots.associateWith { listOf(classes) })
     }
+}
 
-    private fun compileJava(
-        sources: List<Path>, classes: Path, dependencies: List<Path>, origins: Path, root: Path, runId: String,
-    ) {
-        val compiler = ToolProvider.getSystemJavaCompiler() ?: throw BuildFailure("A JDK with javac is required")
-        val diagnostics = DiagnosticCollector<JavaFileObject>()
-        compiler.getStandardFileManager(diagnostics, null, Charsets.UTF_8).use { manager ->
-            val units = manager.getJavaFileObjectsFromPaths(sources)
-            val options = listOf("-g", "-proc:none", "-d", classes.toString(), "-classpath",
-                (listOf(classes) + dependencies).joinToString(java.io.File.pathSeparator))
-            val task = compiler.getTask(null, manager, diagnostics, options, null, units) as JavacTask
-            GraphFoldOrigins.attach(task, origins, root, runId)
-            if (!task.call()) {
-                throw BuildFailure("Java compilation failed: ${diagnostics.diagnostics.joinToString("; ") { it.getMessage(null) }}")
-            }
+/** Runs javac with provenance; absence of a system compiler is an explicit build failure. */
+internal fun compileJava(
+    sources: List<Path>, classes: Path, dependencies: List<Path>, origins: Path, root: Path, runId: String,
+    systemCompiler: JavaCompiler? = ToolProvider.getSystemJavaCompiler(),
+) {
+    val compiler = systemCompiler ?: throw BuildFailure("A JDK with javac is required")
+    val diagnostics = DiagnosticCollector<JavaFileObject>()
+    compiler.getStandardFileManager(diagnostics, null, Charsets.UTF_8).use { manager ->
+        val units = manager.getJavaFileObjectsFromPaths(sources)
+        val options = listOf("-g", "-proc:none", "-d", classes.toString(), "-classpath",
+            (listOf(classes) + dependencies).joinToString(java.io.File.pathSeparator))
+        val task = compiler.getTask(null, manager, diagnostics, options, null, units) as JavacTask
+        GraphFoldOrigins.attach(task, origins, root, runId)
+        if (!task.call()) {
+            throw BuildFailure("Java compilation failed: ${diagnostics.diagnostics.joinToString("; ") { it.getMessage(null) }}")
         }
     }
 }

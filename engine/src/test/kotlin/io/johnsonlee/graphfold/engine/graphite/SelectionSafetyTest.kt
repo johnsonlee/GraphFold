@@ -6,6 +6,9 @@ import io.johnsonlee.graphite.core.NodeId
 import io.johnsonlee.graphite.core.ReturnNode
 import io.johnsonlee.graphite.core.TypeDescriptor
 import io.johnsonlee.graphite.graph.DefaultGraph
+import io.johnsonlee.graphite.graph.AnalysisCompleteness
+import io.johnsonlee.graphite.graph.CallSiteGap
+import io.johnsonlee.graphite.input.AnalysisIdentity
 import io.johnsonlee.graphite.input.FoldSites
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -21,21 +24,32 @@ class SelectionSafetyTest {
         null, null, emptyList(), ordinal, origin?.let(::NodeId),
     )
 
-    private fun resolve(vararg sites: CallSiteNode): FoldSites {
+    private fun resolve(
+        vararg sites: CallSiteNode, gaps: Map<Int, CallSiteGap> = emptyMap(), evidence: Boolean = true,
+    ): FoldSites {
         val builder = DefaultGraph.Builder()
         builder.addMethod(caller)
         sites.forEach { builder.addMethod(it.callee); builder.addNode(it) }
+        if (evidence) builder.setAnalysisCompleteness(AnalysisCompleteness(
+            AnalysisIdentity(), emptyMap(), emptyMap(), emptyMap(), callSiteGaps = gaps,
+        ))
         val rule = FoldSites.parse(mapOf(
             "select" to "MATCH (cs:CallSite {callee_name: 'chosen'}) RETURN cs", "value" to false,
         ))
         return GraphiteAnalyzer().resolve(builder.build(), rule)
     }
 
+    @Test fun `direct object return does not invent a functional result type`() {
+        val result = resolve(site(1, "chosen", 0, returns = "java.lang.Object"))
+        assertEquals(1, result.selected.orEmpty().size)
+        assertTrue(result.resultTypes.isEmpty())
+    }
+
     @Test fun `partial functional target selection is rejected`() {
         val failure = assertFailsWith<IllegalArgumentException> {
             resolve(site(1, "get", 0), site(2, "chosen", -1, 1), site(3, "other", -1, 1))
         }
-        assertTrue(failure.message.orEmpty().contains("only some targets"))
+        assertTrue(failure.message.orEmpty().contains("incomplete targets"))
     }
 
     @Test fun `erased invocation with conflicting target result types is rejected`() {
@@ -68,6 +82,28 @@ class SelectionSafetyTest {
         val result = resolve(site(1, "chosen", 0), site(2, "left", -1, 1), site(3, "right", -1, 1))
         assertEquals(1, result.selected.orEmpty().size)
         assertTrue(result.resultTypes.isEmpty())
+    }
+
+    @Test fun `all known targets cannot authorize a fold with unresolved alternatives`() {
+        for (id in listOf(1, 2)) {
+            val error = assertFailsWith<IllegalArgumentException> {
+                resolve(site(1, "get", 0), site(2, "chosen", -1, 1),
+                    gaps = mapOf(id to CallSiteGap.DISPATCH_PARTIAL))
+            }
+            assertTrue("incomplete targets" in error.message.orEmpty())
+        }
+    }
+
+    @Test fun `absence of dispatch evidence cannot authorize a derived target fold`() {
+        assertFailsWith<IllegalArgumentException> {
+            resolve(site(1, "get", 0), site(2, "chosen", -1, 1), evidence = false)
+        }
+    }
+
+    @Test fun `explicit original selection can fold an unresolved functional call`() {
+        val result = resolve(site(1, "chosen", 0), site(2, "known", -1, 1),
+            gaps = mapOf(1 to CallSiteGap.DISPATCH_PARTIAL))
+        assertEquals(1, result.selected.orEmpty().size)
     }
 
     @Test fun `cycle in descendants cannot turn a selected original invocation into a replacement`() {

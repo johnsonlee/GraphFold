@@ -106,7 +106,7 @@ internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = f
         classShapes[name] = stable(DeclarationMetadata.classShape(declaration.dropLast(1), name, diagnostics))
         captureFields(node, name)
         if (declarations.put(name, stable(declaration)) != null) diagnostics.add("Duplicate class in input: $name")
-        if (!node.attrs.isNullOrEmpty()) diagnostics.add("Unmodeled class attributes: $name")
+        if (node.attrs.orEmpty().isNotEmpty()) diagnostics.add("Unmodeled class attributes: $name")
         captureMethods(node, name)
     }
 
@@ -126,7 +126,7 @@ internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = f
             if (method.access and Opcodes.ACC_PRIVATE != 0 && annotated) {
                 diagnostics.add("Private annotated method may be a framework entry: $identity")
             }
-            if (!method.attrs.isNullOrEmpty()) diagnostics.add("Unmodeled method attributes: $identity")
+            if (method.attrs.orEmpty().isNotEmpty()) diagnostics.add("Unmodeled method attributes: $identity")
             declarations[identity] = stable(listOf(
                 method.access, method.signature, method.exceptions, method.annotationDefault,
                 method.visibleAnnotations, method.invisibleAnnotations,
@@ -144,7 +144,7 @@ internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = f
             val safe = field.access and (Opcodes.ACC_PRIVATE or Opcodes.ACC_VOLATILE) == Opcodes.ACC_PRIVATE &&
                 node.superName == "java/lang/Object" && node.interfaces.isEmpty() &&
                 !DeclarationMetadata.discoveryAnnotations(field.visibleAnnotations, field.invisibleAnnotations) &&
-                field.visibleTypeAnnotations.isNullOrEmpty() && field.invisibleTypeAnnotations.isNullOrEmpty()
+                field.visibleTypeAnnotations.orEmpty().isEmpty() && field.invisibleTypeAnnotations.orEmpty().isEmpty()
             fields[identity] = FieldSnapshot(identity, stable(metadata), stable(field.value), safe)
         }
     }
@@ -255,7 +255,8 @@ internal class BytecodeInventory(private val normalizedRuntimeNames: Boolean = f
         val applicationOverrides = classes.intersect(setOf(factory, "kotlin.jvm.internal.Reflection"))
         val standardFactory = factory in available && "kotlin.reflect.jvm.internal.ReflectionFactoryImpl" !in available
         propertyTokenDiagnostics.forEach { (identity, gap) ->
-            methodDiagnostics[identity] = (methodDiagnostics[identity].orEmpty() + gap).distinct()
+            // inspectCall records both maps together; rechecks replace values but never remove keys.
+            methodDiagnostics[identity] = (methodDiagnostics.getValue(identity) + gap).distinct()
         }
         val candidate = propertyTokenDiagnostics.isNotEmpty() && standardFactory && applicationOverrides.isEmpty()
         if (candidate && DelegateMetadataRuntime.trusted(dependencies)) {

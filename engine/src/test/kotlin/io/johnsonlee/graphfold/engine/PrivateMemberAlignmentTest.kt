@@ -13,11 +13,29 @@ import kotlin.test.assertTrue
 
 class PrivateMemberAlignmentTest {
     @Test
+    fun `aligned declarations and ignored field identities follow unique rename mapping`() {
+        val old = FieldSnapshot("Example.old:I", "private int", "1", true)
+        val new = old.copy(identity = "Example.new:I")
+        val before = snapshot().copy(fields = mapOf(old.identity to old),
+            declarations = mapOf("Example" to "class", old.identity to "field"), ignoredFields = setOf(old.identity))
+        val after = before.copy(fields = mapOf(new.identity to new),
+            declarations = mapOf("Example" to "class", new.identity to "field"), ignoredFields = setOf(new.identity))
+        val aligned = PrivateMemberAlignment(before, after).aligned()
+        assertEquals(before.declarations, aligned.declarations)
+        assertEquals(before.ignoredFields, aligned.ignoredFields)
+        assertEquals(before.fields, aligned.fields)
+    }
+
+    @Test
     fun `private helper rename preserves references but a changed body does not`() {
         val old = helper("Example.before()I")
         val new = helper("Example.after()I")
         val base = snapshot(root(old.identity), old)
         val head = snapshot(root(new.identity), new)
+        val triggerBase = base.copy(initializationTriggerMethods = setOf(old.identity))
+        val triggerHead = head.copy(initializationTriggerMethods = setOf(new.identity, "Other.unchanged()V"))
+        assertEquals(setOf(old.identity, "Other.unchanged()V"),
+            PrivateMemberAlignment(triggerBase, triggerHead).aligned().initializationTriggerMethods)
         assertEquals(mapOf(new.identity to old.identity), PrivateMemberAlignment(base, head).names)
         assertTrue(SnapshotComparison(base, head).differences(obligation(root().identity)).isEmpty())
         assertTrue(SnapshotComparison(base, head).differences(obligation(new.identity)).isEmpty())

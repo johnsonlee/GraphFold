@@ -3,6 +3,11 @@ package io.johnsonlee.graphfold.engine.source
 import io.johnsonlee.graphfold.engine.Revision
 import io.johnsonlee.graphfold.engine.SourceLocation
 import io.johnsonlee.graphfold.engine.SourceRange
+import io.johnsonlee.graphfold.engine.origin.readOriginMetadata
+import kotlin.metadata.jvm.KotlinClassMetadata
+import org.jetbrains.kotlin.psi.KtAnonymousInitializer
+import org.jetbrains.kotlin.psi.KtObjectDeclaration
+import org.objectweb.asm.tree.AnnotationNode
 import java.nio.file.Files
 import java.nio.file.Path
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
@@ -29,7 +34,8 @@ import org.objectweb.asm.tree.ClassNode
  * Properties map to emitted fields. Generated or ambiguous declarations retain CLASS obligations.
  * Inline functions and properties retain a marker for comparing copied code in all reachable callers.
  * Fieldless inline accessors conservatively retain an inline CLASS obligation.
- * File-wide fallback owners retain constructs such as constructors and compiler-generated declarations.
+ * Complete named metadata families use their top-level declaration ranges; other owners retain file-wide fallbacks.
+ * Uniquely observed object or companion initialization may bind to its emitted static initializer.
  * Exact diff fragments, rather than these enclosing ranges, remain the reported finding locations.
  * Close the index to dispose its headless Kotlin PSI environment.
  *
@@ -82,9 +88,68 @@ class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List
             }
         }
         fun location(element: PsiElement): SourceLocation = location(text, element, relativePath, revision)
-        val symbols = owners.map { SourceSymbol(it.name, it.name, SymbolKind.CLASS, location(file)) }.toMutableList()
+        val scopes = declarationScopes(file, owners)
+        val symbols = owners.map { SourceSymbol(it.name, it.name, SymbolKind.CLASS, location(scopes[it.name] ?: file)) }.toMutableList()
         symbols += memberSymbols(file, owners, ::location)
+        symbols += initializerSymbols(file, owners, ::location)
         return IndexedSource(relativePath, text, symbols, diagnostics)
+    }
+
+    /** Keep an entire named top-level family together: companion members can lower into its outer owner. */
+    private fun declarationScopes(file: KtFile, owners: List<Owner>): Map<String, KtClassOrObject> {
+        val declarations = PsiTreeUtil.collectElementsOfType(file, KtClassOrObject::class.java).filterNot(::isLocal)
+            .groupBy { it.fqName?.asString() }
+        val emitted = owners.groupBy { it.sourceName }
+        val scopes = owners.mapNotNull { owner ->
+            val name = owner.sourceName ?: return@mapNotNull null
+            val declaration = declarations[name]?.singleOrNull() ?: return@mapNotNull null
+            if (emitted.getValue(name).size != 1) return@mapNotNull null
+            val topLevel = generateSequence(declaration) { PsiTreeUtil.getParentOfType(it, KtClassOrObject::class.java) }.last()
+            owner.name to topLevel
+        }.toMap()
+        // A narrower known class would otherwise make ProofPlanner discard a broader unknown owner.
+        return if (scopes.size == owners.size) scopes else emptyMap()
+    }
+
+    /** Only uniquely observed static initialization is promoted from the conservative class fallback. */
+    private fun initializerSymbols(file: KtFile, owners: List<Owner>, location: (PsiElement) -> SourceLocation): List<SourceSymbol> {
+        val initializers = PsiTreeUtil.collectElementsOfType(file, KtAnonymousInitializer::class.java).toList()
+        return initializers.filterNot(::isLocal).mapNotNull { initializer ->
+            val declaration = PsiTreeUtil.getParentOfType(initializer, KtClassOrObject::class.java) as? KtObjectDeclaration
+            if (declaration == null || declaration.isObjectLiteral()) return@mapNotNull null
+            val position = location(initializer)
+            val range = position.line.start..position.line.end
+            val fqName = declaration.fqName ?: return@mapNotNull null
+            val sourceName = fqName.asString()
+            val allowedNames = mutableSetOf(sourceName)
+            if (declaration.isCompanion()) {
+                val enclosing = PsiTreeUtil.getParentOfType(declaration, KtClassOrObject::class.java) ?: return@mapNotNull null
+                // A non-local declaration with an FQ name has a named containing declaration.
+                allowedNames += java.util.Objects.requireNonNull<org.jetbrains.kotlin.name.FqName>(enclosing.fqName).asString()
+            }
+            val candidates = owners.filter { it.sourceName in allowedNames }
+            if (candidates.groupBy { it.sourceName }.values.any { it.size != 1 } ||
+                ambiguousInitializer(initializer, file, range, location)) return@mapNotNull null
+            val candidate = candidates.flatMap { owner -> owner.methods.filter { method ->
+                method.name == "<clinit>" && method.lines.any { it in range }
+            }.map { owner to it } }.singleOrNull() ?: return@mapNotNull null
+            val (owner, method) = candidate
+            SourceSymbol("${owner.name}.${method.name}${method.descriptor}", owner.name, SymbolKind.METHOD, position)
+        }
+    }
+
+    private fun ambiguousInitializer(
+        initializer: KtAnonymousInitializer, file: KtFile, range: IntRange, location: (PsiElement) -> SourceLocation,
+    ): Boolean {
+        val initializers = PsiTreeUtil.collectElementsOfType(file, KtAnonymousInitializer::class.java)
+        val properties = PsiTreeUtil.collectElementsOfType(file, KtProperty::class.java).filter {
+            it.initializer != null || it.delegateExpression != null || it.accessors.any { accessor -> accessor.bodyExpression != null }
+        }
+        val functions = PsiTreeUtil.collectElementsOfType(file, KtNamedFunction::class.java)
+        return (initializers + properties + functions).any { other ->
+            other !== initializer && !PsiTreeUtil.isAncestor(initializer, other, true) &&
+                location(other).line.let { it.start <= range.last && it.end >= range.first }
+        }
     }
 
     private fun memberSymbols(file: KtFile, owners: List<Owner>, location: (PsiElement) -> SourceLocation): List<SourceSymbol> {
@@ -135,6 +200,7 @@ class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List
             val annotations = node.visibleAnnotations.orEmpty() + node.invisibleAnnotations.orEmpty()
             val name = node.name.replace('/', '.')
             Owner(name, name.substringBeforeLast('.', ""), node.sourceFile, annotations.any { it.desc == "Lkotlin/Metadata;" },
+                sourceClassName(annotations),
                 node.fields.map { it.name }.toSet(), node.methods.map { method ->
                     Method(method.name, method.desc, method.instructions.filterIsInstance<LineNumberNode>().map { it.line }.toSet())
                 })
@@ -154,7 +220,20 @@ class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List
 
     private data class Method(val name: String, val descriptor: String, val lines: Set<Int>)
     private data class Owner(
-        val name: String, val packageName: String, val source: String?, val kotlin: Boolean,
+        val name: String, val packageName: String, val source: String?, val kotlin: Boolean, val sourceName: String?,
         val fields: Set<String>, val methods: List<Method>,
     )
+}
+
+/** Metadata supplies source nesting independently of JVM binary-name spelling. Unknown schemas keep file-wide scope. */
+private fun sourceClassName(annotations: List<AnnotationNode>): String? {
+    val annotation = annotations.singleOrNull { it.desc == "Lkotlin/Metadata;" } ?: return null
+    return try {
+        val metadata = KotlinClassMetadata.readStrict(readOriginMetadata(annotation))
+        if (metadata is KotlinClassMetadata.Class) metadata.kmClass.name.replace('/', '.') else null
+    } catch (_: IllegalArgumentException) {
+        null
+    } catch (_: IllegalStateException) {
+        null
+    }
 }

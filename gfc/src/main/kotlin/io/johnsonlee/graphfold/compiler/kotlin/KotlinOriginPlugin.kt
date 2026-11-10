@@ -43,9 +43,7 @@ class KotlinOriginRegistrar : CompilerPluginRegistrar() {
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
         val output = configuration.get(KotlinOriginOptions.OUTPUT) ?: return
         val runId = requireNotNull(configuration.get(KotlinOriginOptions.RUN_ID)) { "GraphFold origin runId is required" }
-        require(KotlinCompilerVersion.VERSION in SUPPORTED_VERSIONS) {
-            "Unsupported GraphFold Kotlin provenance compiler: ${KotlinCompilerVersion.VERSION}"
-        }
+        requireSupportedCompilerVersion(KotlinCompilerVersion.VERSION)
         val collector = KotlinOriginCollector(Path.of(output), KotlinCompilerVersion.VERSION,
             if (configuration.getBoolean(CommonConfigurationKeys.USE_FIR)) KotlinFrontend.K2 else KotlinFrontend.K1, runId)
         collector.start()
@@ -61,9 +59,6 @@ class KotlinOriginRegistrar : CompilerPluginRegistrar() {
         })
     }
 
-    private companion object {
-        val SUPPORTED_VERSIONS = setOf("1.9.20", "2.0.21", "2.1.20", "2.2.10")
-    }
 }
 
 /**
@@ -138,4 +133,11 @@ internal fun registerOutputCapture(configuration: CompilerConfiguration, collect
             }
         }
     })
+}
+
+/** Rejects compiler versions whose provenance callbacks and output contracts have not been validated. */
+internal fun requireSupportedCompilerVersion(version: String) {
+    require(version in setOf("1.9.20", "2.0.21", "2.1.20", "2.2.10")) {
+        "Unsupported GraphFold Kotlin provenance compiler: $version"
+    }
 }

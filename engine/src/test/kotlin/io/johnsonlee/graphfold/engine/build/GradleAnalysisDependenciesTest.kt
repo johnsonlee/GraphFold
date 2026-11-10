@@ -27,6 +27,15 @@ class GradleAnalysisDependenciesTest {
         assertEquals(emptyList(), gradleAnalysisDependencies(emptyList(), classes))
     }
 
+    @Test fun `an explicitly blank manifest classpath does not create a runtime dependency`() {
+        val classes = classes()
+        val artifact = archive("project.jar", mapOf(CLASS to ORIGINAL,
+            "META-INF/MANIFEST.MF" to "Manifest-Version: 1.0\nClass-Path:   \n\n"))
+        assertEquals(emptyList(), gradleAnalysisDependencies(
+            listOf(input(GradleInputKind.ARTIFACT, artifact), input(GradleInputKind.DEPENDENCY, artifact)), classes,
+        ))
+    }
+
     @ParameterizedTest
     @EnumSource(ArtifactCase::class)
     fun `non-equivalent or unknown project artifacts are retained without discarding their classes`(case: ArtifactCase) {

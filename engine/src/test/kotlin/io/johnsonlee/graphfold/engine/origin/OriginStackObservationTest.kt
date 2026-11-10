@@ -41,6 +41,7 @@ class OriginStackObservationTest {
         val classes = compile("matrix", """
             Object token = new Object() {};
             static Throwable captureThrowable() { return new Throwable(); }
+            static StackTraceElement existingFrame() { return new StackTraceElement("Named", "run", "Named.java", 1); }
             static StackTraceElement[] captureThread() { return Thread.currentThread().getStackTrace(); }
             static Object captureAllThreads() { return Thread.getAllStackTraces(); }
             static void dumpThread() { Thread.dumpStack(); }
@@ -63,12 +64,13 @@ class OriginStackObservationTest {
             static Object safeConstructor() { return new Object(); }
             static String safeThread() { return Thread.currentThread().getName(); }
             static int getStackTrace() { return 0; }
-            static int safeNamesake() { return getStackTrace(); }
+            static int fillInStackTrace() { return 1; }
+            static int safeNamesake() { return getStackTrace() + fillInStackTrace(); }
             static java.util.function.Function<String, Integer> safeReference() { return String::length; }
         """.trimIndent())
         val diagnostics = originNameMessages(nodes(classes), mapOf("Example$1" to "Example\$stable"))
         val positive = listOf("captureThrowable", "captureThread", "captureAllThreads", "dumpThread", "refresh", "inheritedCapture",
-            "elementName", "elementRender", "walk", "elementReference", "frameReference", "walkerReference",
+            "elementName", "elementRender", "existingFrame", "walk", "elementReference", "frameReference", "walkerReference",
             "objectReference", "boundReference", "exceptionReference")
         positive.forEach { method -> assertTrue(diagnostics.any { "Example.$method(" in it }, "$method: $diagnostics") }
         val observations = originNameObservability(nodes(classes), mapOf("Example$1" to "Example\$stable")).methods
@@ -76,7 +78,8 @@ class OriginStackObservationTest {
             val gaps = observations.entries.single { it.key.startsWith("Example.$name(") }.value
             assertTrue(gaps.all { it.requiresObservedFrame }, name)
         }
-        listOf("captureThread", "captureAllThreads", "inheritedCapture", "elementName", "exceptionReference").forEach { name ->
+        listOf("captureThread", "captureAllThreads", "inheritedCapture", "elementName", "existingFrame", "exceptionReference")
+            .forEach { name ->
             val gaps = observations.entries.single { it.key.startsWith("Example.$name(") }.value
             assertTrue(gaps.none { it.requiresObservedFrame }, name)
         }

@@ -91,7 +91,10 @@ final class OriginListener implements TaskListener {
             @Override
             public Void visitClass(ClassTree node, Void unused) {
                 Element element = trees.getElement(getCurrentPath());
-                if (element instanceof TypeElement type && type.getNestingKind() == NestingKind.ANONYMOUS) {
+                if (!(element instanceof TypeElement type)) {
+                    throw new IllegalStateException("Missing attributed class symbol for " + node.getSimpleName());
+                }
+                if (type.getNestingKind() == NestingKind.ANONYMOUS) {
                     String owner = task.getElements().getBinaryName(type).toString();
                     Tree allocation = getCurrentPath().getParentPath().getLeaf();
                     long start = trees.getSourcePositions().getStartPosition(unit, node);
@@ -138,8 +141,17 @@ final class OriginListener implements TaskListener {
     }
 
     private static String sha256(byte[] bytes) {
+        return sha256(bytes, () -> MessageDigest.getInstance("SHA-256"));
+    }
+
+    @FunctionalInterface
+    interface DigestFactory {
+        MessageDigest create() throws NoSuchAlgorithmException;
+    }
+
+    static String sha256(byte[] bytes, DigestFactory factory) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            return HexFormat.of().formatHex(factory.create().digest(bytes));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("JDK SHA-256 implementation missing", impossible);
         }

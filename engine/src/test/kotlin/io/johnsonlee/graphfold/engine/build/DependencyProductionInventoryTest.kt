@@ -200,6 +200,24 @@ class DependencyProductionInventoryTest {
         return writer.toByteArray()
     }
 
+    @Test
+    fun `module named class without the module access flag is not trusted as descriptor metadata`() {
+        val bytes = ClassWriter(0).apply {
+            visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "module-info", null, "java/lang/Object", null)
+            visitEnd()
+        }.toByteArray()
+        assertFalse(capture(listOf(dependency(mapOf("module-info.class" to bytes), archive = true))).resourceConsumersKnown)
+    }
+
+    @Test
+    fun `valid packaged manifest cannot erase an earlier unknown runtime consumer`() {
+        val runtime = dependency(mapOf("lib/nested.jar" to byteArrayOf(1)), archive = true)
+        val artifact = dependency(mapOf("META-INF/MANIFEST.MF" to "Manifest-Version: 1.0\n\n".toByteArray()), archive = true)
+        val inventory = captureProductionInventory(temporary.resolve("classes"), emptyList(), listOf(runtime), listOf(artifact))
+        assertFalse(inventory.resourceConsumersKnown)
+        assertTrue(inventory.entries.containsKey("artifact/0/META-INF/MANIFEST.MF"))
+    }
+
     private fun module(service: String? = null): ByteArray {
         val writer = ClassWriter(0)
         writer.visit(Opcodes.V17, Opcodes.ACC_MODULE, "module-info", null, null, null)

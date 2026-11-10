@@ -15,7 +15,9 @@ import sootup.core.model.MethodModifier
  * @property ignoredFields Unread fields eligible for private-field normalization under the inventory's restrictions.
  * @property entryClasses Candidate public application entry classes; null means no explicit entry-class inventory.
  * @property externalEntries Method identities that annotation-based discovery may invoke externally.
- * @property initializationDependencies Classes and default-method interfaces initialized when each class initializes.
+ * @property initializationDependencies Superclasses and superinterfaces declaring concrete instance methods initialized with each class.
+ * @property initializationTriggerMethods Exact non-abstract, non-static interface method identities requiring
+ * interface initialization when an implementing class initializes, including private methods.
  * @property overrides Method identities implementing or overriding inherited methods.
  * @property enclosingClasses Nested-class owner to enclosing-class owner mapping.
  * @property methodDiagnostics Method-local analysis gaps, checked against the folded change dependency closure.
@@ -43,6 +45,7 @@ data class ProgramSnapshot(
     val resourceDependenciesAnalyzed: Boolean = false,
     val resourceEntryReads: Map<String, List<ResourceRead>> = emptyMap(),
     val originalOwners: Map<String, String> = emptyMap(),
+    val initializationTriggerMethods: Set<String> = emptySet(),
 )
 
 /**
@@ -110,4 +113,8 @@ data class MethodAnalysisGap(
     val observedOwners: Set<String> = emptySet(),
     val requiresObservedFrame: Boolean = false,
     val dynamicCall: String? = null,
+    /** The existing resource-effect contract covers this dispatch gap, without proving structural call targets. */
+    val resourceEffectModeled: Boolean = false,
+    /** Missing dispatch targets only; body extraction, recovery and observation gaps must not set this flag. */
+    val dispatchOnly: Boolean = false,
 )

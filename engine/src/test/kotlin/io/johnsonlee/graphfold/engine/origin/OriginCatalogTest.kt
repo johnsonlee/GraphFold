@@ -22,12 +22,12 @@ class OriginCatalogTest {
     @TempDir lateinit var temporary: Path
     private val mapper = jacksonObjectMapper()
 
-    @Test
-    fun `cached provenance binds exact class bytes and rejects tampering`() {
+    @ParameterizedTest
+    @ValueSource(strings = ["gradle-v1-test-provider", "maven-v1-test-provider"])
+    fun `cached provenance binds exact class bytes and rejects tampering`(runId: String) {
         val fixture = compile()
         val file = manifest(fixture.project)
         val document = mapper.readTree(file.toFile()) as ObjectNode
-        val runId = "gradle-v1-test-provider"
         document.put("runId", runId)
         document["records"].forEach { record ->
             val binary = fixture.project.classes.resolve(record["owner"].asText().replace('.', '/') + ".class")
@@ -146,14 +146,19 @@ class OriginCatalogTest {
         assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "invalid.json" in it })
     }
 
-    @Test
-    fun `Kotlin marker removal and stale marker bytes cannot validate sidecar claims`() {
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `Kotlin marker removal and stale marker bytes cannot validate sidecar claims`(removeAllAnnotations: Boolean) {
         val fixture = compile(kotlin = true)
         val classes = Files.walk(fixture.project.classes).use { it.filter { file -> file.toString().endsWith(".class") }.toList() }
         classes.forEach { file ->
             val node = ClassNode().also { ClassReader(Files.readAllBytes(file)).accept(it, 0) }
             node.invisibleAnnotations?.removeIf { it.desc == ORIGIN_MARKER }
             node.visibleAnnotations?.removeIf { it.desc == ORIGIN_MARKER }
+            if (removeAllAnnotations) {
+                node.invisibleAnnotations = null
+                node.visibleAnnotations = null
+            }
             val writer = ClassWriter(0)
             node.accept(writer)
             Files.write(file, writer.toByteArray())
@@ -239,6 +244,84 @@ class OriginCatalogTest {
         }
         mapper.writeValue(file.toFile(), original)
         assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `nested Java anonymous allocation retains its verified enclosing origin`() {
+        val fixture = compile { """
+            package sample;
+            public class Example {
+                Object outer() { return new Object() { Object nested = new Object() {}; }; }
+            }
+        """.trimIndent() }
+        val result = readOrigins(fixture.project, fixture.root)
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
+        assertEquals(2, result.origins.size)
+        val outer = result.origins.single { it.enclosingOriginOwner == null }
+        val nested = result.origins.single { it.enclosingOriginOwner != null }
+        assertEquals("sample.Example.outer()Ljava/lang/Object;", outer.emissionContext)
+        assertEquals(outer.owner, nested.enclosingOriginOwner)
+        assertEquals(null, nested.emissionContext)
+    }
+
+    @Test
+    fun `empty Kotlin marker never validates an otherwise matching manifest`() {
+        val fixture = compile(kotlin = true)
+        val file = manifest(fixture.project)
+        val document = mapper.readTree(file.toFile())
+        val artifact = fixture.project.classes.resolve(document["records"][0]["owner"].asText().replace('.', '/') + ".class")
+        val node = ClassNode().also { ClassReader(Files.readAllBytes(artifact)).accept(it, 0) }
+        node.invisibleAnnotations.single { it.desc == ORIGIN_MARKER }.values = null
+        val writer = ClassWriter(0)
+        node.accept(writer)
+        Files.write(artifact, writer.toByteArray())
+        assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "Kotlin origin marker differs" in it })
+    }
+
+    @Test
+    fun `omitted Kotlin metadata kind retains the annotation default class classification`() {
+        val fixture = compile(kotlin = true)
+        val files = Files.walk(fixture.project.classes).use { paths -> paths.filter { it.toString().endsWith(".class") }.toList() }
+        files.forEach { artifact ->
+            val node = ClassNode().also { ClassReader(Files.readAllBytes(artifact)).accept(it, 0) }
+            val annotation = node.visibleAnnotations.single { it.desc == "Lkotlin/Metadata;" }
+            annotation.values = annotation.values.chunked(2).filterNot { it.first() == "k" }.flatten().toMutableList()
+            val writer = ClassWriter(0)
+            node.accept(writer)
+            Files.write(artifact, writer.toByteArray())
+        }
+        val result = readOrigins(fixture.project, fixture.root)
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
+        assertEquals(2, result.origins.size)
+    }
+
+    @Test
+    fun `manifest IO failure without a message remains a typed blocking diagnostic`() {
+        val fixture = compile()
+        val result = readOrigins(fixture.project, fixture.root) { throw java.io.IOException() }
+        assertTrue(result.origins.isEmpty())
+        assertTrue(result.diagnostics.any { it.endsWith(": IOException") }, result.diagnostics.toString())
+        assertTrue(result.diagnostics.any { "No verified compiler origin" in it })
+    }
+
+    @Test
+    fun `absent enclosing metadata does not invent an enclosing origin owner`() {
+        val fixture = compile()
+        val file = manifest(fixture.project)
+        val record = mapper.readTree(file.toFile())["records"][0]
+        val artifact = fixture.project.classes.resolve(record["owner"].asText().replace('.', '/') + ".class")
+        val node = ClassNode().also { ClassReader(Files.readAllBytes(artifact)).accept(it, 0) }
+        node.outerClass = null
+        node.outerMethod = null
+        node.outerMethodDesc = null
+        val writer = ClassWriter(0)
+        node.accept(writer)
+        Files.write(artifact, writer.toByteArray())
+        val result = readOrigins(fixture.project, fixture.root)
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
+        val origin = result.origins.single { it.owner == record["owner"].asText() }
+        assertEquals(null, origin.enclosingOriginOwner)
+        assertEquals("sample.Example.<init>()V", origin.emissionContext)
     }
 
     private fun compile(kotlin: Boolean = false, format: (String) -> String = { it }): Fixture {

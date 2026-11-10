@@ -46,6 +46,34 @@ class ExternalObjectEscapeConstantDynamicTest {
         assertTrue(dynamicGap.observedOwners.isEmpty())
     }
 
+    @Test fun `method handle literals cannot narrow an externally inspected DTO to its declared fields`() {
+        val dto = owner("sample/Dto")
+        val constant = LdcInsnNode("plain value")
+        dto.methods.add(MethodNode(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "inspect", "()V", null, null).also {
+            it.visitCode()
+            it.instructions.add(constant)
+            it.visitInsn(Opcodes.POP)
+            it.visitInsn(Opcodes.RETURN)
+            it.visitMaxs(1, 0)
+            it.visitEnd()
+        })
+        val caller = owner("sample/Entry")
+        caller.methods.add(MethodNode(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "expose", "(Lsample/Dto;)V", null, null).also {
+            it.visitCode()
+            it.visitVarInsn(Opcodes.ALOAD, 0)
+            it.visitMethodInsn(Opcodes.INVOKESTATIC, "external/Encoder", "encode", "(Ljava/lang/Object;)V", false)
+            it.visitInsn(Opcodes.RETURN)
+            it.visitMaxs(1, 1)
+            it.visitEnd()
+        })
+        val escapes = ExternalObjectEscape(mapOf(dto.name to dto, caller.name to caller))
+        assertFalse(escapes.methodDiagnostics().getValue("sample.Entry.expose(Lsample/Dto;)V").single().globalObservation)
+        constant.cst = Handle(Opcodes.H_INVOKESTATIC, "external/Callback", "run", "()V", false)
+        val gap = escapes.methodDiagnostics().getValue("sample.Entry.expose(Lsample/Dto;)V").single()
+        assertTrue(gap.globalObservation)
+        assertTrue(gap.observedOwners.isEmpty())
+    }
+
     private fun owner(name: String) = ClassNode().also {
         it.version = Opcodes.V17
         it.name = name

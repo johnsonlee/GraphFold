@@ -16,7 +16,10 @@ internal fun bindOrigins(
     val fileOrigins = catalog.origins.filter { it.path == source.path }
     val anonymousOwners = fileOrigins.map { it.owner }.toSet()
     val remapper = object : Remapper(Opcodes.ASM9) {
-        override fun map(internalName: String): String = owners[internalName.replace('/', '.')]?.replace('.', '/') ?: internalName
+        override fun map(internalName: String): String {
+            val mapped = owners[internalName.replace('/', '.')] ?: return internalName
+            return mapped.replace('.', '/')
+        }
     }
     val symbols = source.symbols.filterNot { it.owner in anonymousOwners }.map { symbol ->
         val owner = owners[symbol.owner] ?: symbol.owner

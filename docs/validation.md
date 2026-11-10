@@ -1,5 +1,177 @@
 # Validation record
 
+## Graphite 2.15.0 release integration (2026-11-11)
+
+The dependency catalog and verdict metadata target the official `2.15.0` release,
+tag commit `58215b986f8c1be68b0480bc209e00311bc80dc1`. The observer API is unchanged
+from alpha1; the release fixes Cypher inline predicate filtering. Existing alpha1
+results below are retained as historical evidence, not release acceptance.
+
+The upstream [publication run](https://github.com/johnsonlee/graphite/actions/runs/42929495020)
+successfully published Maven artifacts to GitHub Packages. Its Sonatype release
+step failed with HTTP 400, even though the enclosing job completed successfully;
+Central returned HTTP 404 for the release POM. GraphFold checks Central first and
+then the upstream Packages registry, restricted to `io.johnsonlee.graphite`.
+Local credentials use user Gradle properties `graphitePackagesUsername` and
+`graphitePackagesToken`, or `GITHUB_ACTOR` and `GITHUB_TOKEN`. CI uses its workflow
+token with package read permission; upstream package access is also required.
+No local source-built replacement or temporary repository is configured.
+
+The release acceptance command is the normal CI `./gradlew check :cli:installDist
+--no-daemon --stacktrace`, followed by the exact-count coverage collector on both
+Ubuntu and macOS. The [PR checks](https://github.com/johnsonlee/GraphFold/pull/2/checks)
+and their attached coverage/test reports record the outcome for each revision;
+only passing checks for the final head establish hosted release acceptance. The
+initial local CLI token could not read Packages (HTTP 401), so local alpha1 results
+must not be relabeled as release verification. Detection and coverage requirements
+are unchanged.
+
+## Historical alpha1 acceptance: complete coverage and independent publication (2026-11-11)
+
+The configured hard gates now require **100% LINE and 100% BRANCH coverage in
+each module**: `engine`, `cli`, `gfc`, and `gradle-plugin`. No production classes
+are excluded. CI additionally checks the exact integer counters: any missed line
+or branch fails, as do missing/malformed reports and zero measured totals. A
+rounded percentage cannot produce a false pass. Both Ubuntu and macOS must
+succeed through the existing required `run-unit-test` check.
+
+**Local full regression acceptance passed.** The unfiltered `check`, production
+and test type-aware detekt, and every 100% coverage gate succeeded. All **1,494
+JVM test invocations** completed with zero failures, errors, or skips. No test
+filter, diagnostic exclusion, or merged execution-data report was used for this
+acceptance run. Its local log is `/tmp/graphfold-full-check-4.log`.
+
+| Module | Tests | Covered lines / total | Covered branches / total |
+| --- | ---: | ---: | ---: |
+| engine | 1,339 | 5,171 / 5,171 | 4,815 / 4,815 |
+| cli | 30 | 82 / 82 | 34 / 34 |
+| gfc | 96 | 364 / 364 | 242 / 242 |
+| gradle-plugin | 29 | 95 / 95 | 18 / 18 |
+
+All **132 Java and 209 Kotlin corpus cases** passed without operational blockers
+or label mismatches. The added interface-initialization cases also verify actual
+JVM output: adding a first concrete instance interface method can activate its
+initialization even without invoking that method, including private methods.
+Missing-body, provenance, resource, ambiguous-owner, and speculative-reachability
+counterexamples remain blocking. The original 22 failures and later initialization
+regressions are resolved without reducing thresholds or excluding production code.
+
+The strict CI collector accepted these exact counts after previously rejecting a
+report with three missed branches despite complete line coverage. SHA-256 checks
+confirmed that all 270 recorded production/test files remained unchanged during
+the acceptance run. Commands:
+
+```sh
+./gradlew check detektMain detektTest --continue \
+  -I /tmp/graphfold-alpha1-consume.init.gradle \
+  -I /tmp/graphfold-test-progress.init.gradle
+python3 .github/scripts/coverage_report.py --platform macos-latest \
+  --output /tmp/graphfold-final-local-coverage.json
+```
+
+Verification ran locally on macOS/JDK 17 and resolves the three Graphite
+`2.15.0-alpha1` coordinates from the isolated exact-tag build described below.
+It does not establish hosted Ubuntu/macOS CI success or clean Maven Central
+consumption: the alpha1 POM was still unavailable when checked on 2026-11-11.
+The temporary repository is not configured in the project. No performance
+acceptance is claimed.
+
+The PR reporting implementation maintains one marked `github-actions[bot]`
+coverage comment per PR, updating it and deleting duplicate owned comments.
+It shows every module's line/branch counts on both platforms, platform job
+results, commit, run attempt, and a link to the Build run. A trusted-default-branch
+`workflow_run` consumes bounded JSON artifacts; PR code never runs with the
+comment-writing token. API-owned PR associations, unique-only fallback matching,
+per-PR queued concurrency, and repeated head/run checks prevent cross-PR or stale
+updates. Invalid artifacts and partial attempts remain explicitly incomplete.
+No live comment has been posted; hosted behavior remains unverified until the
+workflow is merged into the default branch.
+
+All **40 Python tests** for release validation and coverage reporting pass.
+Build and Publish pass actionlint. The reporting workflow's only outstanding lint
+error is `queue: max`: current GitHub supports it, while actionlint 1.7.12 and its
+current upstream parser do not. No lint suppression was added. The detailed
+reporting evidence and limitation are recorded in [CI coverage reporting](#ci-coverage-reporting-2026-11-11).
+
+Independent publication has passed two local checks: the fixture accepts matching
+signed Central/unsigned Packages payloads and rejects changed JAR/POM/module
+metadata; the actual four GraphFold modules and plugin marker also passed guarded
+Packages publication to a file repository with complete payload equality.
+Maven Central failure cannot block the independent Packages or GitHub Release
+jobs after shared preparation succeeds. No remote publication has been attempted;
+package permissions and hosted preparation remain unverified. See
+[independent publication channels](#independent-publication-channels-2026-11-10)
+for the rehearsal boundary.
+
+## Graphite 2.15.0-alpha1 selection (2026-11-10)
+
+The dependency catalog, verdict metadata, and current documentation target
+`2.15.0-alpha1`, following the decision to use the available upstream tag instead
+of rc1. The rc1 attempt failed before compilation because all three Graphite
+coordinates were unavailable from Maven Central; no rc1 tests ran.
+
+The alpha1 Central POM still returns HTTP 404, and the offline consumer has no
+cached Central artifact. Verification therefore uses an independent shared-object
+checkout of tag `v2.15.0-alpha1`, commit
+`907bc9adf24dbd238d72c08127827e6481cc6fe7`, built into an isolated temporary Maven
+repository. Publishing `core`, `cypher`, and `sootup` to that local repository
+succeeded. Only temporary local signing is disabled; the project repository and
+release signing settings are unchanged. This does not establish availability or
+verification of signed Central binaries.
+
+Focused observer, dependency-resource and completeness regression checks passed
+**74 tests**, zero failures/errors/skips, with engine production/test type-aware
+detekt tasks successful (up-to-date). The command was:
+
+```sh
+./gradlew -I /tmp/graphfold-alpha1-consume.init.gradle :engine:test \
+  --tests '*SnapshotCaptureTest' --tests '*ObservedGraphIntegrationTest' \
+  --tests '*Graphite*CompletenessTest' --tests '*DependencyResourceIntegrationTest' \
+  :engine:detektMain :engine:detektTest --console=plain
+```
+
+The temporary consumer init script selects only the three exact alpha1 coordinates
+from `/tmp/graphfold-alpha1-maven`. `git diff --check` also passed.
+
+Existing full-suite XML reports inspected before this run contained
+1,143 engine test invocations and 22 failures: five resource-read expectations,
+two initialization cases, one fold-selection audit case, one origin-diagnostic
+identity case, eleven origin-observation reachability cases, and both corpus
+suite methods. The affected paths now pass targeted regression runs, including both corpus
+methods restricted to their originally failing `new_called_public_method` case.
+This is not yet a complete corpus or full-check acceptance result. Additional
+failure-path and boundary tests pass (123 tests in the latest targeted batch).
+
+At this stage, the branch coverage hard gate was raised to **100% in every
+module**, with the then-existing 90% line gate retained. No production classes
+were excluded. CLI, GFC and Gradle plugin branch gates had passed; engine
+acceptance still awaited the unfiltered full suite and remaining coverage fixes.
+This historical stage did not establish performance acceptance.
+
+## Graphite observed-load integration (2026-11-07)
+
+The integration targets `2.15.0-alpha1`, built from upstream release tag
+`v2.15.0-alpha1`, commit `907bc9adf24dbd238d72c08127827e6481cc6fe7`.
+Sonatype rejected the release because the organization's monthly release-count
+limit was exhausted. Maven Central availability is therefore **not verified**.
+The reported quota reset is 2026-12-01; a higher limit or exemption requires
+Sonatype approval. A GitHub release alone does not establish Maven availability.
+
+For local verification, an independent shared-object checkout of that exact tag
+published `core`, `cypher`, and `sootup` to an isolated temporary Maven repository.
+The source build succeeded. Signing was disabled only for these temporary local
+artifacts. A temporary Gradle init script resolves only these three exact
+`io.johnsonlee.graphite:...:2.15.0-alpha1` coordinates from that repository.
+The project's repositories and release signing configuration are unchanged.
+This verifies source/API integration, not the eventual signed Central artifacts
+or a clean consumer's ability to download the release.
+
+Regression validation is in progress. No full-check, coverage-gate, or
+observer-enabled performance acceptance is claimed by this interim record.
+Earlier results below remain tied to their original versions.
+
+## Historical environment
+
 Date: 2026-11-02. Local environment: macOS, JDK 17. Graphite: 2.12.0.
 Kotlin compiler and metadata library: 2.1.20.
 
@@ -795,3 +967,69 @@ Targeted validation passed 42 tests and both engine type-aware detekt tasks:
 
 This focused run is correctness evidence, not performance acceptance or a replacement
 for the unfiltered `check` and per-module 95% branch / 90% line coverage gates.
+
+
+## Independent publication channels (2026-11-10)
+
+The GraphFold release workflow now prepares and verifies one set of release
+payloads before starting Maven Central, GitHub Packages, and GitHub Release as
+independent jobs. Central is not a prerequisite of either GitHub channel. Failed
+jobs retain their failure status, and an always-run summary records each result.
+A shared preparation failure still blocks all publication; the change does not
+bypass tests, coverage, payload integrity, or signing requirements for Central.
+
+`actionlint .github/workflows/publish.yml` and all **17** release Python tests
+passed. The actual Gradle fixture in
+`.github/scripts/verify-publication-gate.py` also passed: matching signed Central
+and unsigned GitHub Packages payloads were accepted by local stand-in
+repositories, while changed JAR, POM, and Gradle module metadata were rejected
+before upload for both channels. Test-fixture artifacts stayed excluded from
+publication. The Packages channel requires no Sonatype or GPG secret.
+
+Manual workflow dispatch runs the Packages publisher against a file repository
+and compares the resulting payloads with the verified release. The summary
+labels this as local rehearsal rather than successful remote publication. No
+hosted workflow or actual GitHub Packages upload has been exercised in this
+session; package permissions and remote availability remain unverified.
+
+On 2026-11-11, the actual GraphFold modules and Gradle plugin marker also passed
+a local Packages rehearsal: all four module publications and the marker were
+staged, verified, uploaded through the same pre-publication guard to an isolated
+file repository, then checked for complete payload equality. The rehearsal used
+locally rebuilt Graphite alpha1 artifacts and does not verify Central availability.
+Graphite publication is unchanged. Its unavailable alpha1 Central artifacts
+remain a separate prerequisite for a hosted GraphFold preparation build.
+
+
+## CI coverage reporting (2026-11-11)
+
+The Build workflow now collects exact per-module LINE and BRANCH counters on
+both Ubuntu and macOS. Missing reports, malformed counters, zero measured totals,
+and any nonzero missed count fail the coverage step. Matrix fail-fast is disabled
+so one platform failure does not cancel the other platform's report. Report
+collection and artifact upload run after failures; the existing `run-unit-test`
+required check still requires both verification jobs to succeed.
+
+A separate trusted-default-branch `workflow_run` workflow resolves PR identity,
+head SHA, run attempt, and platform job outcomes from GitHub APIs. It consumes only
+bounded, schema-validated JSON archives, never executes downloaded PR content,
+and never forwards its token to artifact storage redirects. Per-PR concurrency,
+a stable marker, owned-bot checks, pagination, and duplicate cleanup maintain one
+coverage comment. Stale heads, newer runs, and superseded attempts skip writes.
+Authoritative run-to-PR associations take priority; runs without associations are
+reported only when exactly one open PR matches, avoiding cross-base attribution
+for two PRs with the same head. Malformed, encrypted, or unsupported ZIP data
+becomes an incomplete report rather than preserving an earlier success silently.
+Previous-attempt artifacts cannot fill a missing current platform report.
+
+The reporting and existing release scripts currently pass **40 Python tests**.
+Build and Publish pass actionlint. The reporter also passed before adding
+`queue: max`; actionlint 1.7.12 (the latest release and current upstream parser)
+rejects only this new concurrency key. GitHub's [current concurrency documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+explicitly supports it. It prevents delayed older reports from replacing a newer
+pending report. No lint suppression was added; full reporter lint remains pending
+tool support. The collector also read the current real
+JaCoCo XML files and correctly failed on their remaining missed counts. This
+verifies parser behavior, not final coverage acceptance. No PR comment has been
+posted and no hosted reporter has been exercised in this session; the reporting
+workflow becomes available after merge into the default branch.

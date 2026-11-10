@@ -21,10 +21,15 @@ internal data class OriginCatalog(
     val origins: List<SourceOrigin>, val diagnostics: List<String>, val compiledOwners: Set<String> = emptySet(),
 )
 
-internal fun readOrigins(project: CompiledProject, checkout: Path): OriginCatalog =
-    OriginReader(project, checkout.toRealPath()).read()
+internal fun readOrigins(
+    project: CompiledProject, checkout: Path,
+    readManifest: (Path) -> JsonNode = { jacksonObjectMapper().readTree(it.toFile()) },
+): OriginCatalog = OriginReader(project, checkout.toRealPath(), readManifest).read()
 
-private class OriginReader(private val project: CompiledProject, private val root: Path) {
+private class OriginReader(
+    private val project: CompiledProject, private val root: Path, private val readManifest: (Path) -> JsonNode,
+) {
+    private val runId = project.originRunId.orEmpty()
     private val diagnostics = mutableListOf<String>()
     private val origins = linkedMapOf<String, SourceOrigin>()
     private val recorded = mutableSetOf<String>()
@@ -37,12 +42,12 @@ private class OriginReader(private val project: CompiledProject, private val roo
 
     fun read(): OriginCatalog {
         val directory = project.originDirectory
-        if (project.originRunId.isNullOrBlank() || directory == null || !Files.isDirectory(directory)) {
+        if (runId.isBlank() || directory == null || !Files.isDirectory(directory)) {
             return OriginCatalog(emptyList(), listOf("Compiler origin manifest is missing"))
         }
         val manifests = Files.list(directory).use { files -> files.filter { it.toString().endsWith(".json") }.sorted().toList() }
         if (manifests.isEmpty()) diagnostics += "Compiler origin manifest is empty"
-        manifests.forEach { file -> guarded(file.toString()) { manifest(jacksonObjectMapper().readTree(file.toFile())) } }
+        manifests.forEach { file -> guarded(file.toString()) { manifest(readManifest(file)) } }
         classes.filterValues(::anonymousObject).keys.filter { it !in origins }.forEach {
             diagnostics += "No verified compiler origin for anonymous class $it"
         }
@@ -63,7 +68,7 @@ private class OriginReader(private val project: CompiledProject, private val roo
         }
         return origins.values.map { origin ->
             val node = classes.getValue(origin.owner)
-            val enclosing = node.outerClass?.replace('/', '.')?.takeIf { it in origins }
+            val enclosing = node.outerClass?.let { it.replace('/', '.').takeIf { name -> name in origins } }
             origin.copy(emissionContext = contexts[origin.owner]?.joinToString("\n"), enclosingOriginOwner = enclosing)
         }
     }
@@ -93,7 +98,8 @@ private class OriginReader(private val project: CompiledProject, private val roo
     private fun record(record: JsonNode, compiler: Compiler) {
         val owner = record.path("owner").asText()
         require(owner in classes) { "Compiler origin owner was not emitted: $owner" }
-        if (project.originRunId.orEmpty().let { it.startsWith("gradle-v1-") || it.startsWith("maven-v1-") }) {
+        // read() rejects absent run IDs before parsing any records.
+        if (runId.let { it.startsWith("gradle-v1-") || it.startsWith("maven-v1-") }) {
             val bytes = Files.readAllBytes(project.classes.resolve(owner.replace('.', '/') + ".class"))
             val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             require(record.path("classHash").asText() == hash) { "Compiler origin class hash differs: $owner" }
@@ -113,7 +119,7 @@ private class OriginReader(private val project: CompiledProject, private val roo
         val allocation = span(record.path("allocation"), text.length)
         span(record.path("declaration"), text.length)
         if (compiler == Compiler.KOTLINC && kotlinKind(classes.getValue(owner), record) == Kind.DECLARATION) return
-        val match = syntax.singleOrNull { it.range == allocation || allocation in it.aliases }
+        val match = syntax.singleOrNull { allocation in it.aliases + it.range }
         requireNotNull(match) { "Compiler range does not identify one anonymous source expression: $file $allocation" }
         origins[owner] = SourceOrigin(owner, root.relativize(file).toString(), match)
     }

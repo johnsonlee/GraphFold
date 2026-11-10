@@ -7,6 +7,7 @@ import java.time.Duration
 
 internal class GradleBuildAdapter(
     private val timeout: Duration, private val environmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
+    private val initScript: () -> java.io.InputStream? = { GradleBuildAdapter::class.java.getResourceAsStream("graphfold.gradle") },
 ) {
     fun compile(checkout: Path, output: Path): CompiledProject {
         val plugin = CompilerOriginPlugin.artifact()
@@ -18,7 +19,7 @@ internal class GradleBuildAdapter(
         val manifest = output.resolve("gradle-inputs.txt").toAbsolutePath()
         val init = Files.createTempFile(output, "graphfold-", ".gradle")
         try {
-            checkNotNull(javaClass.getResourceAsStream("graphfold.gradle")) {
+            checkNotNull(initScript()) {
                 "Missing bundled graphfold.gradle init script"
             }.use { script -> Files.copy(script, init, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
             runBuild(

@@ -70,6 +70,7 @@ class ResourceIndependentCallsTest {
         val objectSignature = types.getMethodSignature("java.io.PrintStream", "println", "void", listOf("java.lang.Object"))
         val model = ResourceIndependentCalls(mapOf(alias to field))
         assertTrue(model.matches(call.withMethodSignature(objectSignature)))
+        assertFalse(model.matches(call.withMethodSignature(objectSignature).withArgs(emptyList())))
         val applicationObject = Local("object", types.getClassType("Application"))
         assertFalse(model.matches(call.withMethodSignature(objectSignature).withArgs(listOf(applicationObject))))
     }

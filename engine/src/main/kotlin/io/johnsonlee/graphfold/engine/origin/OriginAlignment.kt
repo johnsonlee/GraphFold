@@ -17,13 +17,15 @@ internal data class OriginAlignment(
 internal fun alignOrigins(
     base: List<SourceOrigin>, head: List<SourceOrigin>, renamedFiles: Map<String, String> = emptyMap(),
     reservedOwners: Set<String> = emptySet(),
-): OriginAlignment = OriginPairing(base, head, renamedFiles, reservedOwners).align()
+    digest: (ByteArray) -> ByteArray = { MessageDigest.getInstance("SHA-256").digest(it) },
+): OriginAlignment = OriginPairing(base, head, renamedFiles, reservedOwners, digest).align()
 
 private class OriginPairing(
     private val base: List<SourceOrigin>,
     private val head: List<SourceOrigin>,
     private val renamedFiles: Map<String, String>,
     private val reservedOwners: Set<String>,
+    private val digest: (ByteArray) -> ByteArray,
 ) {
     private val baseOwners = linkedMapOf<String, String>()
     private val headOwners = linkedMapOf<String, String>()
@@ -70,7 +72,10 @@ private class OriginPairing(
 
     private fun eligible(
         pending: List<SourceOrigin>, all: List<SourceOrigin>, aligned: Map<String, String>,
-    ): List<SourceOrigin> = pending.filter { it.syntax.parentRange == null || parent(it, all)?.owner in aligned }
+    ): List<SourceOrigin> = pending.filter {
+        // invalid() has already excluded every missing or ambiguous physical parent from pending.
+        it.syntax.parentRange == null || java.util.Objects.requireNonNull<SourceOrigin>(parent(it, all)).owner in aligned
+    }
 
     private fun match(old: List<SourceOrigin>, new: List<SourceOrigin>, anchored: Boolean) {
         val oldGroups = old.groupBy { key(it, true, anchored) }
@@ -132,10 +137,12 @@ private class OriginPairing(
 
     private fun canonical(origin: SourceOrigin, all: List<SourceOrigin>, aligned: Map<String, String>, side: Revision): String {
         val parent = parent(origin, all)
-        val prefix = parent?.let { aligned[it.owner] } ?: namedPrefix(origin)
+        // Physical AST parent ranges precede children; assignUnmatched visits them in that order.
+        // A missing parent label is inconsistent provenance, never a reason to invent a named root.
+        val prefix = if (parent == null) namedPrefix(origin) else aligned.getValue(parent.owner)
         val identity = listOf(side.name.lowercase(), origin.path, origin.owner, origin.syntax.range.start, origin.syntax.range.end,
             origin.syntax.container, origin.syntax.anchor).joinToString("\u0000")
-        val hash = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
+        val hash = digest(identity.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
         val result = "$prefix\$graphfold\$origin\$$hash"
         if (result in reservedOwners || result in baseOwners.values || result in headOwners.values) {
@@ -147,7 +154,7 @@ private class OriginPairing(
     private fun namedPrefix(origin: SourceOrigin): String {
         val names = origin.syntax.container.split('/').filter { it.startsWith("type:") }.map { it.removePrefix("type:") }
         val packageName = origin.owner.substringBeforeLast('.', "")
-        val simple = names.takeIf { it.isNotEmpty() }?.joinToString("$") ?: origin.owner.substringAfterLast('.').substringBefore('$')
+        val simple = if (names.isEmpty()) origin.owner.substringAfterLast('.').substringBefore('$') else names.joinToString("$")
         return if (packageName.isEmpty()) simple else "$packageName.$simple"
     }
 

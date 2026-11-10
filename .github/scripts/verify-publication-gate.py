@@ -1,4 +1,4 @@
-"""Exercise the upload guard using isolated signed publications and a local Sonatype stand-in."""
+"""Exercise both upload channels with local repositories, signed and unsigned payloads."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -58,7 +58,8 @@ publishing {
     }
     repositories {
         maven { name = 'verified'; url = rootProject.layout.projectDirectory.dir('verified') }
-        maven { name = 'sonatype'; url = rootProject.layout.projectDirectory.dir('uploaded') }
+        maven { name = 'sonatype'; url = rootProject.layout.projectDirectory.dir('uploaded-central') }
+        maven { name = 'GitHubPackages'; url = rootProject.layout.projectDirectory.dir('uploaded-github') }
     }
 }
 if (project.hasProperty('signed')) {
@@ -67,24 +68,33 @@ if (project.hasProperty('signed')) {
 ''')
     gradle = [str(ROOT / "gradlew"), "-p", str(fixture), "--console=plain", "--offline"]
     run(gradle + ["publishAllPublicationsToVerifiedRepository"], fixture)
-    guarded = gradle + ["publishAllPublicationsToSonatypeRepository", "-Psigned",
-                        "--init-script", str(GATE), "-Dgraphfold.verifiedRepository=" + str(fixture / "verified")]
-    run(gradle + ["clean"] + guarded[len(gradle):], fixture)
-    uploaded = fixture / "uploaded"
-    payloads = [p for p in uploaded.rglob('*') if p.suffix in ('.jar', '.pom', '.module')]
-    assert payloads, "No primary artifacts uploaded"
-    assert not any('test-fixtures' in p.name for p in payloads), "Test fixture artifact leaked into publication"
-    for payload in payloads:
-        expected = fixture / "verified" / payload.relative_to(uploaded)
-        assert payload.read_bytes() == expected.read_bytes(), payload
-        signature = Path(str(payload) + '.asc')
-        assert signature.is_file(), f"Missing signature for {payload}"
-        run(gpg + ['--verify', str(signature), str(payload)], fixture)
-    for mutation in ('alterJar', 'alterPom', 'alterMetadata'):
-        if uploaded.exists():
-            shutil.rmtree(uploaded)
-        log = run(guarded + ['-P' + mutation], fixture, expected_success=False)
-        assert 'Upload differs from verified release' in log, log
-        implementation = uploaded / 'fixture/release/fixture/1.0'
-        assert not implementation.exists(), "Mismatched implementation was uploaded"
-    print("Publication gate: matching signed payloads accepted; altered JAR, POM and module metadata blocked before upload; fixtures excluded")
+    for channel, directory, signed in (("Sonatype", "uploaded-central", True),
+                                       ("GitHubPackages", "uploaded-github", False)):
+        guarded = gradle + ["publishAllPublicationsTo" + channel + "Repository",
+                            "--init-script", str(GATE),
+                            "-Dgraphfold.verifiedRepository=" + str(fixture / "verified")]
+        if signed:
+            guarded.append("-Psigned")
+        run(gradle + ["clean"] + guarded[len(gradle):], fixture)
+        uploaded = fixture / directory
+        payloads = [p for p in uploaded.rglob('*') if p.suffix in ('.jar', '.pom', '.module')]
+        assert payloads, "No primary artifacts uploaded to " + channel
+        assert not any('test-fixtures' in p.name for p in payloads), "Test fixture artifact leaked into publication"
+        for payload in payloads:
+            expected = fixture / "verified" / payload.relative_to(uploaded)
+            assert payload.read_bytes() == expected.read_bytes(), payload
+            signature = Path(str(payload) + '.asc')
+            if signed:
+                assert signature.is_file(), f"Missing signature for {payload}"
+                run(gpg + ['--verify', str(signature), str(payload)], fixture)
+            else:
+                assert not signature.exists(), "GitHub Packages unexpectedly requires signing"
+        for mutation in ('alterJar', 'alterPom', 'alterMetadata'):
+            if uploaded.exists():
+                shutil.rmtree(uploaded)
+            log = run(guarded + ['-P' + mutation], fixture, expected_success=False)
+            assert 'Upload differs from verified release' in log, log
+            implementation = uploaded / 'fixture/release/fixture/1.0'
+            assert not implementation.exists(), "Mismatched implementation was uploaded to " + channel
+    print("Publication gates: matching signed Central and unsigned GitHub payloads accepted; "
+          "altered JAR, POM and module metadata blocked before either upload; fixtures excluded")

@@ -14,6 +14,16 @@ import kotlin.test.assertTrue
 class GraphiteDiagnosticsTest {
     @TempDir lateinit var directory: Path
 
+    @Test fun `artifact collector preserves failures without accepting embedded application payloads`() {
+        val diagnostics = mutableListOf<String>()
+        val collect = artifactDiagnosticCollector(diagnostics)
+        val failure = "Failed to extract artifact dependencies from broken.jar: invalid metadata"
+        collect(failure)
+        collect("Loaded an enum value: $failure")
+        collect("Warning: Recovered body for a method")
+        assertEquals(listOf(failure), diagnostics)
+    }
+
     @Test
     fun `owned failure and recovery records remain incomplete diagnostics`() {
         listOf(

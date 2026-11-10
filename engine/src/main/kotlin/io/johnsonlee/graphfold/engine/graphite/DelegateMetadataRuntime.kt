@@ -13,8 +13,7 @@ internal object DelegateMetadataRuntime {
         val definitions = names.associateWith { mutableListOf<ByteArray>() }
         dependencies.forEach { path -> collect(path, definitions) }
         return definitions.all { (name, bytes) ->
-            val trusted = Unit::class.java.getResourceAsStream("/$name.class")?.use { it.readBytes() }
-            trusted != null && bytes.size == 1 && bytes.single().contentEquals(trusted)
+            EngineRuntimeClasses.matches(name, bytes)
         }
     }
 

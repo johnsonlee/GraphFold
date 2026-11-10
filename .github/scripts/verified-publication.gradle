@@ -5,7 +5,7 @@ import java.nio.file.Files
 gradle.projectsEvaluated {
     gradle.rootProject.allprojects { project ->
         tasks.withType(PublishToMavenRepository).configureEach { publish ->
-            if (publish.repository.name.equalsIgnoreCase('sonatype')) {
+            if (publish.repository.name.toLowerCase(Locale.ROOT) in ['sonatype', 'githubpackages']) {
                 publish.doFirst {
                     def publication = publish.publication
                     def root = new File(System.getProperty('graphfold.verifiedRepository'))

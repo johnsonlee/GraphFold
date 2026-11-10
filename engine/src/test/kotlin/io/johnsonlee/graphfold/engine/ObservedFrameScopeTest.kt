@@ -95,6 +95,14 @@ class ObservedFrameScopeTest {
         assertTrue(SnapshotComparison(noOwners, noOwners).analysisGaps().isEmpty())
     }
 
+    @Test fun `absent owner and external constructed types do not invent observed frames`() {
+        val program = snapshot(method("Renamed.run()V", "External.<init>()V"))
+        val scope = ObservedFrameScope(program, program.methods.keys)
+        assertTrue(scope.contains("Renamed.run()V", setOf("Renamed")))
+        assertEquals(false, scope.contains("External.<init>()V", setOf("Renamed")))
+        assertEquals(false, scope.contains("Renamed.run()V", setOf("Missing")))
+    }
+
     private fun frameGap(message: String) = MethodAnalysisGap(message, observedOwners = setOf("Renamed"), requiresObservedFrame = true)
     private fun method(identity: String, vararg calls: String) =
         MethodSnapshot(identity, "body", calls.toSet(), setOf(MethodModifier.PUBLIC), emptySet())

@@ -124,6 +124,30 @@ class ProofPlannerTest {
             ProofPlanner.plan(source, listOf(change)).map { it.identity }.toSet())
     }
 
+    @Test
+    fun `complete nested member range wins over enclosing compiler origin range`() {
+        val whole = location(1, 1, 1, 30)
+        val member = location(1, 10, 1, 20)
+        val source = IndexedSource("Example.java", " ".repeat(30), listOf(
+            SourceSymbol("Example", "Example", SymbolKind.CLASS, whole, compilerOrigin = true),
+            SourceSymbol("Example.run()V", "Example", SymbolKind.METHOD, member),
+        ), emptyList())
+        val changed = location(1, 12, 1, 15)
+        for (symbols in listOf(source.symbols, source.symbols.reversed())) {
+            val obligation = ProofPlanner.plan(source.copy(symbols = symbols), listOf(changed)).single()
+            assertEquals("Example.run()V", obligation.identity)
+            assertEquals(listOf(changed), obligation.locations)
+        }
+    }
+
+    @Test
+    fun `overlong changed span clamps token scan but retains actual class and member fragments`() {
+        val source = index("class Example {\n int run() { return 1; }\n}")
+        val obligations = ProofPlanner.plan(source, listOf(location(1, 1, 8, 30)))
+        assertEquals(setOf("Example", "Example.run()I"), obligations.map { it.identity }.toSet())
+        assertTrue(obligations.flatMap { it.locations }.all { it.line.end <= 3 })
+    }
+
     private fun index(text: String, revision: Revision = Revision.HEAD): IndexedSource {
         Files.writeString(temporary.resolve("Example.java"), text)
         return JavaSourceIndex(listOf(temporary), emptyList()).use { it.index(temporary, "Example.java", revision) }

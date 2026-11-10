@@ -12,6 +12,15 @@ import org.junit.jupiter.api.io.TempDir
 class ResourceReadsTest {
     @TempDir lateinit var directory: Path
 
+    @Test fun `discarded bundle results and static cache operations retain unknown effects`() {
+        val snapshot = GraphiteAnalyzer().analyze(compile("""
+            public static void discard() { java.util.ResourceBundle.getBundle("messages"); }
+            public static void clear() { java.util.ResourceBundle.clearCache(); }
+        """.trimIndent()), emptyList())
+        assertEquals(listOf(ResourceRead(null, null)), snapshot.methods.getValue("Sample.discard()V").resourceReads)
+        assertEquals(listOf(ResourceRead(null, null)), snapshot.methods.getValue("Sample.clear()V").resourceReads)
+    }
+
     @Test fun `folded keys disappear while ordinary bundle reads remain`() {
         val source = """
             public static String run() {

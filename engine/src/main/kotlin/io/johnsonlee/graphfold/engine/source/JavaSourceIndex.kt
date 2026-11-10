@@ -135,14 +135,8 @@ class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoC
 
     private fun resolveMember(
         member: BodyDeclaration<*>, owner: String, path: String, revision: Revision, diagnostics: MutableList<String>,
-    ): List<SourceSymbol> = try {
+    ): List<SourceSymbol> = resolveJavaDeclaration(path, diagnostics) {
         memberSymbols(member, owner, path, revision)
-    } catch (failure: UnsolvedSymbolException) {
-        diagnostics += "Cannot resolve declaration in $path: ${failure.message}"
-        emptyList()
-    } catch (failure: UnsupportedOperationException) {
-        diagnostics += "Unsupported declaration in $path: ${failure.message}"
-        emptyList()
     }
 
     private fun memberSymbols(member: BodyDeclaration<*>, owner: String, path: String, revision: Revision): List<SourceSymbol> {
@@ -175,9 +169,9 @@ class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoC
         return when {
             erased.isArray -> "[" + descriptor(erased.asArrayType().componentType)
             erased.isReferenceType -> {
-                val declaration = erased.asReferenceType().typeDeclaration.orElseThrow {
-                    UnsupportedOperationException("Missing declaration for JVM descriptor: ${erased.describe()}")
-                }
+                // JavaParser 3.26.3 rejects null declarations in ResolvedReferenceType's constructor;
+                // its final accessor preserves that invariant. Keep the assertion at this boundary.
+                val declaration = erased.asReferenceType().typeDeclaration.orElseThrow()
                 "L" + binaryName(declaration).replace('.', '/') + ";"
             }
             else -> erased.toDescriptor()
@@ -214,4 +208,17 @@ class JavaSourceIndex(sourceRoots: List<Path>, dependencies: List<Path>) : AutoC
             SourceRange(range.begin.column, range.end.column + 1),
         )
     }
+}
+
+/** Convert frontend resolution failures to diagnostics without inventing a JVM symbol. */
+internal fun resolveJavaDeclaration(
+    path: String, diagnostics: MutableList<String>, resolve: () -> List<SourceSymbol>,
+): List<SourceSymbol> = try {
+    resolve()
+} catch (failure: UnsolvedSymbolException) {
+    diagnostics += "Cannot resolve declaration in $path: ${failure.message}"
+    emptyList()
+} catch (failure: UnsupportedOperationException) {
+    diagnostics += "Unsupported declaration in $path: ${failure.message}"
+    emptyList()
 }

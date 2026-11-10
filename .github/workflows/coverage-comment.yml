@@ -1,0 +1,59 @@
+name: PR coverage comment
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  resolve:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      prs: ${{ steps.resolve.outputs.prs }}
+    steps:
+      # Never check out the triggering PR or execute files from its artifacts with this token.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COVERAGE_RUN: ${{ github.event.workflow_run.id }}
+          COVERAGE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: python3 .github/scripts/coverage_comment.py resolve --run "$COVERAGE_RUN" --attempt "$COVERAGE_ATTEMPT"
+  comment:
+    needs: resolve
+    if: needs.resolve.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ fromJSON(needs.resolve.outputs.prs) }}
+    concurrency:
+      group: coverage-comment-${{ github.repository }}-${{ matrix.pr }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Update the single coverage comment for this PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COVERAGE_RUN: ${{ github.event.workflow_run.id }}
+          COVERAGE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          COVERAGE_PR: ${{ matrix.pr }}
+        run: >-
+          python3 .github/scripts/coverage_comment.py publish --run "$COVERAGE_RUN"
+          --attempt "$COVERAGE_ATTEMPT" --pr "$COVERAGE_PR"

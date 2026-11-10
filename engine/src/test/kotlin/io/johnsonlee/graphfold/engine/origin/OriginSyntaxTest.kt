@@ -195,6 +195,36 @@ class OriginSyntaxTest {
         assertEquals("new Object() {}", text.substring(origin.range.start, origin.range.end))
     }
 
+    @Test fun `bodyless Kotlin anonymous object is rejected as malformed syntax`() {
+        listOf("val value = object : Any()", "val value = object\nprivate fun next() = object {}",
+            "val value = object\npublic val next = object {}", "companion object { val value = object {} }").forEach { text ->
+            assertTrue(originSyntax("Example.kt", text).isEmpty(), text)
+        }
+        assertNull(originSyntax("Example.kt", "val value = object : Any()", 12, 26))
+    }
+
+    @Test fun `Kotlin function default expressions do not take anchors from an unrelated body`() {
+        val text = "fun value(argument: Any = object {}) = 1"
+        val origin = originSyntax("Example.kt", text).single()
+        assertTrue("argument" in origin.anchor)
+        assertTrue("1" !in origin.anchor)
+    }
+
+    @Test fun `abstract Kotlin function default expression has no unrelated body context`() {
+        val origin = originSyntax("Example.kt", "interface Example { fun value(argument: Any = object {}) }").single()
+        assertTrue("argument" in origin.anchor)
+        assertTrue("method::value(Any)" in origin.container)
+    }
+
+    @Test fun `body delimiter validation rejects incomplete token evidence before defining a source span`() {
+        fun tokens(vararg text: String) = text.mapIndexed { index, value -> OriginToken(OriginSpan(index, index + 1), value) }
+        kotlin.test.assertFailsWith<IllegalStateException> { javaAnonymousBodyRange(tokens("new", "Object", "(")) }
+        kotlin.test.assertFailsWith<IllegalStateException> { javaAnonymousBodyRange(tokens("new", "Object", "}")) }
+        assertEquals(OriginSpan(2, 6), javaAnonymousBodyRange(tokens("new", "Object", "{", "{", "}", "}")))
+        // JavaParser categorizes its zero-length EOF as whitespace, so the normal trivia guard excludes it.
+        assertTrue(com.github.javaparser.JavaToken(0, "").category.isWhitespaceOrComment)
+    }
+
     private fun checkStable(path: String, before: String, after: String) {
         val base = originSyntax(path, before).single()
         val head = originSyntax(path, after).single()

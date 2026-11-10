@@ -31,7 +31,6 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
-import kotlin.system.exitProcess
 
 /**
  * Runs GraphFold and terminates the process with its analysis exit status.
@@ -42,7 +41,13 @@ import kotlin.system.exitProcess
  * @param args command-line arguments, including the repository, revisions, and fold-rule file.
  */
 fun main(args: Array<String>) {
-    exitProcess(executeCli(args))
+    runMain(args)
+}
+
+/** Successful runs return normally; failures retain their exact process status at the OS boundary. */
+internal fun runMain(args: Array<String>, terminate: (Int) -> Unit = System::exit) {
+    val status = executeCli(args)
+    if (status != 0) terminate(status)
 }
 
 internal fun executeCli(args: Array<String>, command: GraphFoldCommand = GraphFoldCommand()): Int = try {
@@ -95,12 +100,13 @@ internal class GraphFoldCommand(
         val result = try {
             val request = AnalysisRequest(repository, base, head, Files.readString(fold))
             val timeout = Duration.ofSeconds(buildTimeout.toLong())
+            val leaseSeconds = leaseTimeout
             val configuration = EngineConfiguration(
                 cacheDirectory = cacheDirectory,
                 buildTimeout = timeout,
                 maximumWorkspaceSlots = workspaceSlots,
-                workspaceLeaseTimeout = leaseTimeout?.let { Duration.ofSeconds(it.toLong()) }
-                    ?: defaultWorkspaceLeaseTimeout(timeout),
+                workspaceLeaseTimeout = if (leaseSeconds == null) defaultWorkspaceLeaseTimeout(timeout)
+                    else Duration.ofSeconds(leaseSeconds.toLong()),
                 buildEnvironmentAllowlist = DEFAULT_BUILD_ENVIRONMENT + buildEnvironment,
             )
             analyze(configuration, request)

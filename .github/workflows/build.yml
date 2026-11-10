@@ -10,7 +10,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   verify:
+    name: verify (${{ matrix.os }})
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -25,6 +32,22 @@ jobs:
       - run: ./gradlew check :cli:installDist --no-daemon --stacktrace
       - run: cli/build/install/graphfold/bin/graphfold --help
       - run: cli/build/install/graphfold/bin/graphfold --version
+      - name: Generate reports even after failed tests
+        if: always()
+        run: >-
+          ./gradlew :engine:jacocoTestReport :cli:jacocoTestReport :gfc:jacocoTestReport
+          :gradle-plugin:jacocoTestReport -x test --continue --no-daemon --stacktrace
+      - name: Require exact 100 percent line and branch coverage per module
+        if: always()
+        env:
+          COVERAGE_PLATFORM: ${{ matrix.os }}
+        run: python3 .github/scripts/coverage_report.py --platform "$COVERAGE_PLATFORM" --output coverage/coverage.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ matrix.os }}-attempt-${{ github.run_attempt }}
+          path: coverage/coverage.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:

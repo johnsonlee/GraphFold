@@ -143,7 +143,10 @@ private class AstClassifier {
         else javaFacts(source.text)
 
     private fun javaFacts(text: String): List<Fact> {
-        val root = javaParser.parse(text).takeIf { it.isSuccessful }?.result?.orElse(null) ?: return emptyList()
+        val parsed = javaParser.parse(text)
+        if (!parsed.isSuccessful) return emptyList()
+        // ParseResult.isSuccessful requires a present compilation unit.
+        val root = parsed.result.orElseThrow()
         val result = mutableListOf<Fact>()
         root.walk { node ->
             fun add(kind: Kind, name: String, content: String, shape: String = content, initializer: String? = null, terms: Int = 1) {

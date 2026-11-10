@@ -52,6 +52,21 @@ class RevisionResolutionTest {
         }
     }
 
+    @Test
+    fun `local import rejects an unresolved reference without creating a cached object`() {
+        val source = temporary.resolve("source")
+        Git.init().setDirectory(source.toFile()).call().use { original ->
+            Git.init().setBare(true).setDirectory(temporary.resolve("cache.git").toFile()).call().use { cached ->
+                val failure = assertFailsWith<GitOperationException> {
+                    JGitLocalObjects.importCommit(cached.repository, org.eclipse.jgit.transport.URIish(source.toString()), "HEAD")
+                }
+                assertEquals("Commit is unavailable", failure.message)
+                assertNull(original.repository.resolve("HEAD"))
+                assertNull(cached.repository.resolve("HEAD"))
+            }
+        }
+    }
+
     private fun commit(git: Git, source: Path, text: String): String {
         Files.writeString(source.resolve("Example.java"), text)
         git.add().addFilepattern(".").call()
