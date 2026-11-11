@@ -7,6 +7,7 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class VerdictSchemaTest {
@@ -116,7 +117,7 @@ class VerdictSchemaTest {
         )
         requiredFields.forEach { (path, field) ->
             val modified = original.deepCopy()
-            (modified.at(path) as ObjectNode).remove(field)
+            assertIs<ObjectNode>(modified.at(path)).remove(field)
             assertInvalid(modified, "missing $path/$field")
         }
     }
@@ -146,7 +147,7 @@ class VerdictSchemaTest {
         )
         mutations.forEach { (path, json) ->
             val modified = report(failing())
-            val parent = modified.at(path.substringBeforeLast('/')) as ObjectNode
+            val parent = assertIs<ObjectNode>(modified.at(path.substringBeforeLast('/')))
             parent.set<JsonNode>(path.substringAfterLast('/'), mapper.readTree(json))
             assertInvalid(modified, "$path = $json")
         }
@@ -182,7 +183,7 @@ class VerdictSchemaTest {
         SelectedMethod("example.Caller.run()", "()V"), SelectedMethod("example.Target.value()", "()I"),
         ordinal = -1, originNodeId = 0, lineNumber = 0)
 
-    private fun report(result: AnalysisResult): ObjectNode = mapper.readTree(AnalysisReports.json(result)) as ObjectNode
+    private fun report(result: AnalysisResult): ObjectNode = assertIs<ObjectNode>(mapper.readTree(AnalysisReports.json(result)))
 
     private fun assertValid(result: AnalysisResult) {
         val errors = schema.validate(report(result))

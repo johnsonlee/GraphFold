@@ -7,12 +7,15 @@ import org.objectweb.asm.tree.analysis.BasicInterpreter
 import org.objectweb.asm.tree.analysis.BasicValue
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** Checks the abstract-value boundary independently of bytecode verifier reachability. */
 class ExternalObjectEscapeDomainTest {
-    private val interpreter = Class.forName("${ExternalObjectEscape::class.java.name}\$ApplicationTypes")
-        .declaredConstructors.single().apply { isAccessible = true }.newInstance(setOf("sample/Dto")) as BasicInterpreter
+    private val interpreter = assertIs<BasicInterpreter>(
+        Class.forName("${ExternalObjectEscape::class.java.name}\$ApplicationTypes")
+            .declaredConstructors.single().apply { isAccessible = true }.newInstance(setOf("sample/Dto"))
+    )
 
     @Test fun `uninitialized values have no object identity and mismatched joins cannot acquire one`() {
         val absent = BasicValue.UNINITIALIZED_VALUE
@@ -38,6 +41,8 @@ class ExternalObjectEscapeDomainTest {
         assertFalse(predicate("scalar", token))
     }
 
-    private fun predicate(name: String, value: BasicValue): Boolean = interpreter.javaClass
-        .getDeclaredMethod(name, BasicValue::class.java).apply { isAccessible = true }.invoke(interpreter, value) as Boolean
+    private fun predicate(name: String, value: BasicValue): Boolean = assertIs<Boolean>(
+        interpreter.javaClass.getDeclaredMethod(name, BasicValue::class.java)
+            .apply { isAccessible = true }.invoke(interpreter, value)
+    )
 }

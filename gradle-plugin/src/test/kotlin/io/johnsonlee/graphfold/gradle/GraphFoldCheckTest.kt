@@ -16,6 +16,7 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class GraphFoldCheckTest {
     @Test
@@ -28,12 +29,12 @@ class GraphFoldCheckTest {
         val fork = mock(JavaForkOptions::class.java)
         `when`(spec.forkOptions).thenReturn(fork)
         `when`(workers.processIsolation(any())).thenAnswer { invocation ->
-            (invocation.arguments[0] as Action<ProcessWorkerSpec>).execute(spec)
+            (assertNotNull(invocation.arguments[0]) as Action<ProcessWorkerSpec>).execute(spec)
             queue
         }
         val parameters = project.objects.newInstance(GraphFoldParameters::class.java)
         doAnswer { invocation ->
-            (invocation.arguments[1] as Action<GraphFoldParameters>).execute(parameters)
+            (assertNotNull(invocation.arguments[1]) as Action<GraphFoldParameters>).execute(parameters)
             null
         }.`when`(queue).submit(eq(GraphFoldWork::class.java), any())
         val task = project.tasks.register("isolated", GraphFoldCheck::class.java, workers).get()

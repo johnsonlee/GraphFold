@@ -34,15 +34,14 @@ internal class ExternalObjectEscape(private val classes: Map<String, ClassNode>)
     }
 
     private fun inspect(owner: ClassNode, method: MethodNode): List<MethodAnalysisGap> {
-        val calls = method.instructions.toArray().withIndex().filter { (_, instruction) ->
-            instruction is MethodInsnNode && external(instruction.owner)
+        val calls = method.instructions.toArray().mapIndexedNotNull { index, instruction ->
+            if (instruction is MethodInsnNode && external(instruction.owner)) index to instruction else null
         }
         if (calls.isEmpty()) return emptyList()
         return try {
             val interpreter = ApplicationTypes(classes.keys)
             val frames = Analyzer(interpreter).analyze(owner.name, method)
-            calls.mapNotNull { (index, instruction) ->
-                val call = instruction as MethodInsnNode
+            calls.mapNotNull { (index, call) ->
                 val frame = frames[index]
                 val values = frame?.let { escapedValues(call, it, interpreter) }.orEmpty()
                 if (values.isNotEmpty()) {

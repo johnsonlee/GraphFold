@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.tree.ClassNode
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -121,12 +122,12 @@ class OriginObjectFlowTest {
 
     private fun invoke(classes: Path): String =
         URLClassLoader(arrayOf(classes.toUri().toURL()), ClassLoader.getPlatformClassLoader()).use { loader ->
-            loader.loadClass("Example").getMethod("run").invoke(null) as String
+            assertIs<String>(loader.loadClass("Example").getMethod("run").invoke(null))
         }
 
     private fun exceptionOwner(classes: Path): String =
         URLClassLoader(arrayOf(classes.toUri().toURL()), ClassLoader.getPlatformClassLoader()).use { loader ->
-            val failure = loader.loadClass("Example").getMethod("run").invoke(null) as Throwable
+            val failure = assertIs<Throwable>(loader.loadClass("Example").getMethod("run").invoke(null))
             assertTrue(failure is NullPointerException)
             failure.stackTrace.first { it.className.startsWith("Example$") }.className
         }

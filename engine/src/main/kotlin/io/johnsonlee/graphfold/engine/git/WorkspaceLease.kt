@@ -74,8 +74,8 @@ private fun preferredLease(
 ): WorkspaceLease? {
     val indices = Files.list(pool).use { paths ->
         paths.map { it.fileName.toString() }.filter { it.startsWith("slot-") }
-            .map { it.removePrefix("slot-").toIntOrNull() }.filter { it != null && it >= 0 && it < maximumSlots }
-            .sorted().toList()
+            .mapToInt { it.removePrefix("slot-").toIntOrNull() ?: -1 }.filter { it >= 0 && it < maximumSlots }
+            .sorted().toArray()
     }
     return PreferredWorkspace().use { selection ->
         for (index in indices) {

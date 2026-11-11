@@ -41,7 +41,8 @@ internal object FoldDocument {
         return try {
             mapper.readValue(document, Any::class.java)
         } catch (failure: JsonProcessingException) {
-            throw IllegalArgumentException("Invalid fold YAML; expected exactly one document: ${failure.message}", failure)
+            throw IllegalArgumentException(
+                "Invalid fold YAML; expected exactly one document: ${diagnosticLabel(failure.message)}", failure)
         }
     }
 
@@ -61,7 +62,7 @@ internal object FoldDocument {
         return try {
             FoldRule.parse(rule)
         } catch (failure: IllegalArgumentException) {
-            throw IllegalArgumentException("$path: ${failure.message}", failure)
+            throw IllegalArgumentException("$path: ${diagnosticLabel(failure.message)}", failure)
         }
     }
 }

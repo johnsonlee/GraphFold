@@ -14,7 +14,7 @@ plugins {
     base
     jacoco
     alias(libs.plugins.kotlin.jvm) apply false
-    alias(libs.plugins.detekt) apply false
+    alias(libs.plugins.detekt)
     alias(libs.plugins.sonatype)
 }
 
@@ -51,6 +51,29 @@ allprojects {
             }
         }
     }
+    plugins.withId("io.gitlab.arturbosch.detekt") {
+        extensions.configure<DetektExtension> {
+            buildUponDefaultConfig = true
+            config.setFrom(rootProject.files("detekt.yml"))
+            basePath = rootProject.projectDir.absolutePath
+            ignoreFailures = false
+        }
+        tasks.withType<Detekt>().configureEach {
+            jvmTarget = "17"
+            reports {
+                sarif.required.set(true)
+                html.required.set(true)
+                xml.required.set(true)
+            }
+        }
+        // Include type-resolved main, test and test-fixtures analysis in the required gate.
+        tasks.named("check") { dependsOn(tasks.withType<Detekt>()) }
+    }
+}
+
+// Analyze handwritten build logic without scanning fixture projects or generated outputs.
+detekt {
+    source.setFrom(files("build.gradle.kts", "settings.gradle.kts", subprojects.map { it.buildFile }))
 }
 
 subprojects {
@@ -59,14 +82,6 @@ subprojects {
     apply(plugin = "jacoco")
     extensions.configure<KotlinJvmProjectExtension> { jvmToolchain(17) }
     extensions.configure<JacocoPluginExtension> { toolVersion = "0.8.13" }
-    extensions.configure<DetektExtension> {
-        buildUponDefaultConfig = true
-        config.setFrom(rootProject.files("detekt.yml"))
-    }
-    tasks.withType<Detekt>().configureEach {
-        jvmTarget = "17"
-        reports { sarif.required.set(true); html.required.set(true) }
-    }
     dependencies {
         add("testImplementation", kotlin("test-junit5"))
         add("testImplementation", platform("org.junit:junit-bom:5.12.1"))

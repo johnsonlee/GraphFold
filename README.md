@@ -46,6 +46,14 @@ cli/build/install/graphfold/bin/graphfold --help
 
 `check` runs JUnit tests, detekt, and per-module JaCoCo verification requiring 100% line coverage and 100% branch coverage. No production classes are excluded from the coverage gates. Integration tests exercise real Git repositories, compilation, Graphite Cypher/folding, CLI execution, and the Gradle Worker API.
 
+All projects share the root [`detekt.yml`](detekt.yml), extending detekt's recommended defaults with null-safety, exception, coroutine, naming, complexity, performance and style checks. `check` includes ordinary scans, type-resolved `detektMain` and `detektTest`, and the engine's `detektTestFixtures`. The root scan covers the handwritten Gradle Kotlin scripts. Any finding fails the build; there is no baseline. HTML, XML and SARIF reports are written under each project's `build/reports/detekt/`.
+
+To run static analysis without running tests:
+
+```sh
+./gradlew detekt detektMain detektTest :engine:detektTestFixtures
+```
+
 CI verifies every module on Ubuntu and macOS, using exact missed-line and missed-branch counts; rounding never turns a miss into 100%. Missing, malformed, or zero-total reports fail the coverage check. Reports are collected and uploaded even after a failed test run. The required `run-unit-test` job continues to aggregate both platforms.
 
 Each PR gets one coverage comment with a per-module table for both platforms and a link to the Build run. Later runs update the same bot-owned comment and remove duplicate owned comments. The reporter ignores stale commits and run attempts. It runs separately on `workflow_run`, checks out only the trusted default branch, and treats PR artifacts as bounded JSON data; fork PR code never receives the comment-writing token. This workflow starts reporting after it is merged into the default branch. A partially rerun matrix reports missing coverage for platforms without artifacts from that attempt, rather than silently reusing older results.

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.tree.ClassNode
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -123,7 +124,7 @@ class OriginStackObservationTest {
 
     private fun exceptionOrigin(classes: Path): String =
         URLClassLoader(arrayOf(classes.toUri().toURL()), ClassLoader.getPlatformClassLoader()).use { loader ->
-            val exception = loader.loadClass("Example").getMethod("run").invoke(null) as Throwable
+            val exception = assertIs<Throwable>(loader.loadClass("Example").getMethod("run").invoke(null))
             exception.stackTrace.first { it.methodName == "get" }.className
         }
 
@@ -139,7 +140,7 @@ class OriginStackObservationTest {
 
     private fun runtimeName(classes: Path): String =
         URLClassLoader(arrayOf(classes.toUri().toURL()), ClassLoader.getPlatformClassLoader()).use { loader ->
-            loader.loadClass("Example").getMethod("run").invoke(null) as String
+            assertIs<String>(loader.loadClass("Example").getMethod("run").invoke(null))
         }
 
     private fun nodes(classes: Path): List<ClassNode> = Files.walk(classes).use { paths ->

@@ -16,6 +16,7 @@ import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.tree.ClassNode
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class OriginCatalogTest {
@@ -27,13 +28,13 @@ class OriginCatalogTest {
     fun `cached provenance binds exact class bytes and rejects tampering`(runId: String) {
         val fixture = compile()
         val file = manifest(fixture.project)
-        val document = mapper.readTree(file.toFile()) as ObjectNode
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
         document.put("runId", runId)
         document["records"].forEach { record ->
             val binary = fixture.project.classes.resolve(record["owner"].asText().replace('.', '/') + ".class")
             val hash = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(binary))
                 .joinToString("") { "%02x".format(it) }
-            (record as ObjectNode).put("classHash", hash)
+            assertIs<ObjectNode>(record).put("classHash", hash)
         }
         mapper.writeValue(file.toFile(), document)
         val cached = fixture.project.copy(originRunId = runId)
@@ -82,8 +83,8 @@ class OriginCatalogTest {
     fun `invalid Java provenance blocks rather than guessing source ownership`(corruption: Corruption) {
         val fixture = compile()
         val file = manifest(fixture.project)
-        val document = mapper.readTree(file.toFile()) as ObjectNode
-        val record = document["records"][0] as ObjectNode
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
+        val record = assertIs<ObjectNode>(document["records"][0])
         val expected = corruptDocument(corruption, document) ?: corruptRecord(corruption, record, document, fixture)
         mapper.writeValue(file.toFile(), document)
         val result = readOrigins(fixture.project, fixture.root)
@@ -94,9 +95,9 @@ class OriginCatalogTest {
         Corruption.SCHEMA -> { document.put("schema", 99); "Unknown compiler origin schema" }
         Corruption.INCOMPLETE -> { document.put("complete", false); "manifest is incomplete" }
         Corruption.STALE -> { document.put("runId", "previous-build"); "Stale compiler origin runId" }
-        Corruption.COMPILER -> { (document["producer"] as ObjectNode).put("compiler", "unknown"); "Unknown compiler origin producer" }
-        Corruption.BACKEND -> { (document["producer"] as ObjectNode).put("backend", "JS"); "Unknown compiler origin producer" }
-        Corruption.VERSION -> { (document["producer"] as ObjectNode).put("version", ""); "Unknown compiler origin producer" }
+        Corruption.COMPILER -> { assertIs<ObjectNode>(document["producer"]).put("compiler", "unknown"); "Unknown compiler origin producer" }
+        Corruption.BACKEND -> { assertIs<ObjectNode>(document["producer"]).put("backend", "JS"); "Unknown compiler origin producer" }
+        Corruption.VERSION -> { assertIs<ObjectNode>(document["producer"]).put("version", ""); "Unknown compiler origin producer" }
         Corruption.RECORDS -> { document.remove("records"); "Compiler origin records are missing" }
         Corruption.UNRESOLVED -> {
             document.putArray("unresolved").add("compiler could not preserve owner")
@@ -110,18 +111,21 @@ class OriginCatalogTest {
             Corruption.OWNER -> { record.put("owner", "sample.DoesNotExist"); "owner was not emitted" }
             Corruption.HASH -> { record.put("sourceHash", "previous-content"); "source hash differs" }
             Corruption.MISSING_RANGE -> { record.remove("allocation"); "Missing compiler source range" }
-            Corruption.NEGATIVE_RANGE -> { (record["allocation"] as ObjectNode).put("start", -1); "Invalid compiler source range" }
+            Corruption.NEGATIVE_RANGE -> { assertIs<ObjectNode>(record["allocation"]).put("start", -1); "Invalid compiler source range" }
             Corruption.EMPTY_RANGE -> {
-                (record["allocation"] as ObjectNode).put("end", record["allocation"]["start"].asInt())
+                assertIs<ObjectNode>(record["allocation"]).put("end", record["allocation"]["start"].asInt())
                 "Invalid compiler source range"
             }
-            Corruption.LARGE_RANGE -> { (record["declaration"] as ObjectNode).put("end", Int.MAX_VALUE); "Invalid compiler source range" }
+            Corruption.LARGE_RANGE -> {
+                assertIs<ObjectNode>(record["declaration"]).put("end", Int.MAX_VALUE)
+                "Invalid compiler source range"
+            }
             Corruption.WRONG_EXPRESSION -> {
-                (record["allocation"] as ObjectNode).put("start", 0).put("end", 1)
+                assertIs<ObjectNode>(record["allocation"]).put("start", 0).put("end", 1)
                 "does not identify one anonymous source expression"
             }
             Corruption.DUPLICATE -> {
-                (document["records"] as com.fasterxml.jackson.databind.node.ArrayNode).add(record.deepCopy())
+                assertIs<com.fasterxml.jackson.databind.node.ArrayNode>(document["records"]).add(record.deepCopy())
                 "Duplicate compiler origin owner"
             }
             Corruption.OUTSIDE -> {
@@ -190,8 +194,8 @@ class OriginCatalogTest {
     fun `a named emitted Java owner cannot be substituted for an anonymous allocation`() {
         val fixture = compile()
         val file = manifest(fixture.project)
-        val document = mapper.readTree(file.toFile()) as ObjectNode
-        (document["records"][0] as ObjectNode).put("owner", "sample.Example")
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
+        assertIs<ObjectNode>(document["records"][0]).put("owner", "sample.Example")
         mapper.writeValue(file.toFile(), document)
         assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "not an anonymous class" in it })
     }
@@ -200,8 +204,8 @@ class OriginCatalogTest {
     fun `noninteger end offsets cannot be coerced into an accepted compiler span`() {
         val fixture = compile()
         val file = manifest(fixture.project)
-        val document = mapper.readTree(file.toFile()) as ObjectNode
-        (document["records"][0]["allocation"] as ObjectNode).put("end", "42")
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
+        assertIs<ObjectNode>(document["records"][0]["allocation"]).put("end", "42")
         mapper.writeValue(file.toFile(), document)
         assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "Missing compiler source range" in it })
     }
@@ -210,8 +214,8 @@ class OriginCatalogTest {
     fun `unknown Kotlin origin kinds block even when emitted marker and manifest agree`() {
         val fixture = compile(kotlin = true)
         val file = manifest(fixture.project)
-        val document = mapper.readTree(file.toFile()) as ObjectNode
-        val record = document["records"][0] as ObjectNode
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
+        val record = assertIs<ObjectNode>(document["records"][0])
         record.put("originKind", "FUTURE_ORIGIN")
         mapper.writeValue(file.toFile(), document)
         val artifact = fixture.project.classes.resolve(record["owner"].asText().replace('.', '/') + ".class")
@@ -228,16 +232,16 @@ class OriginCatalogTest {
     fun `Kotlin protocol rejects unknown or absent frontend and provenance labels`() {
         val fixture = compile(kotlin = true)
         val file = manifest(fixture.project)
-        val original = mapper.readTree(file.toFile()) as ObjectNode
+        val original = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
         listOf("FUTURE", "", null).forEach { invalid ->
             val frontend = original.deepCopy()
-            val producer = frontend["producer"] as ObjectNode
+            val producer = assertIs<ObjectNode>(frontend["producer"])
             if (invalid == null) producer.remove("frontend") else producer.put("frontend", invalid)
             mapper.writeValue(file.toFile(), frontend)
             assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "Unknown compiler origin frontend" in it })
 
             val provenance = original.deepCopy()
-            val record = provenance["records"][0] as ObjectNode
+            val record = assertIs<ObjectNode>(provenance["records"][0])
             if (invalid == null) record.remove("provenance") else record.put("provenance", invalid)
             mapper.writeValue(file.toFile(), provenance)
             assertTrue(readOrigins(fixture.project, fixture.root).diagnostics.any { "Unknown origin provenance" in it })

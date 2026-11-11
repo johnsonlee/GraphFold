@@ -15,6 +15,7 @@ import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.ClassNode
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class JavaSyntheticOriginTest {
@@ -29,8 +30,8 @@ class JavaSyntheticOriginTest {
         assertTrue(holder.innerClasses.any { it.name == holder.name && it.innerName == null })
         assertTrue(holder.access and Opcodes.ACC_SYNTHETIC != 0)
         val file = manifest(fixture.project)
-        val document = mapper.readTree(file.toFile()) as ObjectNode
-        val records = document["records"] as com.fasterxml.jackson.databind.node.ArrayNode
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
+        val records = assertIs<com.fasterxml.jackson.databind.node.ArrayNode>(document["records"])
         val omittedOwner = records[0]["owner"].asText()
         if (missingRecord) {
             records.remove(0)
@@ -47,9 +48,9 @@ class JavaSyntheticOriginTest {
     fun `javac synthetic switch holder cannot substitute for a source anonymous allocation`() {
         val fixture = compileEnumSwitch()
         val file = manifest(fixture.project)
-        val document = mapper.readTree(file.toFile()) as ObjectNode
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
         val owner = switchHolder(fixture.project).name.replace('/', '.')
-        (document["records"][0] as ObjectNode).put("owner", owner)
+        assertIs<ObjectNode>(document["records"][0]).put("owner", owner)
         mapper.writeValue(file.toFile(), document)
         val result = readOrigins(fixture.project, fixture.root)
         assertTrue(result.diagnostics.any { "not an anonymous class: $owner" in it }, result.diagnostics.toString())

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.junit.jupiter.api.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -34,7 +35,7 @@ class ReasonReportTest {
         assertEquals(Verdict.PASS, result.verdict)
         assertContains(AnalysisReports.text(result), "UNREACHABLE [METHOD_ADDED]")
         val mapper = jacksonObjectMapper()
-        val encoded = mapper.readTree(AnalysisReports.json(result))["reasons"][0] as ObjectNode
+        val encoded = assertIs<ObjectNode>(mapper.readTree(AnalysisReports.json(result))["reasons"][0])
         encoded.remove("basePath")
         encoded.remove("headPath")
         val decoded = mapper.treeToValue(encoded, VerdictReason::class.java)
@@ -47,7 +48,7 @@ class ReasonReportTest {
     fun `legacy result JSON with no reasons still deserializes with empty explanations`() {
         val original = AnalysisResult(emptyList(), emptyList(), AnalysisMetadata("base", "head", emptyList(), 0, 0))
         val mapper = jacksonObjectMapper()
-        val json = mapper.readTree(AnalysisReports.json(original)) as ObjectNode
+        val json = assertIs<ObjectNode>(mapper.readTree(AnalysisReports.json(original)))
         json.remove("reasons")
         json.remove("verdict")
         val decoded = mapper.treeToValue(json, AnalysisResult::class.java)

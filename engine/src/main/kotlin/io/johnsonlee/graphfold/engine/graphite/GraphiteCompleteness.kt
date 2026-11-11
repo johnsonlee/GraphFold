@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.diagnosticLabel
 import io.johnsonlee.graphite.core.CallSiteNode
 import io.johnsonlee.graphite.core.NodeId
 import io.johnsonlee.graphite.graph.AnalysisCompleteness
@@ -59,7 +60,7 @@ internal class GraphiteCompleteness(
             }
             evidence.classes.toSortedMap().filterValues { it.status == AnalysisStatus.RESOLUTION_FAILED }
                 .forEach { (owner, declaration) ->
-                    failures.add("Graphite ${declaration.status}: class $owner from ${declaration.origin}")
+                    failures.add("Graphite ${declaration.status}: class $owner from ${diagnosticLabel(declaration.origin)}")
                 }
             evidence.methods.toSortedMap().filterValues { it.status in UNPROVED_METHOD_STATUSES }
                 .forEach { (identity, method) ->
@@ -119,10 +120,11 @@ internal class GraphiteCompleteness(
     ) {
         val declaration = evidence.classes[receipt.method.owner]
         if (declaration?.origin != receipt.origin) {
-            failures.add("Graphite observation origin mismatch: $identity from ${receipt.origin}, final graph has ${declaration?.origin}")
+            failures.add("Graphite observation origin mismatch: $identity from ${diagnosticLabel(receipt.origin)}, " +
+                "final graph has ${diagnosticLabel(declaration?.origin)}")
         }
         if (evidence.artifacts[receipt.origin]?.role != receipt.role) {
-            failures.add("Graphite observation artifact role mismatch: $identity from ${receipt.origin}")
+            failures.add("Graphite observation artifact role mismatch: $identity from ${diagnosticLabel(receipt.origin)}")
         }
         val incompleteDeclaration = declaration == null || receipt.modifiers == null || receipt.application == null
         if (receipt.status != AnalysisStatus.RESOLUTION_FAILED && incompleteDeclaration) {

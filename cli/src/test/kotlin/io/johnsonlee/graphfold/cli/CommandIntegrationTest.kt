@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class CommandIntegrationTest {
@@ -55,7 +56,7 @@ class CommandIntegrationTest {
 
     private fun withoutNodeIds(report: JsonNode): JsonNode = report.deepCopy<JsonNode>().apply {
         get("ruleAudits").forEach { audit ->
-            audit["selectedNodes"].forEach { node -> (node as ObjectNode).remove("nodeId") }
+            audit["selectedNodes"].forEach { node -> assertIs<ObjectNode>(node).remove("nodeId") }
         }
     }
 }

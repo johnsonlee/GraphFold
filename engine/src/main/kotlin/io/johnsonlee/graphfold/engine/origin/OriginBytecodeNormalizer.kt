@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin
 
+import io.johnsonlee.graphfold.engine.diagnosticLabel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -101,9 +102,9 @@ private fun normalizeOriginMetadata(
             try {
                 remapKotlinOriginMetadata(annotation, remapper, owners)
             } catch (failure: IllegalArgumentException) {
-                diagnostics += "Unsupported Kotlin origin metadata in ${node.name}: ${failure.message}"
+                diagnostics += "Unsupported Kotlin origin metadata in ${node.name}: ${diagnosticLabel(failure.message)}"
             } catch (failure: IllegalStateException) {
-                diagnostics += "Unsupported Kotlin origin metadata in ${node.name}: ${failure.message}"
+                diagnostics += "Unsupported Kotlin origin metadata in ${node.name}: ${diagnosticLabel(failure.message)}"
             }
         }
 }

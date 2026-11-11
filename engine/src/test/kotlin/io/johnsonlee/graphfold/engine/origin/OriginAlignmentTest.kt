@@ -31,7 +31,7 @@ class OriginAlignmentTest {
         val after = java("class Example { void run() { Object extra = new Object() {}; Object live = new Object() { int x = 2; }; } }",
             "Example\$1", "Example\$2")
         val result = alignOrigins(before, after)
-        assertTrue(result.diagnostics.isEmpty(), result.toString())
+        assertTrue(result.diagnostics.isEmpty(), "$result")
         assertEquals(result.baseOwners["Example\$1"], result.headOwners["Example\$2"])
         assertNotEquals(result.headOwners["Example\$1"], result.headOwners["Example\$2"])
     }
@@ -40,7 +40,7 @@ class OriginAlignmentTest {
         val before = java("class Example { Object run() { return new Object() { int x = 1; }; } }", "Example\$1")
         val after = java("class Example { Object run() { Object moved = new Object() { int x = 1; }; return moved; } }", "Example\$5")
         val result = alignOrigins(before, after)
-        assertTrue(result.diagnostics.isEmpty(), result.toString())
+        assertTrue(result.diagnostics.isEmpty(), "$result")
         assertEquals(result.baseOwners.values.single(), result.headOwners.values.single())
     }
 
@@ -54,7 +54,7 @@ class OriginAlignmentTest {
     @Test fun `same-line arguments distinguish duplicate bodies without using compiler ordinals`() {
         val text = "class Example { void run() { use(new Object() {}, new Object() {}); } }"
         val result = alignOrigins(java(text, "Example\$1", "Example\$2"), java(text, "Example\$9", "Example\$8"))
-        assertTrue(result.diagnostics.isEmpty(), result.toString())
+        assertTrue(result.diagnostics.isEmpty(), "$result")
         assertEquals(result.baseOwners["Example\$1"], result.headOwners["Example\$9"])
         assertEquals(result.baseOwners["Example\$2"], result.headOwners["Example\$8"])
         assertEquals(2, result.baseOwners.values.toSet().size)
@@ -63,14 +63,14 @@ class OriginAlignmentTest {
     @Test fun `identical repeated statements remain explicitly ambiguous`() {
         val text = "class Example { void run() { use(new Object() {}); use(new Object() {}); } }"
         val result = alignOrigins(java(text, "Example\$1", "Example\$2"), java(text, "Example\$1", "Example\$2"))
-        assertTrue(result.diagnostics.any { it.contains("Ambiguous") }, result.toString())
+        assertTrue(result.diagnostics.any { it.contains("Ambiguous") }, "$result")
         assertTrue(result.baseOwners.values.toSet().intersect(result.headOwners.values.toSet()).isEmpty())
     }
 
     @Test fun `nested matching follows paired physical parents and preserves canonical ownership`() {
         val text = "class Example { Object outer = new Object() { Object inner = new Object() {}; }; }"
         val result = alignOrigins(java(text, "Example\$1", "Example\$1\$1"), java(text, "Example\$9", "Example\$9\$4"))
-        assertTrue(result.diagnostics.isEmpty(), result.toString())
+        assertTrue(result.diagnostics.isEmpty(), "$result")
         assertEquals(result.baseOwners["Example\$1"], result.headOwners["Example\$9"])
         assertEquals(result.baseOwners["Example\$1\$1"], result.headOwners["Example\$9\$4"])
         assertTrue(result.baseOwners.getValue("Example\$1\$1").startsWith(result.baseOwners.getValue("Example\$1") + "$"))
@@ -89,7 +89,7 @@ class OriginAlignmentTest {
     @Test fun `inline copies sharing one physical origin cannot collapse separate emitted owners`() {
         val source = java("class Example { Object item = new Object() {}; }", "Example\$1").single()
         val result = alignOrigins(listOf(source), listOf(source.copy(owner = "Example\$2"), source.copy(owner = "Example\$3")))
-        assertTrue(result.diagnostics.any { it.contains("copies") }, result.toString())
+        assertTrue(result.diagnostics.any { it.contains("copies") }, "$result")
         assertEquals(2, result.headOwners.values.toSet().size)
         assertTrue(result.baseOwners.values.toSet().intersect(result.headOwners.values.toSet()).isEmpty())
     }

@@ -12,6 +12,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class MavenProvenanceTest {
@@ -106,7 +107,7 @@ class MavenProvenanceTest {
                     fixture.snapshot
                 } else fixture.provenance.pending.resolve("0.json")
                 val root = MAPPER.readTree(file.toFile())
-                val document = (if (retained) root[0] else root) as ObjectNode
+                val document = assertIs<ObjectNode>(if (retained) root[0] else root)
                 when (field) {
                     "schema" -> document.put(field, 2)
                     "complete" -> document.put(field, false)

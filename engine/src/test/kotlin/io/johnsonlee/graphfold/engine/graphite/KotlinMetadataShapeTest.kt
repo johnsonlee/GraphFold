@@ -17,6 +17,7 @@ import org.objectweb.asm.ClassReader
 import org.objectweb.asm.tree.AnnotationNode
 import org.objectweb.asm.tree.ClassNode
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -92,8 +93,9 @@ class KotlinMetadataShapeTest {
         val arrays = AnnotationNode(original.desc).also { it.values = original.values.toMutableList() }
         for (index in arrays.values.indices.step(2)) {
             when (arrays.values[index]) {
-                "mv" -> arrays.values[index + 1] = (arrays.values[index + 1] as List<*>).map { it as Int }.toIntArray()
-                "d1", "d2" -> arrays.values[index + 1] = (arrays.values[index + 1] as List<*>).map { it as String }.toTypedArray()
+                "mv" -> arrays.values[index + 1] = assertIs<List<*>>(arrays.values[index + 1]).map { assertIs<Int>(it) }.toIntArray()
+                "d1", "d2" -> arrays.values[index + 1] = assertIs<List<*>>(arrays.values[index + 1])
+                    .map { assertIs<String>(it) }.toTypedArray()
             }
         }
         val expected = assertNotNull(KotlinMetadataShape.normalize(original))
@@ -110,7 +112,7 @@ class KotlinMetadataShapeTest {
             val annotation = AnnotationNode("Lkotlin/Metadata;").also {
                 it.values = mutableListOf("k", 3, "mv", version)
             }
-            assertNull(KotlinMetadataShape.normalize(annotation), "version=$version")
+            assertNull(KotlinMetadataShape.normalize(annotation), "version=${version ?: "<missing>"}")
         }
         assertNull(KotlinMetadataShape.normalize(AnnotationNode("Lkotlin/Metadata;")))
     }
@@ -170,12 +172,12 @@ class KotlinMetadataShapeTest {
     @Test
     fun `private to this property is excluded from the public contract`() {
         val annotation = metadata("class Example<out T>(private val value: T)")
-        val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }
+        val values = annotation.values.chunked(2).associate { assertIs<String>(it[0]) to it[1] }
         val original = KotlinClassMetadata.readStrict(Metadata(
-            kind = values["k"] as Int,
-            metadataVersion = (values["mv"] as List<*>).map { it as Int }.toIntArray(),
-            data1 = (values["d1"] as List<*>).map { it as String }.toTypedArray(),
-            data2 = (values["d2"] as List<*>).map { it as String }.toTypedArray(),
+            kind = assertIs<Int>(values["k"]),
+            metadataVersion = assertIs<List<*>>(values["mv"]).map { assertIs<Int>(it) }.toIntArray(),
+            data1 = assertIs<List<*>>(values["d1"]).map { assertIs<String>(it) }.toTypedArray(),
+            data2 = assertIs<List<*>>(values["d2"]).map { assertIs<String>(it) }.toTypedArray(),
         )) as KotlinClassMetadata.Class
         original.kmClass.properties.single().visibility = Visibility.PRIVATE_TO_THIS
         val encoded = original.write()

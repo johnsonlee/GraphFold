@@ -17,8 +17,8 @@ import org.mockito.Mockito.`when`
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Test
-import kotlin.test.assertFails
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -33,7 +33,7 @@ class GraphFoldPluginTest {
         properties.getValue("graphfold.base").set("base-sha")
         properties.getValue("graphfold.head").set("head-sha")
         properties.getValue("graphfold.fold").set("rules/fold.yml")
-        val task = child.tasks.getByName("graphFoldCheck") as GraphFoldCheck
+        val task = child.tasks.named("graphFoldCheck", GraphFoldCheck::class.java).get()
         assertEquals("base-sha", task.base.get())
         assertEquals("head-sha", task.head.get())
         assertEquals(root.rootDir.resolve("rules/fold.yml"), task.fold.get().asFile)
@@ -50,7 +50,7 @@ class GraphFoldPluginTest {
         val properties = applyWithPropertyProviders(project)
         properties.getValue("graphfold.head").set("   ")
         // Applying the plugin and realizing its task must not require analysis inputs.
-        val task = project.tasks.getByName("graphFoldCheck") as GraphFoldCheck
+        val task = project.tasks.named("graphFoldCheck", GraphFoldCheck::class.java).get()
         listOf("graphfold.base" to { task.base.get() }, "graphfold.head" to { task.head.get() },
             "graphfold.fold" to { task.fold.get() }).forEach { (property, read) ->
             val failure = assertFails { read() }
@@ -64,7 +64,7 @@ class GraphFoldPluginTest {
     fun `optional settings remain lazy and custom lease timeout overrides build derived default`() {
         val project = ProjectBuilder.builder().withProjectDir(temporary.toFile()).build()
         val properties = applyWithPropertyProviders(project)
-        val task = project.tasks.getByName("graphFoldCheck") as GraphFoldCheck
+        val task = project.tasks.named("graphFoldCheck", GraphFoldCheck::class.java).get()
         properties.getValue("graphfold.workspaceSlots").set("4")
         properties.getValue("graphfold.buildTimeout").set("1800")
         properties.getValue("graphfold.buildEnv").set("ARTIFACT_TOKEN, BUILD_USER,ARTIFACT_TOKEN")
@@ -87,7 +87,7 @@ class GraphFoldPluginTest {
     fun `capacity settings reject invalid positive integers`(value: String) {
         val project = ProjectBuilder.builder().withProjectDir(temporary.toFile()).build()
         val properties = applyWithPropertyProviders(project)
-        val task = project.tasks.getByName("graphFoldCheck") as GraphFoldCheck
+        val task = project.tasks.named("graphFoldCheck", GraphFoldCheck::class.java).get()
         listOf(
             "graphfold.workspaceSlots" to task.workspaceSlots,
             "graphfold.buildTimeout" to task.buildTimeout,
@@ -105,7 +105,7 @@ class GraphFoldPluginTest {
     fun `environment property rejects values invalid names and empty entries`(value: String) {
         val project = ProjectBuilder.builder().withProjectDir(temporary.toFile()).build()
         val properties = applyWithPropertyProviders(project)
-        val task = project.tasks.getByName("graphFoldCheck") as GraphFoldCheck
+        val task = project.tasks.named("graphFoldCheck", GraphFoldCheck::class.java).get()
         properties.getValue("graphfold.buildEnv").set(value)
         val failure = assertFails { task.buildEnv.get() }
         val messages = generateSequence(failure) { it.cause }.mapNotNull { it.message }.joinToString("\n")
@@ -135,7 +135,7 @@ class GraphFoldPluginTest {
         val project = ProjectBuilder.builder().build()
         project.pluginManager.apply("base")
         project.pluginManager.apply(GraphFoldPlugin::class.java)
-        val task = project.tasks.getByName("graphFoldCheck") as GraphFoldCheck
+        val task = project.tasks.named("graphFoldCheck", GraphFoldCheck::class.java).get()
         assertNull(project.extensions.findByName("graphfold"))
         assertEquals(project.rootDir.absolutePath, task.repository.get())
         assertEquals(DEFAULT_MAXIMUM_WORKSPACE_SLOTS, task.workspaceSlots.get())

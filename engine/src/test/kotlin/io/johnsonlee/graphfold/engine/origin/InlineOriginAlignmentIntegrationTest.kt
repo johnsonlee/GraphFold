@@ -85,7 +85,7 @@ class InlineOriginAlignmentIntegrationTest {
                         .filter { it.opcode == Opcodes.NEW && it.desc.replace('/', '.') == origin.owner }
                         .map { "${node.name.replace('/', '.')}.${method.name}${method.desc}" }
                 } }.toSet()
-            assertTrue(allocations.isNotEmpty(), origin.toString())
+            assertTrue(allocations.isNotEmpty(), "$origin")
             assertEquals(allocations, requireNotNull(origin.emissionContext).split('\n').toSet())
         }
     }

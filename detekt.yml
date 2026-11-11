@@ -1,3 +1,4 @@
+# Extend detekt's recommended defaults; one finding fails the build.
 config:
   validation: true
   warningsAsErrors: true
@@ -21,12 +22,26 @@ exceptions:
     active: true
 potential-bugs:
   active: true
+  CastNullableToNonNullableType:
+    active: true
+  NullCheckOnMutableProperty:
+    active: true
+  NullableToStringCall:
+    active: true
+  UnnecessaryNotNullCheck:
+    active: true
   UnsafeCallOnNullableType:
     active: true
   UnreachableCode:
     active: true
 style:
   active: true
+  NoTabs:
+    active: true
+  TrailingWhitespace:
+    active: true
+  UnusedImports:
+    active: true
   MagicNumber:
     active: true
     ignorePropertyDeclaration: true
@@ -41,3 +56,7 @@ naming:
   active: true
 coroutines:
   active: true
+  GlobalCoroutineUsage:
+    active: true
+  SuspendFunSwallowedCancellation:
+    active: true

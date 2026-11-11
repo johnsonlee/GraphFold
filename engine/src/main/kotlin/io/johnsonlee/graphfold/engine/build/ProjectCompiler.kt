@@ -103,7 +103,9 @@ internal fun compileJava(
         val units = manager.getJavaFileObjectsFromPaths(sources)
         val options = listOf("-g", "-proc:none", "-d", classes.toString(), "-classpath",
             (listOf(classes) + dependencies).joinToString(java.io.File.pathSeparator))
-        val task = compiler.getTask(null, manager, diagnostics, options, null, units) as JavacTask
+        val compilationTask: JavaCompiler.CompilationTask =
+            compiler.getTask(null, manager, diagnostics, options, null, units)
+        val task = compilationTask as JavacTask
         GraphFoldOrigins.attach(task, origins, root, runId)
         if (!task.call()) {
             throw BuildFailure("Java compilation failed: ${diagnostics.diagnostics.joinToString("; ") { it.getMessage(null) }}")

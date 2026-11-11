@@ -123,6 +123,14 @@ class JavaSourceIndexTest {
         assertEquals(listOf("Unsupported declaration in Example.java: unavailable erasure"), diagnostics)
     }
 
+    @Test
+    fun `unsupported declarations without an exception message still report a resolution gap`() {
+        val diagnostics = mutableListOf<String>()
+        val symbols = resolveJavaDeclaration("Example.java", diagnostics) { throw UnsupportedOperationException() }
+        assertTrue(symbols.isEmpty())
+        assertEquals(listOf("Unsupported declaration in Example.java: <unknown>"), diagnostics)
+    }
+
     private fun index(source: String, revision: Revision = Revision.HEAD): IndexedSource {
         Files.writeString(temporary.resolve("Example.java"), source)
         return JavaSourceIndex(listOf(temporary), emptyList()).use { it.index(temporary, "Example.java", revision) }

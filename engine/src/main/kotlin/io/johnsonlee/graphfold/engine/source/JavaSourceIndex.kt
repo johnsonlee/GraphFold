@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.source
 
+import io.johnsonlee.graphfold.engine.diagnosticLabel
 import com.github.javaparser.JavaParser
 import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ast.Node
@@ -216,9 +217,9 @@ internal fun resolveJavaDeclaration(
 ): List<SourceSymbol> = try {
     resolve()
 } catch (failure: UnsolvedSymbolException) {
-    diagnostics += "Cannot resolve declaration in $path: ${failure.message}"
+    diagnostics += "Cannot resolve declaration in $path: ${diagnosticLabel(failure.message)}"
     emptyList()
 } catch (failure: UnsupportedOperationException) {
-    diagnostics += "Unsupported declaration in $path: ${failure.message}"
+    diagnostics += "Unsupported declaration in $path: ${diagnosticLabel(failure.message)}"
     emptyList()
 }

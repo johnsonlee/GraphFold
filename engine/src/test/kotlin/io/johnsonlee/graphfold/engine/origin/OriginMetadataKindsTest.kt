@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.objectweb.asm.tree.AnnotationNode
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class OriginMetadataKindsTest {
@@ -75,7 +76,7 @@ class OriginMetadataKindsTest {
             values = mutableListOf("k", 3, "mv", listOf(1, 9, 0))
         }
         remap(annotation)
-        val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }
+        val values = annotation.values.chunked(2).associate { assertIs<String>(it[0]) to it[1] }
         assertEquals(3, values["k"])
         assertEquals(emptyList<String>(), values["d1"])
         assertEquals(emptyList<String>(), values["d2"])
@@ -103,7 +104,7 @@ class OriginMetadataKindsTest {
         }
         val owners = OWNERS + ("sample.OldFacade" to "sample.NewFacade")
         remapKotlinOriginMetadata(annotation, OriginRemapper(owners), owners)
-        val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }
+        val values = annotation.values.chunked(2).associate { assertIs<String>(it[0]) to it[1] }
         assertEquals("sample/NewFacade", values["xs"])
         assertEquals("retained", values["custom"])
         assertTrue(values["d1"] is List<*>)
@@ -133,12 +134,11 @@ class OriginMetadataKindsTest {
                 "pn", metadata.packageName, "xi", metadata.extraInt)
         }
         remap(annotation)
-        val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }
-        @Suppress("UNCHECKED_CAST")
+        val values = annotation.values.chunked(2).associate { assertIs<String>(it[0]) to it[1] }
         return KotlinClassMetadata.readStrict(Metadata(kind = metadata.kind, metadataVersion = metadata.metadataVersion,
-            data1 = (values.getValue("d1") as List<String>).toTypedArray(),
-            data2 = (values.getValue("d2") as List<String>).toTypedArray(),
-            extraString = values["xs"] as String, packageName = metadata.packageName, extraInt = metadata.extraInt))
+            data1 = assertIs<List<*>>(values.getValue("d1")).map { assertIs<String>(it) }.toTypedArray(),
+            data2 = assertIs<List<*>>(values.getValue("d2")).map { assertIs<String>(it) }.toTypedArray(),
+            extraString = assertIs<String>(values["xs"]), packageName = metadata.packageName, extraInt = metadata.extraInt))
     }
 
     private fun remap(annotation: AnnotationNode) = remapKotlinOriginMetadata(annotation, OriginRemapper(OWNERS), OWNERS)
