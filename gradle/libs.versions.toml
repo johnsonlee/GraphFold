@@ -1,4 +1,5 @@
 [versions]
+graphite = "2.15.0"
 kotlin = "2.1.20"
 clikt = "5.0.3"
 jackson = "2.18.3"
@@ -8,6 +9,9 @@ junit = "5.12.1"
 ksp = "2.1.20-1.0.32"
 
 [libraries]
+graphite-core = { module = "io.johnsonlee.graphite:core", version.ref = "graphite" }
+graphite-sootup = { module = "io.johnsonlee.graphite:sootup", version.ref = "graphite" }
+graphite-cypher = { module = "io.johnsonlee.graphite:cypher", version.ref = "graphite" }
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
 jackson-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }

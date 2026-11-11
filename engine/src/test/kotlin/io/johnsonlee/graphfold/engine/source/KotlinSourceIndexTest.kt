@@ -227,6 +227,19 @@ class KotlinSourceIndexTest {
         }
     }
 
+    @Test
+    fun `identically named fields in sibling owners bind to their own declaration ranges`() {
+        val source = "class First { val shared = 1 }\nclass Second { val shared = 2 }"
+        KotlinSourceIndex(compile(source)).use { index ->
+            val result = index.index(temporary, "Example.kt", Revision.HEAD)
+            assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
+            val fields = result.symbols.filter { it.kind == SymbolKind.FIELD }.associateBy { it.identity }
+            assertEquals(setOf("First.shared", "Second.shared"), fields.keys)
+            assertEquals(SourceRange(1, 1), fields.getValue("First.shared").location.line)
+            assertEquals(SourceRange(2, 2), fields.getValue("Second.shared").location.line)
+        }
+    }
+
     private fun compile(source: String, root: Path = temporary, outputDirectory: Path = temporary.resolve("classes")): Path {
         val sourceFile = root.resolve("Example.kt")
         Files.writeString(sourceFile, source)

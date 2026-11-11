@@ -39,6 +39,7 @@ internal fun remapKotlinOriginMetadata(annotation: AnnotationNode, remapper: Rem
             decoded.kmPackage.localDelegatedProperties.forEach(mapper::property)
         }
         is KotlinClassMetadata.MultiFileClassPart -> {
+            require(decoded.facadeClassName.isNotEmpty()) { "Multi-file class part is missing its facade owner" }
             mapper.container(decoded.kmPackage)
             decoded.kmPackage.localDelegatedProperties.forEach(mapper::property)
             decoded.facadeClassName = remapper.map(decoded.facadeClassName)
@@ -63,7 +64,8 @@ private fun metadataStrings(value: Any?): Array<String> = when (value) {
     else -> error("Malformed metadata string array")
 }
 
-private fun readOriginMetadata(annotation: AnnotationNode): Metadata {
+/** Decode the pinned JVM metadata schema without rewriting declarations or guessing source ownership. */
+internal fun readOriginMetadata(annotation: AnnotationNode): Metadata {
     val pairs = annotation.values.orEmpty().chunked(2)
     require(pairs.all { it.size == 2 && it[0] is String }) { "Malformed annotation fields" }
     val values = pairs.associate { it[0] as String to it[1] }
@@ -79,14 +81,17 @@ private fun readOriginMetadata(annotation: AnnotationNode): Metadata {
 }
 
 private fun writeOriginMetadata(annotation: AnnotationNode, encoded: Metadata) {
-    val rewritten = annotation.values.orEmpty().toMutableList()
+    // readOriginMetadata already required a nonempty version in this same annotation before any rewriting.
+    val rewritten = annotation.values.toMutableList()
     fun replace(key: String, value: Any) {
         val index = rewritten.indices.step(2).firstOrNull { rewritten[it] == key }
         if (index == null) rewritten.addAll(listOf(key, value)) else rewritten[index + 1] = value
     }
     replace("d1", encoded.data1.toList())
     replace("d2", encoded.data2.toList())
-    if ("xs" in rewritten || encoded.extraString.isNotEmpty()) replace("xs", encoded.extraString)
+    // Only MultiFileClassPart emits a nonempty extraString in the pinned metadata schema;
+    // its required facade owner was validated from the existing xs field before remapping.
+    if ("xs" in rewritten) replace("xs", encoded.extraString)
     annotation.values = rewritten
 }
 

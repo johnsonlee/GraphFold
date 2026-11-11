@@ -9,6 +9,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Opcodes
 
@@ -127,6 +129,35 @@ class ResourceDeclarationsTest {
         assertTrue(declarations.initialization().getValue("Known").isEmpty())
     }
 
+    @ParameterizedTest @ValueSource(booleans = [false, true])
+    fun `private interface instance methods activate initialization without becoming inherited APIs`(static: Boolean) {
+        val api = ClassWriter(0).apply {
+            visit(Opcodes.V17, Opcodes.ACC_PUBLIC or Opcodes.ACC_INTERFACE or Opcodes.ACC_ABSTRACT,
+                "Api", null, "java/lang/Object", null)
+            visitMethod(Opcodes.ACC_PRIVATE or if (static) Opcodes.ACC_STATIC else 0, "helper", "()V", null, null).apply {
+                visitCode()
+                visitInsn(Opcodes.RETURN)
+                visitMaxs(0, 1)
+                visitEnd()
+            }
+            visitEnd()
+        }
+        val objectClass = ClassWriter(0).apply {
+            visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "java/lang/Object", null, null, null)
+            visitEnd()
+        }
+        val jar = archive("private-interface.jar", mapOf(
+            "Api.class" to api.toByteArray(),
+            "App.class" to type("App", interfaces = arrayOf("Api")),
+            "java/lang/Object.class" to objectClass.toByteArray(),
+        ))
+        val inventory = ResourceDeclarations(listOf(jar))
+        val expected = if (static) setOf("java.lang.Object") else setOf("java.lang.Object", "Api")
+        assertEquals(expected, inventory.initialization().getValue("App"))
+        assertEquals(emptySet(), inventory.inheritedMethods("App"))
+        assertTrue(inventory.diagnostics.isEmpty())
+    }
+
     @Test fun `Intrinsics contracts require exact runtime bytes and a unique supplied class`() {
         val library = Path.of(Unit::class.java.protectionDomain.codeSource.location.toURI())
         assertTrue(ResourceDeclarations(listOf(library)).trustedIntrinsics)
@@ -150,6 +181,43 @@ class ResourceDeclarationsTest {
             "App.class" to writer.toByteArray(),
         ))
         assertEquals(null, ResourceDeclarations(listOf(library)).inheritedMethods("App"))
+    }
+
+    @Test fun `missing superclass and superclass cycles do not establish inherited APIs`() {
+        val jar = archive("parents.jar", mapOf(
+            "MissingParent.class" to type("MissingParent", parent = "Absent"),
+            "Cycle.class" to type("Cycle", parent = "Cycle"),
+        ))
+        val inventory = ResourceDeclarations(listOf(jar))
+        assertEquals(null, inventory.inheritedMethods("MissingParent"))
+        assertEquals(null, inventory.inheritedMethods("Cycle"))
+        assertEquals(setOf("Cycle"), inventory.initialization()["Cycle"])
+    }
+
+    @Test fun `static interface methods instance fields and shadowed ancestor fields are not inherited entries`() {
+        val writer = ClassWriter(0).apply {
+            visit(Opcodes.V17, Opcodes.ACC_PUBLIC or Opcodes.ACC_INTERFACE or Opcodes.ACC_ABSTRACT,
+                "StaticApi", null, "java/lang/Object", null)
+            visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "staticValue", "()I", null, null).visitEnd()
+            visitEnd()
+        }
+        val instance = ClassWriter(0).apply {
+            visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "Instance", null, "java/lang/Object", null)
+            visitField(Opcodes.ACC_PUBLIC, "value", "I", null, null).visitEnd()
+            visitEnd()
+        }
+        val jar = archive("visibility.jar", mapOf(
+            "StaticApi.class" to writer.toByteArray(), "Instance.class" to instance.toByteArray(),
+            "Parent.class" to type("Parent", fields = listOf("VALUE")),
+            "Child.class" to type("Child", parent = "Parent", fields = listOf("VALUE")),
+            "App.class" to type("App", interfaces = arrayOf("StaticApi")),
+            "java/lang/Object.class" to type("java/lang/Object", parent = null),
+        ))
+        val inventory = ResourceDeclarations(listOf(jar))
+        assertEquals(emptySet(), inventory.inheritedMethods("App"))
+        assertEquals(emptySet(), inventory.entryInitializers("Instance"))
+        assertEquals(setOf("Child"), inventory.entryInitializers("Child"))
+        assertEquals(null, inventory.fieldOwner("Child.ABSENT:I"))
     }
 
     private fun archive(name: String, entries: Map<String, ByteArray>): Path {

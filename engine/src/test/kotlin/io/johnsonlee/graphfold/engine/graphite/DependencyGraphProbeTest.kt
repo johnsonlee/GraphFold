@@ -6,8 +6,10 @@ import io.johnsonlee.graphite.core.DataFlowKind
 import io.johnsonlee.graphite.core.ParameterNode
 import io.johnsonlee.graphite.core.ReturnNode
 import io.johnsonlee.graphite.input.ConstantFold
+import io.johnsonlee.graphite.input.DependencyBodyScope
 import io.johnsonlee.graphite.input.FoldPlan
 import io.johnsonlee.graphite.input.LoaderConfig
+import io.johnsonlee.graphite.graph.ArtifactRole
 import io.johnsonlee.graphite.sootup.JavaProjectLoader
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -34,10 +36,11 @@ class DependencyGraphProbeTest {
         val messages = mutableListOf<String>()
         AnalysisInputs(application, listOf(dependency, library)).use { inputs ->
             val loader = JavaProjectLoader(LoaderConfig(
-                includeLibraries = true, includePackages = emptyList(), interproceduralDataflow = true,
+                includeLibraries = true, includePackages = listOf("Probe"), interproceduralDataflow = true,
+                dependencyBodies = DependencyBodyScope.Declared(artifacts = listOf("*")),
                 folding = FoldPlan(listOf(fold)), verbose = messages::add,
             ), false)
-            val graph = SnapshotExtension.capture(sink) { loader.load(inputs.path) }
+            val graph = loader.loadObserved(inputs.path, sink::capture).graph
             val calls = graph.nodes(CallSiteNode::class.java).toList()
             val parameters = graph.nodes(ParameterNode::class.java).toList()
             val returns = graph.nodes(ReturnNode::class.java).toList()
@@ -48,6 +51,9 @@ class DependencyGraphProbeTest {
                 .flatMap { graph.outgoing(it.id).toList() }.filterIsInstance<DataFlowEdge>()
                 .filter { it.kind == DataFlowKind.RETURN_VALUE }
             assertTrue(sink.methods.keys.any { it.startsWith("kotlin.text.StringsKt__StringsKt.") })
+            val libraryObservation = sink.observations.getValue("external.Reader.hardcoded()Ljava/lang/String;")
+            assertEquals(ArtifactRole.LIBRARY, libraryObservation.role)
+            assertEquals(false, libraryObservation.application)
             assertTrue(sink.methods.getValue("external.Reader.hardcoded()Ljava/lang/String;").resourceReads
                 .contains(ResourceRead("messages", "unused")))
             assertTrue(sink.methods.getValue("external.Reader.dynamic(Ljava/lang/String;)Ljava/lang/String;").resourceReads

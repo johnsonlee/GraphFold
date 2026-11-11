@@ -37,6 +37,16 @@ class InitializationIntegrationTest {
         verifyFixture("kotlin_added_default_activates_initializer")
     }
 
+    @Test
+    fun `adding unused private Java interface method activates interface initialization`() {
+        verifyFixture("java_added_private_activates_initializer")
+    }
+
+    @Test
+    fun `adding unused private interface method changes Kotlin class initialization prerequisites`() {
+        verifyFixture("kotlin_added_private_activates_initializer")
+    }
+
     private fun verifyFixture(id: String) {
         val fixtures = Path.of("../fixtures/initialization")
         val fixture = jacksonObjectMapper().readValue<List<InitializationCase>>(
@@ -57,7 +67,7 @@ class InitializationIntegrationTest {
         assertTrue(result.diagnostics.isEmpty(), "An analysis gap is not successful detection: $result")
         assertTrue(result.findings.isNotEmpty(), result.toString())
         val locations = result.findings.flatMap { it.locations }.distinct()
-        if (fixture.change == "added-default") {
+        if (fixture.change in setOf("added-default", "added-private")) {
             assertTrue(locations.all {
                 it.revision == Revision.HEAD && it.path == fixture.path && it.line == SourceRange(5, 5)
             }, result.toString())

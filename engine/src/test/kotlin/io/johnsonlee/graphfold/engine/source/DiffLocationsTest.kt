@@ -85,6 +85,16 @@ class DiffLocationsTest {
         assertEquals(insertion.column, deletion.column)
     }
 
+    @Test
+    fun `empty side without changed lines never fabricates a blank line deletion`() {
+        val addition = change(ChangedHunk(1, 0, 1, 1))
+        val locations = DiffLocations.locations(addition, "", "new")
+        assertEquals(listOf(Revision.HEAD), locations.map { it.revision })
+        assertEquals(SourceRange(1, 4), locations.single().column)
+        assertTrue(DiffLocations.locations(change(ChangedHunk(1, 0, 1, 0)), "", "").isEmpty())
+        assertTrue(DiffLocations.locations(change(ChangedHunk(1, 1, 1, 1)), "", "").isEmpty())
+    }
+
     private fun change(vararg hunks: ChangedHunk) =
         ChangedFile("Example.java", "Example.java", emptyList(), emptyList(), hunks = hunks.toList())
 }

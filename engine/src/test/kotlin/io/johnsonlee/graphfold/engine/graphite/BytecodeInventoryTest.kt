@@ -165,6 +165,60 @@ class BytecodeInventoryTest {
         assertTrue(normalized.methodDiagnostics.values.flatten().all { it.globalObservation })
     }
 
+    @Test fun `module descriptors without a superclass remain inventory declarations`() {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_MODULE, "module-info", null, null, null)
+        writer.visitModule("sample.application", 0, null).visitEnd()
+        writer.visitEnd()
+        Files.write(directory.resolve("module-info.class"), writer.toByteArray())
+        val inventory = BytecodeInventory().also { it.read(directory) }
+        assertTrue("module-info" in inventory.declarations)
+        assertTrue(inventory.references.isEmpty())
+    }
+
+    @Test fun `only the exact compiler bootstrap Lookup entry is ignored`() {
+        val flags = Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC or Opcodes.ACC_FINAL
+        fun shape(label: String, outer: String?, inner: String?, access: Int): String {
+            val root = Files.createDirectory(directory.resolve(label))
+            val writer = ClassWriter(0)
+            writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "Sample", null, "java/lang/Object", null)
+            writer.visitInnerClass("java/lang/invoke/MethodHandles\$Lookup", outer, inner, access)
+            writer.visitEnd()
+            Files.write(root.resolve("Sample.class"), writer.toByteArray())
+            return BytecodeInventory().also { it.read(root) }.declarations.getValue("Sample")
+        }
+        val bootstrap = shape("bootstrap", "java/lang/invoke/MethodHandles", "Lookup", flags)
+        assertFalse("java/lang/invoke/MethodHandles\$Lookup" in bootstrap)
+        listOf(shape("owner", "sample/Owner", "Lookup", flags),
+            shape("name", "java/lang/invoke/MethodHandles", "RenamedLookup", flags),
+            shape("flags", "java/lang/invoke/MethodHandles", "Lookup", Opcodes.ACC_PUBLIC)).forEach { declaration ->
+            assertTrue("java/lang/invoke/MethodHandles\$Lookup" in declaration)
+            kotlin.test.assertNotEquals(bootstrap, declaration)
+        }
+    }
+
+    @Test fun `an interface static property factory is not the trusted stdlib adapter`() {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "InterfaceFactory", null, "java/lang/Object", null)
+        val method = writer.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "token",
+            "(Lkotlin/jvm/internal/PropertyReference1;)Lkotlin/reflect/KProperty1;", null, null)
+        method.visitCode()
+        method.visitVarInsn(Opcodes.ALOAD, 0)
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "kotlin/jvm/internal/Reflection", "property1",
+            "(Lkotlin/jvm/internal/PropertyReference1;)Lkotlin/reflect/KProperty1;", true)
+        method.visitInsn(Opcodes.ARETURN)
+        method.visitMaxs(1, 1)
+        method.visitEnd()
+        writer.visitEnd()
+        Files.write(directory.resolve("InterfaceFactory.class"), writer.toByteArray())
+        val inventory = BytecodeInventory().also { it.read(directory) }
+        val stdlib = Path.of(kotlin.Unit::class.java.protectionDomain.codeSource.location.toURI())
+        inventory.missingReferences(listOf(stdlib))
+        val gap = inventory.methodDiagnostics.values.flatten().single()
+        assertTrue(gap.globalObservation)
+        assertTrue("Reflection.property1" in gap.message)
+    }
+
     private fun compileInventory(source: String): BytecodeInventory {
         val file = directory.resolve("Model.java")
         Files.writeString(file, source)

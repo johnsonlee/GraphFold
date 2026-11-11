@@ -51,6 +51,16 @@ class DelegateMetadataRuntimeTest {
         assertFalse(DelegateMetadataRuntime.trusted(listOf(jar)))
     }
 
+    @Test fun `same named adapter with different implementation cannot borrow the runtime contract`() {
+        val altered = ClassWriter(0).apply {
+            visit(Opcodes.V17, Opcodes.ACC_PUBLIC, names.first(), null, "java/lang/Object", null)
+            visitEnd()
+        }.toByteArray()
+        val jar = directory.resolve("altered.jar")
+        archive(jar, mapOf("${names.first()}.class" to altered, "${names.last()}.class" to trustedBytes(names.last())))
+        assertFalse(DelegateMetadataRuntime.trusted(listOf(jar)))
+    }
+
     private fun trustedBytes(name: String): ByteArray =
         requireNotNull(Unit::class.java.getResourceAsStream("/$name.class")).use { it.readBytes() }
 

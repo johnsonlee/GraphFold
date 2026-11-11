@@ -103,6 +103,7 @@ class FoldDocumentTest {
     @Test
     fun `invalid or ambiguous fold documents cannot silently fall back to no folding`() {
         val invalid = listOf(
+            "scenarios: [{name: A, typo: true, folds: [$rule]}]",
             "scenarios: []", "scenarios: nope", "scenarios: [1]", "scenarios: []\nextra: 1",
             "folds: []", "folds: nope", "folds: [1]", "folds: [$rule]\nversion: 2",
             "folds: [$rule]\nextra: 1", "name: ignored\nfolds: [$rule]", "scenarios: [{folds: [$rule]}]",

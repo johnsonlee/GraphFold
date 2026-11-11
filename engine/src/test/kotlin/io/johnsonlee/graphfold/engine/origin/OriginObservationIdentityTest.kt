@@ -50,9 +50,20 @@ class OriginObservationIdentityTest {
             classes, OriginCatalog(emptyList(), emptyList()), normalized.owners, normalized.methodDiagnostics)
         val snapshot = GraphiteAnalyzer().analyzeOriginProject(project, emptyList())
         assertTrue(snapshot.diagnostics.isEmpty(), snapshot.diagnostics.toString())
-        assertEquals(normalized.methodDiagnostics, snapshot.methodDiagnostics)
-        assertFalse(snapshot.methodDiagnostics.isEmpty())
-        snapshot.methodDiagnostics.forEach { (identity, gaps) ->
+        val retainedOriginGaps = snapshot.methodDiagnostics.mapValues { (_, gaps) -> gaps.filterNot { it.dispatchOnly } }
+            .filterValues { it.isNotEmpty() }
+        assertEquals(normalized.methodDiagnostics, retainedOriginGaps)
+        val dispatchGaps = snapshot.methodDiagnostics.flatMap { (identity, gaps) ->
+            gaps.filter { it.dispatchOnly }.map { identity to it }
+        }
+        assertFalse(dispatchGaps.isEmpty())
+        dispatchGaps.forEach { (identity, gap) ->
+            assertTrue(identity in snapshot.methods, identity)
+            assertTrue(gap.globalObservation, gap.toString())
+            assertTrue(gap.message.startsWith("Graphite DISPATCH_"), gap.message)
+            assertTrue(gap.message.contains("$identity calls "), gap.message)
+        }
+        retainedOriginGaps.forEach { (identity, gaps) ->
             val calls = snapshot.methods.getValue(identity).calls
             gaps.forEach { gap -> assertTrue(gap.callee in calls, "$identity: ${gap.callee} missing from $calls") }
         }

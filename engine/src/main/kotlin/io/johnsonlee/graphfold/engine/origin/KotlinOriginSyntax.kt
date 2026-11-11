@@ -52,12 +52,15 @@ private fun kotlinOrigins(root: KtFile, text: String): List<OriginSyntax> {
             originTokenText(tokens, range, null, emptyList()),
             (listOf(root.packageFqName.asString()) + ancestors.asReversed().mapNotNull { kotlinContainer(it, text) }).joinToString("/"),
             ancestors.filterIsInstance<KtObjectLiteralExpression>().firstOrNull()?.let(ranges::getValue),
-            setOf(kotlinRange(node.objectDeclaration)), node.objectDeclaration.body?.let(::kotlinRange))
+            // Require complete body evidence even if frontend recovery omitted an error element.
+            setOf(kotlinRange(node.objectDeclaration)),
+            kotlinRange(java.util.Objects.requireNonNull<KtClassBody>(node.objectDeclaration.body)))
     }
 }
 
 private fun kotlinContainer(element: PsiElement, text: String): String? = when (element) {
-    is KtObjectDeclaration -> if (element.isObjectLiteral()) null else "type:${element.name ?: "Companion"}"
+    // PSI supplies the declared name and the implicit Companion name without inventing one here.
+    is KtObjectDeclaration -> if (element.isObjectLiteral()) null else "type:${element.nameAsSafeName.asString()}"
     is KtClassOrObject -> "type:${element.name}"
     is KtNamedFunction -> "method:${element.receiverTypeReference?.let { kotlinShape(it, text) }.orEmpty()}:${element.name}(" +
         kotlinParameters(element.valueParameters, text) + ")"

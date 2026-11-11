@@ -6,18 +6,24 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.dircache.DirCache
 import org.eclipse.jgit.dircache.DirCacheEntry
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.ObjectLoader
 import org.eclipse.jgit.lib.ObjectInserter
+import org.eclipse.jgit.lib.RefUpdate
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.TreeWalk
 
 /** Raw object checkout deliberately never executes hooks, clean/smudge filters, or external Git. */
-internal fun checkout(cached: Repository, revision: String, directory: Path) {
+internal fun checkout(
+    cached: Repository, revision: String, directory: Path,
+    commitIndex: (DirCache) -> Boolean = DirCache::commit,
+    makeExecutable: (Path) -> Boolean = { it.toFile().setExecutable(true, false) },
+) {
     Files.createDirectories(directory)
     val gitDirectory = directory.resolve(".git")
     if (!Files.exists(gitDirectory.resolve("HEAD"))) {
@@ -34,18 +40,22 @@ internal fun checkout(cached: Repository, revision: String, directory: Path) {
         TreeWalk(cached).use { tree ->
             tree.addTree(commit.tree)
             tree.isRecursive = true
-            checkoutTree(cached, checkout, tree, commit.tree, directory)
+            checkoutTree(cached, checkout, tree, commit.tree, directory, commitIndex, makeExecutable)
         }
-        checkout.updateRef(Constants.HEAD, true).apply {
+        val result = checkout.updateRef(Constants.HEAD, true).apply {
             setNewObjectId(commit)
             isForceUpdate = true
         }.forceUpdate()
+        if (result !in SUCCESSFUL_HEAD_UPDATES) throw GitOperationException("Cannot update checkout HEAD: $result")
         // Apply the target revision's ignore rules after restoring sources and its index.
         Git(checkout).clean().setCleanDirectories(true).setForce(true).call()
     }
 }
 
-private fun checkoutTree(cached: Repository, checkout: Repository, tree: TreeWalk, targetTree: ObjectId, directory: Path) {
+private fun checkoutTree(
+    cached: Repository, checkout: Repository, tree: TreeWalk, targetTree: ObjectId, directory: Path,
+    commitIndex: (DirCache) -> Boolean, makeExecutable: (Path) -> Boolean,
+) {
     val index = checkout.lockDirCache()
     try {
         val paths = TreeWalk(cached).use { target ->
@@ -65,7 +75,7 @@ private fun checkoutTree(cached: Repository, checkout: Repository, tree: TreeWal
         while (tree.next()) {
             checkGitCancellation()
             val mode = tree.getFileMode(0)
-            materialize(cached, tree, directory, mode)
+            materialize(cached, tree, directory, mode, makeExecutable)
             builder.add(DirCacheEntry(tree.pathString).apply {
                 fileMode = mode
                 setObjectId(tree.getObjectId(0))
@@ -73,13 +83,15 @@ private fun checkoutTree(cached: Repository, checkout: Repository, tree: TreeWal
         }
         builder.finish()
         index.write()
-        check(index.commit()) { "Cannot persist checkout index" }
+        check(commitIndex(index)) { "Cannot persist checkout index" }
     } finally {
         index.unlock()
     }
 }
 
-private fun materialize(repository: Repository, tree: TreeWalk, directory: Path, mode: FileMode) {
+private fun materialize(
+    repository: Repository, tree: TreeWalk, directory: Path, mode: FileMode, makeExecutable: (Path) -> Boolean,
+) {
     if (mode == FileMode.GITLINK) {
         throw GitOperationException("Submodule inputs are not supported; analysis cannot be complete")
     }
@@ -94,7 +106,7 @@ private fun materialize(repository: Repository, tree: TreeWalk, directory: Path,
     if (mode == FileMode.SYMLINK) {
         Files.createSymbolicLink(destination, Path.of(String(loader.bytes, Charsets.UTF_8)))
     } else {
-        writeBlob(loader, destination, mode)
+        writeBlob(loader, destination, mode, makeExecutable)
     }
 }
 
@@ -120,7 +132,7 @@ private fun matchesBlob(destination: Path, mode: FileMode, id: ObjectId): Boolea
     }
 }
 
-private fun writeBlob(loader: ObjectLoader, destination: Path, mode: FileMode) {
+private fun writeBlob(loader: ObjectLoader, destination: Path, mode: FileMode, makeExecutable: (Path) -> Boolean) {
     loader.openStream().use { input ->
         val prefix = input.readNBytes(LFS_PREFIX.length)
         if (String(prefix, Charsets.UTF_8) == LFS_PREFIX) {
@@ -131,7 +143,7 @@ private fun writeBlob(loader: ObjectLoader, destination: Path, mode: FileMode) {
             copy(input, output)
         }
     }
-    if (mode == FileMode.EXECUTABLE_FILE && !destination.toFile().setExecutable(true, false)) {
+    if (mode == FileMode.EXECUTABLE_FILE && !makeExecutable(destination)) {
         throw GitOperationException("Cannot preserve executable file mode")
     }
 }
@@ -147,3 +159,7 @@ private fun copy(input: InputStream, output: OutputStream) {
 }
 
 private const val LFS_PREFIX = "version https://git-lfs.github.com/spec/v1"
+
+private val SUCCESSFUL_HEAD_UPDATES = setOf(
+    RefUpdate.Result.NEW, RefUpdate.Result.NO_CHANGE, RefUpdate.Result.FAST_FORWARD, RefUpdate.Result.FORCED,
+)

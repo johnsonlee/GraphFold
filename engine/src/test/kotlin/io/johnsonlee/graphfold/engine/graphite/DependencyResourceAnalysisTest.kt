@@ -111,6 +111,26 @@ class DependencyResourceAnalysisTest {
         assertTrue(analysis.reads("Other.run()V").isEmpty())
     }
 
+    @Test fun `a call with no ordinal cannot activate a graph-only callback resource effect`() {
+        val methods = listOf(method("App.run", "Library.callback"), method("Library.callback"),
+            method("Other.callback", reads = listOf(changedKey)))
+        val unknownSite = site(1, "App.run", "Library.callback").copy(ordinal = null)
+        val derived = site(2, "App.run", "Other.callback", origin = 1)
+        assertTrue(analyze(methods, listOf(unknownSite, derived)).reads("App.run()V").isEmpty())
+    }
+
+    @Test fun `entry effect proof requires both inherited methods and field initialization inventory`() {
+        val analysis = analyze(listOf(method("App.run")), inheritedMethods = mapOf("App" to emptySet()))
+        assertEquals(listOf(unknown), analysis.entryReads("App"))
+        assertEquals(listOf(unknown), analysis.entryReads("Missing"))
+    }
+
+    @Test fun `a missing call effect capture retains direct dependency reads and an explicit unknown`() {
+        val methods = listOf(method("App.run", "Library.read"), method("Library.read", reads = listOf(changedKey)))
+        val analysis = analyze(methods, calls = mapOf("Library.read()V" to emptySet()))
+        assertEquals(setOf(changedKey, unknown), analysis.reads("App.run()V").toSet())
+    }
+
     private fun method(name: String, vararg calls: String, reads: List<ResourceRead> = emptyList(),
         modifiers: Set<MethodModifier> = emptySet()) =
         MethodSnapshot("$name()V", "body", calls.map { "$it()V" }.toSet(), modifiers, emptySet(), resourceReads = reads)

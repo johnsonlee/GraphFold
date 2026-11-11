@@ -184,7 +184,8 @@ internal class ResourceDeclarations(paths: List<Path>) {
                 node.methods.forEach { methods.add("$owner.${it.name}${it.desc}") }
                 types[owner] = ResourceType(node.superName?.replace('/', '.'), node.interfaces.map { it.replace('/', '.') },
                     node.access and Opcodes.ACC_INTERFACE != 0, node.methods.any {
-                        it.name != "<clinit>" && it.access and (Opcodes.ACC_ABSTRACT or Opcodes.ACC_STATIC or Opcodes.ACC_PRIVATE) == 0
+                        // JVMS 5.5 includes private instance interface methods as initialization triggers.
+                        it.name != "<clinit>" && it.access and (Opcodes.ACC_ABSTRACT or Opcodes.ACC_STATIC) == 0
                     }, node.fields.associate { "${it.name}:${it.desc}" to it.access },
                     node.methods.associate { "${it.name}${it.desc}" to it.access })
             }
@@ -193,8 +194,7 @@ internal class ResourceDeclarations(paths: List<Path>) {
     }
 
     private companion object {
-        val INTRINSICS: ByteArray = requireNotNull(ResourceDeclarations::class.java
-            .getResourceAsStream("/kotlin/jvm/internal/Intrinsics.class")).use { it.readBytes() }
+        val INTRINSICS: ByteArray = EngineRuntimeClasses.requireBytes("kotlin/jvm/internal/Intrinsics")
     }
 }
 

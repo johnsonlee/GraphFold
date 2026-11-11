@@ -1,12 +1,30 @@
 # Graphite problem statement: dependency-aware proof over folded graphs
 
-Status: upstream requirements with an executed capability probe; the contracts below are not claims that every capability is implemented.
+Status (2026-11-11): the graph-side contract of #192 was delivered by [Graphite #193](https://github.com/johnsonlee/graphite/pull/193), and the issue is closed. GraphFold now targets **Graphite 2.15.0**, using its same-build folded-body observer. The release artifacts replace the earlier isolated alpha1 build; current regression, coverage and hosted CI results are recorded in [the validation record](validation.md). This document preserves the original requirements and baseline reproduction; they are not a list of wholly outstanding upstream defects or a claim that the new GraphFold integration has passed validation.
 
 Upstream issue: [johnsonlee/graphite#192](https://github.com/johnsonlee/graphite/issues/192).
 
-Baseline: Graphite **v2.12.0**; GraphFold **11333dcb7518b9658e52d487cfbd58186420b70d**.
+Historical baseline: Graphite **v2.12.0**; GraphFold **11333dcb7518b9658e52d487cfbd58186420b70d**.
 
-Follow-up evidence: the [dependency probe](research/dependencies/README.md) has now run against the actual Kotlin stdlib 2.1.20 JAR. Existing Graphite 2.12.0 captures dependency bodies, parameter/return edges, folded call removal, and the tested dependency-to-application callback. These basic capabilities do not require a new upstream API. GraphFold integration work now consumes this evidence for resource effects; validation and remaining limits are recorded separately from the proposed upstream completeness, selective expansion and context-sensitive contracts below.
+Historical follow-up evidence: the [dependency probe](research/dependencies/README.md) ran against the actual Kotlin stdlib 2.1.20 JAR. Graphite 2.12.0 already captured dependency bodies, parameter/return edges, folded call removal, and the tested dependency-to-application callback. These basic capabilities did not require a new upstream API. Those probe results retain their original version and do not validate the observer integration.
+
+## Current delivery and integration
+
+Graphite provides independent `DependencyBodyScope`, structured `AnalysisCompleteness`, artifact/class provenance, explicit duplicate and dispatch evidence, and budgeted reachable expansion. Graphite 2.15.0 additionally provides `JavaProjectLoader.loadObserved`: application and dependency method observations, owned immutable folded snapshots and method receipts are reconciled with the final graph, completeness and FoldReport of the same build. A callback is provisional until that load succeeds; failed capture cannot yield a usable partial proof.
+
+GraphFold adopts that observer instead of `SnapshotExtension` service discovery. It does not construct a separate capture graph or classify dependency methods as application methods to receive their bodies. The plain Cypher selection graph remains necessary. The API and GraphFold adapters remain coupled to SootUp; this is not a backend-neutral IR migration.
+
+Resource proofs initially use `DependencyBodyScope.Declared(artifacts = listOf("*"))`. Eager scope retains inherited application APIs and exposed static-field initialization, whose activation may not appear as an ordinary application invocation. Production use of `Reachable` remains downstream work until those implicit roots are covered. Resource semantics, cross-call name/key specialization, obligation relevance and unsupported runtime layouts also remain GraphFold responsibilities.
+
+Maven Central publication of `2.15.0-alpha1` was blocked by the upstream Sonatype quota. Earlier alpha1 source verification used artifacts built in isolation from exact tag commit [`907bc9ad`](https://github.com/johnsonlee/graphite/commit/907bc9adf24dbd238d72c08127827e6481cc6fe7); this does not verify published Central binaries or establish release availability. The temporary repository is local verification infrastructure.
+
+Selection uses the parsed Cypher AST to certify direct CallSite-property queries that do not depend on unrelated native or dispatch evidence. Other query shapes conservatively require complete graph facts; extraction failures and partial derived-target selection remain blocking. Resource-call models discharge only their specific resource uncertainty, while structural gaps stay intact. A module-descriptor-only multi-release exemption requires independent archive inspection and does not excuse executable variants, providers, malformed/duplicate entries or unknown resource layouts.
+
+The unchanged-outside-closure source proof discharges an individual `dispatchOnly` gap only when all application methods outside its actual comparison closure are unchanged in their unnormalized folded representation, global class/field/entry/initialization/override/provenance metadata agrees, and no alignment or normalization has erased differences. Methods inside the closure still require comparison. Body, recovery and other gaps remain; resource proofs and selection checks never use this exemption, and `resourceEffectModeled` alone does not authorize it. An apparently unreachable edit outside the closure can therefore still block alongside an unknown call. Raw-change and metadata checks are cached once per snapshot pair; no performance acceptance is claimed.
+
+Two independent downstream proofs complement that contract. A complete supplied-input class-header inventory can establish that a concrete application owner has no subtypes; only surviving direct calls to methods declared by that owner qualify. Abstract/interface owners, unknown hierarchies, duplicate/runtime-variant classes and derived targets do not qualify. Dynamically generated or loaded subclasses remain outside the closed input model; body/recovery/resource effects and selection evidence are not waived. Separately, an obligation's own surviving method difference reached without unresolved dispatch, or an independently reached initialization-dependency delta, already disproves structural equivalence. This only explains FAIL, never PASS, and cannot borrow another obligation's difference. Remaining dispatch in a method prevents all its outgoing edges from serving as that independent witness. See the design document for boundaries.
+
+New-version correctness, receipt reconciliation, coverage gates and observer-enabled representative multi-graph performance must be verified separately. Historical reports below are not evidence that these checks have run.
 
 ## Problem
 
@@ -16,7 +34,7 @@ The immediate example is a properties resource change whose only reader is remov
 
 We need to follow the **folded application execution paths through dependency code**, retaining the associated dataflow and explicit evidence of any analysis gaps. Dependency presence alone must not imply resource access. Conversely, an absent graph path must not be presented as proof when the relevant body, dispatch target, initialization, or callback was not analyzed.
 
-This is a request for reusable graph construction and completeness capabilities. Resource semantics, Git diffs, and the final GraphFold verdict remain downstream responsibilities.
+The original request concerned reusable graph construction and completeness capabilities, now delivered upstream as summarized above. Resource semantics, Git diffs, and the final GraphFold verdict remain downstream responsibilities.
 
 ## Observed behavior and reproduction
 
@@ -61,7 +79,7 @@ For a Graphite-owned regression, the same semantics can be tested with separate 
 
 ## Existing capability versus baseline integration defects
 
-Graphite already has important parts of the solution. The following findings are from the pinned v2.12.0 source:
+The following findings describe the historical v2.12.0 source and the original integration defects. They do not describe the current observer/completeness API:
 
 - [`LoaderConfig`](https://github.com/johnsonlee/graphite/blob/v2.12.0/frontend/jvm/core/src/main/kotlin/io/johnsonlee/graphite/input/ProjectLoader.kt) supports library loading, package filtering, folding, and optional interprocedural dataflow.
 - [`InterproceduralDataflow`](https://github.com/johnsonlee/graphite/blob/v2.12.0/frontend/jvm/sootup/src/main/kotlin/io/johnsonlee/graphite/sootup/InterproceduralDataflow.kt) connects arguments to callee parameters and callee returns to call results, including known virtual overrides. A callee without a processed body contributes no corresponding body edges.
@@ -79,7 +97,9 @@ See [GraphiteAnalyzer.kt](../engine/src/main/kotlin/io/johnsonlee/graphfold/engi
 
 Removing filters and retaining dependency bodies is a useful correctness prototype. It does not by itself establish scalable expansion, complete entry/dispatch coverage, or precise cross-call dataflow. These are the upstream concerns below.
 
-## Required graph contract
+## Original graph contract and retained acceptance requirements
+
+The requirements below preserve the issue’s scope. The implementation status is summarized above; consumer-side semantics and integration validation are not implied by upstream delivery.
 
 ### 1. Separate application identity from dependency body scope
 
@@ -153,7 +173,7 @@ Graphite need not implement properties parsing or a resource-specific solver. It
 
 ## GraphFold responsibilities
 
-The integration now expands supplied dependency bodies for resource proofs, enables interprocedural dataflow in both graphs, and consumes folded dependency effects before retaining only application methods for source comparison. It replaces the blanket dependency veto with runtime-layout prerequisites and graph evidence. It handles inherited APIs, exposed static fields, initialization and tested callback edges; unsupported scope or unresolved effects remain blocking. Dependency-content identities still participate in production-output comparison.
+The integration expands a declared eager dependency scope for resource proofs and consumes same-build observer snapshots together with structured graph completeness. Interprocedural dataflow is enabled for selection and resource-proof graphs; ordinary source comparison does not require it in the final graph. Dependency resource effects are consumed before retaining only application methods for source comparison. The earlier integration already replaced the blanket dependency veto with runtime-layout prerequisites and graph evidence and added inherited APIs, exposed static fields, initialization and callback regressions. Those historical results require rerunning on the new observer path. Unsupported scope or unresolved effects remain blocking, and dependency-content identities still participate in production-output comparison.
 
 Downstream responsibilities remain:
 
@@ -192,11 +212,11 @@ Existing Graphite graph/fold behavior and existing GraphFold controlled/uncontro
 
 ## Delivery and performance
 
-Suggested sequence:
+The original sequence is now split into delivered contracts and downstream validation:
 
-1. Validate the full application→dependency→resource path using existing Graphite capabilities and the GraphFold integration fixes. Record precisely which cases need new upstream support.
-2. Deliver separate scope/provenance and structured completeness contracts with Java/Kotlin regressions.
-3. Add selective dependency expansion and reusable analysis results for large inputs; improve call-context precision where measured false positives justify it.
+1. The baseline application→dependency→resource prototype and GraphFold regressions remain historical correctness evidence. Rerun the cases against the 2.15.0 observer integration, including same-build receipt and completeness checks.
+2. Scope/provenance, structured completeness, reachable expansion and same-build method observation are available upstream; they are no longer blanket upstream blockers.
+3. GraphFold retains declared eager resource scope initially. Validate all implicit roots before switching to selective expansion, define reusable analysis identities before adding caches, and improve call-context precision where measured false positives justify it.
 
 Do not claim performance acceptance from a single graph, or from loading multiple graphs while the measured request still targets only one. Performance acceptance requires representative multi-graph load tests whose measured requests exercise multiple graphs, including dependency-heavy inputs and supported expansion/reuse paths. Record workload, hardware, memory, latency and repeated-run results against an agreed baseline; numeric budgets should be set before accepting the optimization. Single-graph runs remain correctness checks only.
 

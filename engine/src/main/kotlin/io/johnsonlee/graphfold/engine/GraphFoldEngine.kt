@@ -63,14 +63,14 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             }
             state.result()
         } catch (failure: WorkspaceLeaseTimeoutException) {
-            state.diagnostics += Diagnostic(AnalysisStage.GIT, DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT, requireNotNull(failure.message))
+            state.diagnostics += Diagnostic(AnalysisStage.GIT, DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT, failure.message)
             state.result()
         } catch (failure: InterruptedException) {
             Thread.currentThread().interrupt()
             state.diagnostics += Diagnostic(state.stage, DiagnosticCode.ANALYSIS_CANCELLED, "Analysis was interrupted")
             state.result()
         } catch (failure: Exception) {
-            state.diagnostics += Diagnostic(state.stage, DiagnosticCode.ANALYSIS_FAILED, failure.message ?: failure.javaClass.simpleName)
+            state.diagnostics += analysisFailureDiagnostic(state.stage, failure)
             state.result()
         }
     }
@@ -108,8 +108,8 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             compiled.base, compiled.head, workspace.baseDirectory, workspace.headDirectory, changes, run.resolve("normalized"),
         )
         origins.diagnostics.forEach { state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.UNVERIFIED_ORIGIN, it) }
-        val oldProject = requireNotNull(origins.base)
-        val newProject = requireNotNull(origins.head)
+        val oldProject = origins.base
+        val newProject = origins.head
         val obligations = changes.filter { it.isJvmSourceChange() }
             .flatMap { change -> obligations(workspace, change, oldProject, newProject, state) }
         state.obligations = obligations.size + inputProof.changes.size
@@ -181,15 +181,16 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
     private fun checkProductionInputs(
         proof: BuildInputProof, comparison: SnapshotComparison, scenario: String, state: RunState,
     ): Boolean {
-        val gap = proof.gap(resourcesProved = proof.resourcesUnreachable(
+        val resourcesProved = proof.resourcesUnreachable(
             comparison.reachableSnapshots(), comparison.resourceDependenciesAnalyzed, comparison.resourceEntryReads,
-        ))
+        )
+        val gap = proof.gap(resourcesProved = resourcesProved)
         if (gap != null) {
             state.diagnostics += gap
             state.reasons += proof.reasons(ReasonCode.ANALYSIS_INCOMPLETE, scenario, gap.message)
             return false
         }
-        val analysisGaps = comparison.analysisGaps()
+        val analysisGaps = if (resourcesProved) comparison.resourceAnalysisGaps() else comparison.analysisGaps()
         analysisGaps.forEach { state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it) }
         val differences = comparison.wholeProgramDifferences()
         val proved = differences.isEmpty() && analysisGaps.isEmpty()
@@ -213,9 +214,7 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             .analyzeOriginProject(base, scenario.rules, dependencyResources)
         val new = GraphiteAnalyzer { index, update -> state.audit(scenario.name, Revision.HEAD, index, update) }
             .analyzeOriginProject(head, scenario.rules, dependencyResources)
-        (old.diagnostics.map { "base: $it" } + new.diagnostics.map { "head: $it" }).forEach {
-            state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it)
-        }
+        state.diagnostics += graphDiagnostics(old.diagnostics, new.diagnostics)
         scenario.rules.indices.forEach { index ->
             if (old.matchedRules[index] == 0 && new.matchedRules[index] == 0) {
                 state.diagnostics += Diagnostic(
@@ -242,10 +241,8 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         }
         val old = source(workspace.baseDirectory, change.basePath, Revision.BASE, base)
         val new = source(workspace.headDirectory, change.headPath, Revision.HEAD, head)
-        (old?.diagnostics.orEmpty() + new?.diagnostics.orEmpty()).forEach {
-            state.diagnostics += Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.SOURCE_RESOLUTION_FAILED, it)
-        }
-        val planned = planChanges(old, new, change)
+        state.diagnostics += sourceDiagnostics(old, new)
+        val planned = planSourceChanges(old, new, change)
         if (planned.isEmpty()) {
             state.diagnostics += Diagnostic(
                 AnalysisStage.SOURCE, DiagnosticCode.UNMAPPED_CHANGE, "Cannot bind ${change.headPath ?: change.basePath} to a declaration",
@@ -254,35 +251,14 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         return planned
     }
 
-    private fun planChanges(old: IndexedSource?, new: IndexedSource?, change: ChangedFile): List<ProofObligation> {
-        val locations = DiffLocations.locations(change, old?.text, new?.text)
-        val oldObligations = old?.let { ProofPlanner.plan(it, locations.filter { loc -> loc.revision == Revision.BASE }) }.orEmpty()
-        val newObligations = new?.let { ProofPlanner.plan(it, locations.filter { loc -> loc.revision == Revision.HEAD }) }.orEmpty()
-        val moved = change.basePath != null && change.headPath != null && change.basePath != change.headPath
-        val moveKinds = if (moved) setOf(
-            if (Path.of(change.basePath).fileName == Path.of(change.headPath).fileName) ChangeKind.FILE_MOVED else ChangeKind.FILE_RENAMED,
-        ) else emptySet()
-        val moveObligations = if (moved && locations.isEmpty()) {
-            (old?.symbols.orEmpty() + new?.symbols.orEmpty()).filter { it.kind == SymbolKind.CLASS }
-                .map { ProofObligation(it.identity, it.kind, it.owner, emptyList()) }
-        } else emptyList()
-        return (oldObligations + newObligations + moveObligations).groupBy { it.identity }.values.map { group ->
-            val fragments = group.flatMap { it.locations }.distinct()
-            group.first().copy(
-                locations = fragments, changes = ChangeClassifier.classify(old, new, fragments) + moveKinds,
-                basePath = change.basePath, headPath = change.headPath, inlined = group.any { it.inlined },
-            )
-        }
-    }
-
     private fun source(root: Path, path: String?, revision: Revision, project: OriginProject): IndexedSource? =
         when {
             path == null -> null
             path.endsWith(".kt") -> KotlinSourceIndex(project.sourceClasses, project.compiled.sourceOutputs)
                 .use { it.index(root, path, revision) }
-            path.endsWith(".java") -> JavaSourceIndex(project.compiled.sourceRoots, project.compiled.dependencies)
+            // obligations() only receives changes whose nonnull base/head paths are JVM sources.
+            else -> JavaSourceIndex(project.compiled.sourceRoots, project.compiled.dependencies)
                 .use { it.index(root, path, revision) }
-            else -> null
         }?.let { bindOrigins(it, revision, project.catalog, project.owners) }
 
     private fun checkObligation(
@@ -367,3 +343,41 @@ private fun initialAudits(scenario: FoldScenario, revision: Revision): List<Rule
     }
     RuleAudit(scenario.name, revision, index, selector, message = "Analysis did not reach rule selection")
 }
+
+/** Bind both diff revisions and preserve move-only declaration obligations. */
+internal fun planSourceChanges(old: IndexedSource?, new: IndexedSource?, change: ChangedFile): List<ProofObligation> {
+    val locations = DiffLocations.locations(change, old?.text, new?.text)
+    val oldObligations = old?.let { ProofPlanner.plan(it, locations.filter { loc -> loc.revision == Revision.BASE }) }.orEmpty()
+    val newObligations = new?.let { ProofPlanner.plan(it, locations.filter { loc -> loc.revision == Revision.HEAD }) }.orEmpty()
+    val moved = change.basePath != null && change.headPath != null && change.basePath != change.headPath
+    val moveKinds = if (moved) setOf(
+        if (Path.of(change.basePath).fileName == Path.of(change.headPath).fileName) ChangeKind.FILE_MOVED else ChangeKind.FILE_RENAMED,
+    ) else emptySet()
+    val moveObligations = if (moved && locations.isEmpty()) {
+        (old?.symbols.orEmpty() + new?.symbols.orEmpty()).filter { it.kind == SymbolKind.CLASS }
+            .map { ProofObligation(it.identity, it.kind, it.owner, emptyList()) }
+    } else emptyList()
+    return (oldObligations + newObligations + moveObligations).groupBy { it.identity }.values.map { group ->
+        val fragments = group.flatMap { it.locations }.distinct()
+        group.first().copy(
+            locations = fragments, changes = ChangeClassifier.classify(old, new, fragments) + moveKinds,
+            basePath = change.basePath, headPath = change.headPath, inlined = group.any { it.inlined },
+        )
+    }
+}
+
+
+internal fun analysisFailureDiagnostic(stage: AnalysisStage, failure: Exception): Diagnostic =
+    Diagnostic(stage, DiagnosticCode.ANALYSIS_FAILED, failure.message ?: failure.javaClass.simpleName)
+
+/** Keep revision ownership when exposing whole-graph inventory failures. */
+internal fun graphDiagnostics(base: List<String>, head: List<String>): List<Diagnostic> =
+    (base.map { "base: $it" } + head.map { "head: $it" }).map {
+        Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it)
+    }
+
+/** Source resolution gaps remain blockers even when other declarations bind successfully. */
+internal fun sourceDiagnostics(base: IndexedSource?, head: IndexedSource?): List<Diagnostic> =
+    (base?.diagnostics.orEmpty() + head?.diagnostics.orEmpty()).map {
+        Diagnostic(AnalysisStage.SOURCE, DiagnosticCode.SOURCE_RESOLUTION_FAILED, it)
+    }

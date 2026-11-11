@@ -23,10 +23,11 @@ internal object ProofPlanner {
                 intersection(changed, symbol.location)?.let { symbol to it }
             }
             val completeMember = members.filter { (_, fragment) -> fragment == changed }
+            val smallest = completeMember.minOfOrNull { size(it.first.location) }
             when {
-                completeMember.isNotEmpty() -> {
-                    val smallest = completeMember.minOf { size(it.first.location) }
-                    completeMember.filter { size(it.first.location) == smallest }
+                smallest != null -> {
+                    val minimum: Long = smallest
+                    completeMember.filter { size(it.first.location) == minimum }
                 }
                 members.isNotEmpty() -> members + if (hasUncoveredToken(source.text, changed, members.map { it.second })) {
                     classFragments(source, changed)

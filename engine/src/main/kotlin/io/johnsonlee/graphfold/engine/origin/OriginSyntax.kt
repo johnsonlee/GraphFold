@@ -24,7 +24,7 @@ internal fun originSyntax(path: String, text: String): List<OriginSyntax> = when
 /** Only exact compiler/AST ranges match. Never substitute a nearby or merely enclosing expression. */
 internal fun originSyntax(path: String, text: String, start: Int, end: Int): OriginSyntax? {
     val requested = OriginSpan(start, end)
-    return originSyntax(path, text).singleOrNull { it.range == requested || requested in it.aliases }
+    return originSyntax(path, text).singleOrNull { requested in it.aliases + it.range }
 }
 
 internal data class OriginToken(val range: OriginSpan, val text: String)

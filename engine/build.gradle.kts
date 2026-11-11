@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.ksp)
     `java-library`
     `java-test-fixtures`
     alias(libs.plugins.sonatype)
@@ -9,8 +8,6 @@ dependencies {
     implementation(project(":gfc")) {
         attributes { attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR)) }
     }
-    compileOnly(libs.auto.service.annotations)
-    ksp(libs.auto.service.ksp)
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
     implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.8.0.202609011348-r")
     implementation("org.jetbrains.kotlin:kotlin-metadata-jvm:2.1.20")
@@ -18,9 +15,9 @@ dependencies {
     implementation("org.soot-oss:sootup.core:3.0.1")
     implementation("org.soot-oss:sootup.java.core:3.0.1")
     implementation("org.soot-oss:sootup.java.bytecode.frontend:3.0.1")
-    implementation("io.johnsonlee.graphite:core:2.12.0")
-    implementation("io.johnsonlee.graphite:sootup:2.12.0")
-    implementation("io.johnsonlee.graphite:cypher:2.12.0")
+    implementation(libs.graphite.core)
+    implementation(libs.graphite.sootup)
+    implementation(libs.graphite.cypher)
     implementation(libs.javaparser)
     implementation(libs.asm.tree)
     implementation(libs.asm.analysis)

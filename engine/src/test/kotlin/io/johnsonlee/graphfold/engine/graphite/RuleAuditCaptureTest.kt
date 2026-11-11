@@ -5,7 +5,9 @@ import io.johnsonlee.graphite.core.CallSiteNode
 import io.johnsonlee.graphite.core.MethodDescriptor
 import io.johnsonlee.graphite.core.NodeId
 import io.johnsonlee.graphite.core.TypeDescriptor
+import io.johnsonlee.graphite.graph.AnalysisCompleteness
 import io.johnsonlee.graphite.graph.DefaultGraph
+import io.johnsonlee.graphite.input.AnalysisIdentity
 import io.johnsonlee.graphite.input.FoldSites
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -26,6 +28,7 @@ class RuleAuditCaptureTest {
         val graph = DefaultGraph.Builder().apply {
             addMethod(caller)
             listOf(origin, left, right).forEach { addMethod(it.callee); addNode(it) }
+            setAnalysisCompleteness(AnalysisCompleteness(AnalysisIdentity(), emptyMap(), emptyMap(), emptyMap()))
         }.build()
         val records = mutableMapOf<Int, RuleAuditUpdate>()
         val audit = RuleAuditCapture { index, update -> records[index] = update }

@@ -147,6 +147,14 @@ class KotlinOriginRegistrationTest {
         assertTrue(requireNotNull(failure.message).contains("foreign"))
     }
 
+    @Test fun `unsupported compiler versions fail before provenance can be trusted`() {
+        listOf("1.9.20", "2.0.21", "2.1.20", "2.2.10").forEach(::requireSupportedCompilerVersion)
+        listOf("", "2.1.21", "2.3.0", "2.1.20-custom").forEach { version ->
+            val failure = assertFailsWith<IllegalArgumentException> { requireSupportedCompilerVersion(version) }
+            assertEquals("Unsupported GraphFold Kotlin provenance compiler: $version", failure.message)
+        }
+    }
+
     private fun configuration(messages: MessageCollector? = null) = CompilerConfiguration().apply {
         put(JVMConfigurationKeys.OUTPUT_DIRECTORY, temporary.resolve("classes").toFile())
         if (messages != null) put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, messages)

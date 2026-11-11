@@ -130,6 +130,46 @@ class MavenOriginOverlayTest {
         assertEquals("<project/>", Files.readString(pom))
     }
 
+    @Test
+    fun `retained provider is reused by bytes and repaired if its local copy is changed`() {
+        val pom = Files.writeString(temporary.resolve("pom.xml"), "<project/>")
+        val model = effective("")
+        val output = Files.createDirectories(temporary.resolve("output"))
+        val provider = Files.write(output.resolve("provider.jar"), byteArrayOf(1, 2, 3))
+        fun configure() = MavenOriginOverlay(temporary, output, provider, mapOf(pom to model), "test")
+        configure().close()
+        val retained = regularFiles(output.resolve("origin-maven-repository")).single { it.toString().endsWith(".jar") }
+        val timestamp = java.nio.file.attribute.FileTime.fromMillis(1_000)
+        Files.setLastModifiedTime(retained, timestamp)
+        configure().close()
+        assertEquals(timestamp, Files.getLastModifiedTime(retained), "Unchanged provider must keep its incremental identity")
+        Files.write(retained, byteArrayOf(9))
+        configure().close()
+        assertContentEquals(Files.readAllBytes(provider), Files.readAllBytes(retained))
+        assertEquals("<project/>", Files.readString(pom))
+    }
+
+    @Test
+    fun `existing execution nodes keep their identity and inherit shared configuration when local config is absent`() {
+        val plugins = """
+            <plugin><artifactId>maven-compiler-plugin</artifactId><configuration>
+              <compilerArgs><arg>-parameters</arg></compilerArgs></configuration><executions>
+              <execution><id>custom</id><goals><goal>compile</goal></goals></execution>
+              <execution><id>default-testCompile</id><goals><goal>testCompile</goal></goals></execution>
+            </executions></plugin>
+        """.trimIndent()
+        val original = "<project><build><plugins>$plugins</plugins></build></project>"
+        val pom = Files.writeString(temporary.resolve("pom.xml"), original)
+        overlay(mapOf(pom to effective(plugins))).use {
+            val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom.toFile())
+            val xpath = javax.xml.xpath.XPathFactory.newInstance().newXPath()
+            assertEquals("1", xpath.evaluate("count(//execution[id='custom'])", document))
+            assertEquals("1", xpath.evaluate("count(//execution[id='default-testCompile'])", document))
+            assertEquals("-parameters", xpath.evaluate("//execution[id='custom']/configuration/compilerArgs/arg[1]", document))
+        }
+        assertEquals(original, Files.readString(pom))
+    }
+
     private fun effective(plugins: String): Path = temporary.resolve("effective.xml").also {
         Files.writeString(it, "<project><build><plugins>$plugins</plugins></build></project>")
     }

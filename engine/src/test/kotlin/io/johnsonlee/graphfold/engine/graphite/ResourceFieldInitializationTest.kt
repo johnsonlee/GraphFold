@@ -42,9 +42,8 @@ class ResourceFieldInitializationTest {
         assertEquals("Values", declarations.fieldOwner("Impl.TEXT:Ljava/lang/String;"))
         assertFalse("Values" in declarations.initialization().getValue("Impl"))
         val sink = SnapshotSink(applicationOwners = declarations.classes, dependencyResources = true)
-        val graph = SnapshotExtension.capture(sink) {
-            JavaProjectLoader(LoaderConfig(includeLibraries = true, interproceduralDataflow = true), false).load(classes)
-        }
+        val graph = JavaProjectLoader(LoaderConfig(includeLibraries = true, interproceduralDataflow = true), false)
+            .loadObserved(classes, sink::capture).graph
         val analysis = DependencyResourceAnalysis(graph, sink.methods, sink.resourceCalls, declarations.initialization(),
             sink.resourceInitializers, declarations::fieldOwner)
         assertTrue(ResourceRead("messages", "changed") in analysis.reads("App.run()Ljava/lang/String;"))

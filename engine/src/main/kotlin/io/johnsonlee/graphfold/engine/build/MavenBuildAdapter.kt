@@ -70,6 +70,10 @@ internal class MavenBuildAdapter(
         modules.filter { Files.isDirectory(it.resolve("target/classes")) }.flatMap { module ->
             val manifest = module.resolve("target/graphfold-classpath.txt")
             checkBuild(Files.exists(manifest), "Maven did not export analysis dependencies")
-            Files.readString(manifest).trim().split(File.pathSeparator).filter(String::isNotBlank).map(Path::of)
+            readMavenClasspath(manifest)
         }.filterNot { dependency -> modules.any { dependency.startsWith(it.resolve("target")) } }.distinct()
 }
+
+/** Empty Maven classpath entries are separators, never implicit references to the working directory. */
+internal fun readMavenClasspath(manifest: Path): List<Path> =
+    Files.readString(manifest).trim().split(File.pathSeparator).filter(String::isNotBlank).map(Path::of)

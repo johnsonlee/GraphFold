@@ -25,7 +25,7 @@ class MavenProductionInventoryTest {
         Files.writeString(fixture.classes.resolve("message.txt"), "runtime translation")
         val runtime = archive(temporary.resolve("runtime.jar"), mapOf("runtime.txt" to "runtime-only"))
         val provider = temporary.resolve("provider.jar")
-        Files.writeString(fixture.manifest, listOf(runtime, provider, fixture.artifact).joinToString(File.pathSeparator))
+        Files.writeString(fixture.manifest, listOf(runtime, provider, fixture.artifact.toRealPath()).joinToString(File.pathSeparator))
         val inventory = assertNotNull(fixture.inventory.capture(fixture.classes, temporary.resolve("out")) { it == provider })
         assertTrue(inventory.nonClassEntries.containsKey("resource/0/message.txt"))
         assertTrue(inventory.nonClassEntries.containsKey("dependency/0"))
@@ -131,6 +131,7 @@ class MavenProductionInventoryTest {
             { it.replace("<packaging>jar</packaging>", "<packaging>war</packaging>") },
             { it.replace("<build>", "<unused>").replace("</build>", "</unused>") },
             { it.replace("<directory>", "<unused>").replace("</directory>", "</unused>") },
+            { it.replace(Regex("<directory>.*?</directory>"), "<directory>${temporary.resolve("elsewhere")}</directory>") },
             { it.replace("<outputDirectory>", "<unused>").replace("</outputDirectory>", "</unused>") },
             { it.replace("<finalName>app</finalName>", "<finalName></finalName>") },
             { it.replace("<finalName>app</finalName>", "<finalName>../app</finalName>") },
@@ -241,6 +242,44 @@ class MavenProductionInventoryTest {
                 mapOf(fixture.pom to fixture.effective), "test", true)
         }
         assertEquals(original, Files.readString(fixture.pom))
+    }
+
+    @Test
+    fun `reactor class directories and non jar archives remain original runtime inputs`() {
+        val fixture = fixture("app")
+        val archive = archive(fixture.classes.parent.resolve("runtime.zip"), mapOf("runtime.txt" to "original"))
+        Files.writeString(fixture.manifest, listOf(fixture.classes.toRealPath(), archive.toRealPath()).joinToString(File.pathSeparator))
+        val inventory = assertNotNull(fixture.inventory.capture(fixture.classes, temporary.resolve("out")) { false })
+        assertTrue(inventory.entries.keys.any { it.startsWith("dependency/0") })
+        assertTrue(inventory.entries.keys.any { it.startsWith("dependency/1") })
+        assertFalse(Files.exists(temporary.resolve("out/production-artifacts/dependency-0.jar")))
+        assertFalse(Files.exists(temporary.resolve("out/production-artifacts/dependency-1.jar")))
+    }
+
+    @Test fun `aliased reactor dependencies normalize the same metadata while external dependencies remain intact`() {
+        val fixture = fixture("app")
+        val external = archive(temporary.resolve("external.jar"), mapOf("external.txt" to "keep unchanged"))
+        val original = Files.readAllBytes(external)
+        val alias = Files.createSymbolicLink(temporary.resolve("alias"), fixture.artifact.parent)
+        Files.writeString(fixture.manifest, listOf(fixture.artifact.toRealPath(), external).joinToString(File.pathSeparator))
+        val canonical = assertNotNull(fixture.inventory.capture(fixture.classes, temporary.resolve("canonical")) { false })
+        Files.writeString(fixture.manifest,
+            listOf(alias.resolve(fixture.artifact.fileName), external).joinToString(File.pathSeparator))
+        val aliased = assertNotNull(fixture.inventory.capture(fixture.classes, temporary.resolve("aliased")) { false })
+        assertEquals(canonical, aliased)
+        assertTrue(Files.exists(temporary.resolve("aliased/production-artifacts/dependency-0.jar")))
+        assertFalse(Files.exists(temporary.resolve("aliased/production-artifacts/dependency-1.jar")))
+        assertTrue(original.contentEquals(Files.readAllBytes(external)))
+    }
+
+    @Test fun `missing reactor runtime dependency keeps the ordinary missing input failure`() {
+        val fixture = fixture("app")
+        val missing = fixture.classes.parent.toRealPath().resolve("missing.jar")
+        Files.writeString(fixture.manifest, missing.toString())
+        val failure = assertFailsWith<BuildFailure> {
+            fixture.inventory.capture(fixture.classes, temporary.resolve("out")) { false }
+        }
+        assertEquals("Missing runtime dependency: $missing", failure.message)
     }
 
     private fun fixture(

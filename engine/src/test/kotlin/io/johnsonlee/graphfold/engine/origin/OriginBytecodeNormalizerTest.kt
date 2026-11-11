@@ -107,6 +107,17 @@ class OriginBytecodeNormalizerTest {
         assertEquals(listOf("sample/Host\$1"), values[values.indexOf("d2") + 1])
     }
 
+    @Test fun `unknown metadata kind remains raw and emits a blocking normalization diagnostic`() {
+        val classes = Files.createDirectories(temporary.resolve("classes"))
+        val node = simpleClass("sample/Host\$1")
+        val original = mutableListOf<Any>("k", 99, "mv", listOf(2, 1, 0))
+        node.visibleAnnotations = mutableListOf(AnnotationNode("Lkotlin/Metadata;").also { it.values = original.toMutableList() })
+        write(classes.resolve("sample/Host\$1.class"), node)
+        val result = normalizeOriginClasses(classes, temporary.resolve("analysis"), mapOf("sample.Host\$1" to "sample.Stable"))
+        assertTrue(result.diagnostics.single().contains("Unknown Kotlin metadata kind"))
+        assertEquals(original, read(result.classes.resolve("sample/Stable.class")).visibleAnnotations.single().values)
+    }
+
     @Test fun `rendering unknown objects and serializable anonymous classes blocks identity normalization`() {
         val node = simpleClass("sample/Host\$1")
         node.interfaces.add("java/io/Serializable")

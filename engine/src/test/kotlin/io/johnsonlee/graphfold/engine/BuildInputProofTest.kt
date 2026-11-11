@@ -13,6 +13,17 @@ import kotlin.test.assertTrue
 
 class BuildInputProofTest {
     @Test
+    fun `unchanged properties and nonproperties inventory entries do not request resource analysis`() {
+        val entries = mapOf("resource/messages" to "properties:messages.properties", "manifest" to "manifest-hash")
+        val base = ProductionInventory(emptyMap(), mapOf("resource/messages" to "same", "manifest" to "old"),
+            resourceIndependentEntries = entries)
+        val proof = BuildInputProof(listOf(change("README.md", "README.md")), base,
+            base.copy(nonClassEntries = base.nonClassEntries + ("manifest" to "new")))
+        assertFalse(proof.requiresResourceAnalysis)
+        assertNotNull(proof.gap(), "A changed manifest is still a production-output gap")
+    }
+
+    @Test
     fun `inherited resource entry can observe a changed key without a declared reachable method`() {
         val base = ProductionInventory(emptyMap(), emptyMap(), resourceConsumersKnown = true,
             resourceEntries = mapOf("messages.properties" to mapOf("old" to "Hello")))

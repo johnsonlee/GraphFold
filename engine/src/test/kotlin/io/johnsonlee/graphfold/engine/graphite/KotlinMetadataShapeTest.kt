@@ -8,6 +8,11 @@ import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import kotlin.metadata.KmPackage
+import kotlin.metadata.Visibility
+import kotlin.metadata.visibility
+import kotlin.metadata.jvm.JvmMetadataVersion
+import kotlin.metadata.jvm.KotlinClassMetadata
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.tree.AnnotationNode
 import org.objectweb.asm.tree.ClassNode
@@ -149,6 +154,35 @@ class KotlinMetadataShapeTest {
             assertEquals(annotation.values[annotation.values.indexOf(key) + 1],
                 normalized.values[normalized.values.indexOf(key) + 1])
         }
+    }
+
+    @Test
+    fun `empty facade metadata restores optional name tables through the public normalization boundary`() {
+        val encoded = KotlinClassMetadata.FileFacade(KmPackage(), JvmMetadataVersion(2, 1, 0), 0).write()
+        val annotation = AnnotationNode("Lkotlin/Metadata;").also {
+            it.values = mutableListOf("k", encoded.kind, "mv", encoded.metadataVersion.toList(),
+                "d1", encoded.data1.toList())
+        }
+        val normalized = assertNotNull(KotlinMetadataShape.normalize(annotation))
+        assertEquals(encoded.data2.toList(), normalized.values[normalized.values.indexOf("d2") + 1])
+    }
+
+    @Test
+    fun `private to this property is excluded from the public contract`() {
+        val annotation = metadata("class Example<out T>(private val value: T)")
+        val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }
+        val original = KotlinClassMetadata.readStrict(Metadata(
+            kind = values["k"] as Int,
+            metadataVersion = (values["mv"] as List<*>).map { it as Int }.toIntArray(),
+            data1 = (values["d1"] as List<*>).map { it as String }.toTypedArray(),
+            data2 = (values["d2"] as List<*>).map { it as String }.toTypedArray(),
+        )) as KotlinClassMetadata.Class
+        original.kmClass.properties.single().visibility = Visibility.PRIVATE_TO_THIS
+        val encoded = original.write()
+        annotation.values[annotation.values.indexOf("d1") + 1] = encoded.data1.toList()
+        annotation.values[annotation.values.indexOf("d2") + 1] = encoded.data2.toList()
+        val normalized = assertNotNull(KotlinMetadataShape.normalize(annotation))
+        assertNotEquals(annotation.values, normalized.values)
     }
 
     private fun normalized(annotation: AnnotationNode): List<Any> = assertNotNull(KotlinMetadataShape.normalize(annotation)).values

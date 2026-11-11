@@ -291,10 +291,12 @@ class ProjectCompilerTest {
         val source = project()
         Files.writeString(source.resolve("pom.xml"), "<project/>")
         Files.writeString(source.resolve("mvnw"), mavenEffectiveModel + "mkdir -p target/classes\nexit 0")
-        assertFailsWith<BuildFailure> { compiler.compile(source, temporary.resolve("out1")) }
+        val absent = assertFailsWith<BuildFailure> { compiler.compile(source, temporary.resolve("out1")) }
+        assertEquals("Maven did not export analysis dependencies", absent.message)
         Files.writeString(source.resolve("mvnw"),
-            mavenEffectiveModel + "mkdir -p target\necho /nonexistent/graphfold-dependency.jar > target/graphfold-classpath.txt")
-        assertFailsWith<BuildFailure> { compiler.compile(source, temporary.resolve("out2")) }
+            mavenEffectiveModel + "mkdir -p target/classes\necho /nonexistent/graphfold-dependency.jar > target/graphfold-classpath.txt")
+        val missing = assertFailsWith<BuildFailure> { compiler.compile(source, temporary.resolve("out2")) }
+        assertEquals("Maven exported missing dependencies", missing.message)
     }
 
     @Test

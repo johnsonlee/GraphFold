@@ -16,9 +16,11 @@ import java.util.IdentityHashMap
 
 internal fun javaOriginSyntax(text: String): List<OriginSyntax> {
     val parsed = JavaParser(ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17)).parse(text)
-    val root = parsed.result.takeIf { parsed.isSuccessful }?.orElse(null) ?: return emptyList()
+    // JavaParser only reports a successful compilation-unit parse when its result exists.
+    if (!parsed.isSuccessful) return emptyList()
+    val root = parsed.result.orElseThrow()
     val offsets = JavaSourceOffsets(text)
-    val tokens = root.tokenRange.orElseThrow().filterNot { it.category.isWhitespaceOrComment || it.text.isEmpty() }.map { token ->
+    val tokens = root.tokenRange.orElseThrow().filterNot { it.category.isWhitespaceOrComment }.map { token ->
         val range = token.range.orElseThrow()
         OriginToken(OriginSpan(offsets.at(range.begin.line, range.begin.column),
             offsets.at(range.end.line, range.end.column) + 1), token.text)
@@ -29,13 +31,14 @@ internal fun javaOriginSyntax(text: String): List<OriginSyntax> {
     return nodes.map { node ->
         val range = ranges.getValue(node)
         val ancestors = generateSequence(node.parentNode.orElse(null)) { it.parentNode.orElse(null) }.toList()
+        // Every field initializer is owned by a VariableDeclarator before its FieldDeclaration.
         val context = ancestors.firstOrNull {
-            it is VariableDeclarator || it is Statement || it is FieldDeclaration || it is EnumConstantDeclaration
+            it is VariableDeclarator || it is Statement || it is EnumConstantDeclaration
         } ?: node
         OriginSyntax(range, originTokenText(tokens, offsets.range(context), range, ranges.values.toList()),
             originTokenText(tokens, range, null, emptyList()),
             (listOf(packageName) + ancestors.asReversed().mapNotNull(::javaContainer) +
-                listOfNotNull((node as? EnumConstantDeclaration)?.let { "enum-entry:${it.nameAsString}" })).joinToString("/"),
+                (if (node is EnumConstantDeclaration) listOf("enum-entry:${node.nameAsString}") else emptyList())).joinToString("/"),
             ancestors.firstOrNull { it in ranges }?.let(ranges::getValue),
             bodyRange = javaBodyRange(node, offsets))
     }
@@ -66,7 +69,16 @@ private fun isAnonymousJava(node: Node): Boolean = when (node) {
 
 /** JavaParser exposes anonymous members as a NodeList, so braces come from the verified allocation's tokens. */
 private fun javaBodyRange(node: Node, offsets: JavaSourceOffsets): OriginSpan {
-    val tokens = node.tokenRange.orElseThrow().toList().filterNot { it.category.isWhitespaceOrComment }
+    val tokens = node.tokenRange.orElseThrow().filterNot { it.category.isWhitespaceOrComment }.map { token ->
+        val range = token.range.orElseThrow()
+        OriginToken(OriginSpan(offsets.at(range.begin.line, range.begin.column),
+            offsets.at(range.end.line, range.end.column) + 1), token.text)
+    }
+    return javaAnonymousBodyRange(tokens)
+}
+
+/** Validate the body-delimiter evidence before using it to exclude constructor arguments from an origin. */
+internal fun javaAnonymousBodyRange(tokens: List<OriginToken>): OriginSpan {
     val closing = tokens.last()
     check(closing.text == "}") { "Parsed anonymous class has no closing body brace" }
     var depth = 0
@@ -78,7 +90,5 @@ private fun javaBodyRange(node: Node, offsets: JavaSourceOffsets): OriginSpan {
         depth == 0
     }
     checkNotNull(opening) { "Parsed anonymous class has no matching opening body brace" }
-    val start = opening.range.orElseThrow().begin
-    val end = closing.range.orElseThrow().end
-    return OriginSpan(offsets.at(start.line, start.column), offsets.at(end.line, end.column) + 1)
+    return OriginSpan(opening.range.start, closing.range.end)
 }

@@ -56,8 +56,6 @@ private fun changeType(entry: DiffEntry): GitChangeType = when (entry.changeType
     DiffEntry.ChangeType.DELETE -> GitChangeType.DELETE
     DiffEntry.ChangeType.RENAME -> GitChangeType.RENAME
     DiffEntry.ChangeType.COPY -> GitChangeType.COPY
-    DiffEntry.ChangeType.MODIFY ->
-        if ((entry.oldMode.bits and TYPE_MASK) != (entry.newMode.bits and TYPE_MASK)) GitChangeType.TYPE_CHANGE else GitChangeType.MODIFY
+    // RenameDetector represents different file types as DELETE + ADD, including identical blobs.
+    DiffEntry.ChangeType.MODIFY -> GitChangeType.MODIFY
 }
-
-private const val TYPE_MASK = 0xF000

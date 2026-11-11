@@ -3,6 +3,7 @@ package io.johnsonlee.graphfold.engine.graphite
 import sootup.core.model.MethodModifier
 import io.johnsonlee.graphite.input.ConstantFold
 import io.johnsonlee.graphite.input.FoldSites
+import io.johnsonlee.graphite.sootup.JavaProjectLoader
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -137,14 +138,17 @@ class GraphiteAnalyzerTest {
         )
     }
 
-    @Test fun `capture context is removed on failure and nesting is rejected`() {
-        assertFailsWith<IllegalStateException> {
-            SnapshotExtension.capture(SnapshotSink()) { error("failed load") }
+    @Test fun `nested independent loaders do not share capture state`() {
+        val classes = compile("nested", "static int calc() { return 3; }")
+        val outer = SnapshotSink()
+        val inner = SnapshotSink()
+        JavaProjectLoader().loadObserved(classes) { observation ->
+            if (inner.observations.isEmpty()) JavaProjectLoader().loadObserved(classes, inner::capture)
+            outer.capture(observation)
         }
-        SnapshotExtension.capture(SnapshotSink()) {
-            assertFailsWith<IllegalStateException> { SnapshotExtension.capture(SnapshotSink()) {} }
-        }
-        SnapshotExtension.capture(SnapshotSink()) { }
+        assertEquals(inner.methods, outer.methods)
+        assertEquals(inner.observations.keys, outer.observations.keys)
+        assertTrue(outer.methods.getValue("Sample.calc()I").canonical.contains("3"))
     }
 
     @Test fun `invalid query shape fails instead of silently selecting nothing`() {
@@ -270,6 +274,31 @@ class GraphiteAnalyzerTest {
         val result = GraphiteAnalyzer().analyze(classes, emptyList())
         assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
         assertTrue(result.methodDiagnostics.values.flatten().isEmpty(), result.methodDiagnostics.toString())
+    }
+
+    @Test fun `known lambda target does not authorize folding an unknown functional alternative`() {
+        val classes = compile("partial-dispatch", """
+            public static void run(boolean choose, java.util.function.BooleanSupplier unknown) {
+                java.util.function.BooleanSupplier supplier = choose ? () -> enabled("checkout") : unknown;
+                if (supplier.getAsBoolean()) work();
+                tail();
+            }
+        """.trimIndent())
+        val derived = FoldSites.parse(mapOf(
+            "select" to "MATCH (cs:CallSite) WHERE cs.callee_name STARTS WITH 'lambda' RETURN cs", "value" to false,
+        ))
+        val failure = assertFailsWith<IllegalArgumentException> {
+            GraphiteAnalyzer().analyze(classes, listOf(derived))
+        }
+        assertTrue("incomplete targets" in failure.message.orEmpty(), failure.message)
+        val original = FoldSites.parse(mapOf(
+            "select" to "MATCH (cs:CallSite {callee_name: 'getAsBoolean'}) WHERE cs.ordinal >= 0 RETURN cs", "value" to false,
+        ))
+        val result = GraphiteAnalyzer().analyze(classes, listOf(original))
+        val entry = result.methods.getValue("Sample.run(ZLjava/util/function/BooleanSupplier;)V")
+        assertFalse("Sample.work()V" in entry.calls)
+        assertTrue("Sample.tail()V" in entry.calls)
+        assertEquals(listOf(1), result.matchedRules)
     }
 
     @Test fun `reflection and private framework annotations block closed world assumptions`() {

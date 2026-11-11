@@ -56,6 +56,20 @@ class ApplicationResourceAnnotationsTest {
         assertTrue(captureProductionInventory(classes, listOf(resources), emptyList(), emptyList()).resourceConsumersKnown)
     }
 
+    @Test
+    fun `unannotated parameters inside visible and invisible annotation arrays remain harmless`() {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC or Opcodes.ACC_ABSTRACT, "Bound", null, "java/lang/Object", null)
+        writer.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_ABSTRACT, "bind",
+            "(Ljava/lang/String;Ljava/lang/String;)V", null, null).apply {
+            visitParameterAnnotation(1, "Lorg/jetbrains/annotations/NotNull;", true).visitEnd()
+            visitParameterAnnotation(1, "Lorg/jetbrains/annotations/Nullable;", false).visitEnd()
+            visitEnd()
+        }
+        writer.visitEnd()
+        assertTrue(applicationResourceAnnotationsKnown(ClassReader(writer.toByteArray())))
+    }
+
     private fun annotated(site: AnnotationSite, descriptor: String): ByteArray {
         val writer = ClassWriter(0)
         writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC or Opcodes.ACC_RECORD, "Bound", null, "java/lang/Record", null)

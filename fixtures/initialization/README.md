@@ -15,3 +15,9 @@ no default method, so initializing Example leaves Marker dormant. Adding an othe
 uncalled default method changes JVM initialization prerequisites and causes Marker
 to print. Tests assert the newly added declaration at head line 5 and independently
 instantiate Example in isolated class loaders: base emits nothing; head emits marker.
+
+The added-private cases exercise the JVM rule for a private interface instance method.
+JVMS 5.5 includes non-abstract, non-static interface methods in initialization
+prerequisites, even when Java source does not call them default methods. These cases
+use the same changed-line and isolated runtime-output assertions for Java and mixed
+Kotlin applications.

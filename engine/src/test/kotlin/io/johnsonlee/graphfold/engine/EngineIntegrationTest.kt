@@ -234,6 +234,57 @@ class EngineIntegrationTest {
         assertTrue(result.findings.isEmpty())
     }
 
+    @Test
+    fun `deleted binary Java retains its base path in the blocking diagnostic`() {
+        val repository = repository("return x;")
+        val path = "src/main/java/sample/Example.java"
+        Files.writeString(repository.resolve(path), program("return x;") + "\n/*\u0000*/")
+        val base = commit(repository)
+        Files.delete(repository.resolve(path))
+        val result = engine().analyze(AnalysisRequest(repository.toString(), base, commit(repository), rules()))
+        assertEquals(Verdict.FAIL, result.verdict)
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMAPPED_CHANGE && path in it.message }, result.toString())
+        assertTrue(result.findings.isEmpty())
+    }
+
+    @Test
+    fun `deleted source without declarations cannot disappear from analysis`() {
+        val repository = repository("return x;")
+        val path = "src/main/java/sample/Marker.java"
+        Files.writeString(repository.resolve(path), "// marker\n")
+        val base = commit(repository)
+        Files.delete(repository.resolve(path))
+        val result = engine().analyze(AnalysisRequest(repository.toString(), base, commit(repository), rules()))
+        assertEquals(Verdict.FAIL, result.verdict)
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.UNMAPPED_CHANGE && path in it.message }, result.toString())
+    }
+
+    @Test
+    fun `renaming source to an uncompiled extension requires production inventory evidence`() {
+        val repository = repository("return x;")
+        val source = repository.resolve("src/main/java/sample/Example.java")
+        val base = commit(repository)
+        Files.move(source, source.resolveSibling("Example.source"))
+        val result = engine().analyze(AnalysisRequest(repository.toString(), base, commit(repository), rules()))
+        assertEquals(Verdict.FAIL, result.verdict)
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.PRODUCTION_INVENTORY_UNAVAILABLE }, result.toString())
+        assertTrue(result.findings.isEmpty(), "A rename-only diff must not invent changed source coordinates")
+    }
+
+    @Test
+    fun `renaming an uncompiled file to Java also requires production input evidence`() {
+        val repository = repository("return x;")
+        val source = repository.resolve("src/main/java/sample/Example.java")
+        val uncompiled = source.resolveSibling("Example.source")
+        Files.move(source, uncompiled)
+        val base = commit(repository)
+        Files.move(uncompiled, source)
+        val result = engine().analyze(AnalysisRequest(repository.toString(), base, commit(repository), rules()))
+        assertEquals(Verdict.FAIL, result.verdict, result.toString())
+        assertTrue(result.findings.isEmpty())
+        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.PRODUCTION_INVENTORY_UNAVAILABLE }, result.toString())
+    }
+
     private fun analyze(before: String, after: String, key: String = "feature"): AnalysisResult {
         val repository = repository(before)
         val base = commit(repository)

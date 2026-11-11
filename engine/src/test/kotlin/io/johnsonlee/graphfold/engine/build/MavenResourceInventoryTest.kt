@@ -105,6 +105,27 @@ class MavenResourceInventoryTest {
     }
 
     @Test
+    fun `ownership matches the correct root and refuses a replaced output symlink`() {
+        val source = Files.createDirectories(temporary.resolve("source"))
+        val output = Files.createDirectories(temporary.resolve("classes"))
+        val unrelated = Files.createDirectories(temporary.resolve("other-classes"))
+        val state = temporary.resolve("state")
+        val input = Files.writeString(source.resolve("value.txt"), "owned")
+        val copied = Files.copy(input, output.resolve("value.txt"))
+        MavenResourceInventory(state, listOf(source to output)).apply { prepare(); publish() }
+        Files.delete(input)
+        val external = Files.writeString(temporary.resolve("external.txt"), "owned")
+        Files.delete(copied)
+        Files.createSymbolicLink(copied, external)
+        val error = assertFailsWith<BuildFailure> {
+            MavenResourceInventory(state, listOf(temporary.resolve("absent") to unrelated, source to output)).prepare()
+        }
+        assertTrue(error.message.orEmpty().contains("Refusing to remove changed Maven resource output"))
+        assertEquals("owned", Files.readString(external))
+        assertTrue(Files.isSymbolicLink(copied))
+    }
+
+    @Test
     fun `absent resource directories do not manufacture missing resource errors`() {
         val output = Files.createDirectories(temporary.resolve("classes"))
         MavenResourceInventory(temporary.resolve("state"), listOf(temporary.resolve("absent") to output)).apply {

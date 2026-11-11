@@ -22,4 +22,5 @@ tasks.named<ProcessResources>("processResources") {
 }
 tasks.withType<Test>().configureEach {
     systemProperty("graphfold.expectedVersion", releaseVersion)
+    systemProperty("graphfold.test.runtimeClasspath", sourceSets.test.get().runtimeClasspath.asPath)
 }

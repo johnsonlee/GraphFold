@@ -163,6 +163,30 @@ class WorkspaceAffinityTest {
         }
     }
 
+    @Test
+    fun `merge histories reuse the minimum distance without enqueuing shared ancestors twice`() = repository { git, _ ->
+        val base = commit(git)
+        val left = commit(git)
+        git.reset().setMode(ResetCommand.ResetType.HARD).setRef(base).call()
+        val right = commit(git)
+        val merge = git.repository.newObjectInserter().use { objects ->
+            val tree = org.eclipse.jgit.revwalk.RevWalk(git.repository).use {
+                it.parseCommit(org.eclipse.jgit.lib.ObjectId.fromString(right)).tree.copy()
+            }
+            val identity = org.eclipse.jgit.lib.PersonIdent("Fixture", "fixture@example.invalid")
+            val builder = org.eclipse.jgit.lib.CommitBuilder().apply {
+                setTreeId(tree)
+                setParentIds(org.eclipse.jgit.lib.ObjectId.fromString(left), org.eclipse.jgit.lib.ObjectId.fromString(right))
+                author = identity
+                committer = identity
+                message = "merge"
+            }
+            objects.insert(builder).also { objects.flush() }.name
+        }
+        val retained = slot(git, "slot", base, left)
+        assertEquals(2, WorkspaceAffinity(git.repository, base, merge).score(retained) { true })
+    }
+
     private fun assertBothAvailable(pool: Path) {
         leaseWorkspace(pool, 1).use {
             leaseWorkspace(pool, 2).use { second -> assertEquals("slot-1", second.directory.fileName.toString()) }

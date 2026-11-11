@@ -41,7 +41,8 @@ internal class MavenProductionInventory(effectiveModels: Map<Path, Path>) {
             }
         }
         val dependencies = classpaths.flatten().mapIndexed { index, dependency ->
-            val owner = selected.firstOrNull { dependency.toAbsolutePath().normalize().startsWith(it.output.parent) }
+            val canonical = if (Files.exists(dependency)) dependency.toRealPath() else dependency.toAbsolutePath().normalize()
+            val owner = selected.firstOrNull { canonical.startsWith(it.output.parent) }
             if (owner == null || !Files.isRegularFile(dependency) || !dependency.toString().endsWith(".jar")) dependency
             else normalizeArtifact(dependency, directory.resolve("dependency-$index.jar"), owner)
         }

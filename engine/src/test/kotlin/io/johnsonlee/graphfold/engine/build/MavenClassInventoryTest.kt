@@ -189,12 +189,13 @@ class MavenClassInventoryTest {
     }
 
     @Test fun `fresh records require nonempty existing in-checkout source ownership with matching hashes`() {
-        listOf("empty", "missing", "outside", "hash").forEach { kind ->
+        listOf("empty", "scalar", "missing", "outside", "hash").forEach { kind ->
             val fixture = Fixture(Files.createDirectory(temporary.resolve(kind)))
             fixture.create()
             val record = fixture.output()
             when (kind) {
                 "empty" -> record.putArray("sources")
+                "scalar" -> record.put("sources", "not an ownership array")
                 "missing" -> Files.delete(fixture.source())
                 "outside" -> {
                     val external = temporary.resolve("external.java")
@@ -206,6 +207,68 @@ class MavenClassInventoryTest {
             fixture.emit(listOf(record))
             assertFailsWith<BuildFailure> { fixture.inventory().reconcile(fixture.pending) }
         }
+    }
+
+    @Test fun `already absent retired binary does not prevent pruning the exact owned compile cache`() {
+        val fixture = Fixture(temporary)
+        fixture.seed()
+        Files.createDirectories(fixture.cache().parent)
+        Files.copy(fixture.binary(), fixture.cache())
+        Files.delete(fixture.binary())
+        Files.delete(fixture.source())
+        fixture.inventory().prepare()
+        assertFalse(Files.exists(fixture.cache()))
+        fixture.inventory().reconcile(fixture.pending)
+        assertTrue(fixture.records().isEmpty())
+    }
+
+    @Test fun `a declared output root outside checkout cannot authorize retirement`() {
+        val fixture = Fixture(Files.createDirectory(temporary.resolve("checkout")))
+        fixture.seed()
+        val outside = Files.createDirectories(temporary.resolve("external/sample"))
+        val binary = Files.copy(fixture.binary(), outside.resolve("Owned.class"))
+        val snapshot = MAPPER.readTree(fixture.snapshot.toFile())
+        (snapshot[0] as ObjectNode).put("classFile", binary.toString())
+        MAPPER.writeValue(fixture.snapshot.toFile(), snapshot)
+        Files.delete(fixture.source())
+        val error = assertFailsWith<BuildFailure> { fixture.inventory(listOf(outside.parent)).prepare() }
+        assertTrue(error.message.orEmpty().contains("Invalid Maven owned class path"))
+        assertTrue(Files.exists(binary))
+    }
+
+    @Test fun `cache symlink escaping checkout cannot authorize external deletion`() {
+        val fixture = Fixture(Files.createDirectory(temporary.resolve("checkout")))
+        fixture.seed()
+        val external = Files.createDirectories(temporary.resolve("external"))
+        val retained = Files.copy(fixture.binary(), external.resolve("Owned.class"))
+        Files.createDirectories(fixture.cache().parent.parent)
+        Files.createSymbolicLink(fixture.cache().parent, external)
+        Files.delete(fixture.source())
+        val unrelated = Files.createDirectories(fixture.checkout.resolve("unrelated/target/classes"))
+        val error = assertFailsWith<BuildFailure> { fixture.inventory(listOf(unrelated, fixture.classes)).prepare() }
+        assertTrue(error.message.orEmpty().contains("Kotlin incremental output escapes checkout"))
+        assertTrue(Files.exists(retained))
+    }
+
+    @Test fun `overlapping output roots retire only the exact owning roots incremental cache`() {
+        val fixture = Fixture(temporary)
+        fixture.seed()
+        Files.createDirectories(fixture.cache().parent)
+        Files.copy(fixture.binary(), fixture.cache())
+        val unrelated = temporary.resolve("kotlin-ic/compile/classes/sample/Owned.class")
+        Files.createDirectories(unrelated.parent)
+        Files.copy(fixture.binary(), unrelated)
+        Files.delete(fixture.source())
+        fixture.inventory(listOf(fixture.classes.parent, fixture.classes)).prepare()
+        assertFalse(Files.exists(fixture.binary()))
+        assertFalse(Files.exists(fixture.cache()))
+        assertTrue(Files.exists(unrelated))
+    }
+
+    @Test fun `a filesystem root output has no sibling incremental cache`() {
+        val retained = Files.writeString(temporary.resolve("retained"), "untouched")
+        retireMavenIncrementalOutput(temporary.root, "sample/Owned.class", "unused", temporary)
+        assertEquals("untouched", Files.readString(retained))
     }
 
     private class Fixture(val checkout: Path) {

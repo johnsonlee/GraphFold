@@ -268,6 +268,51 @@ class ChangeClassifierTest {
             "val callback: (Int) -> Unit = fun(value) { second(value) }", true), ChangeKind.CALL_CHANGED)
     }
 
+    @Test
+    fun `rename recognized from only new revision and unrelated member kinds stay separate`() {
+        val old = source("class A { int oldName() { return 1; } int field = 2; }", false)
+        val new = source("class A { int newName() { return 1; } void added() {} }", false)
+        assertContains(ChangeClassifier.classify(old, new, listOf(full(new, Revision.HEAD))), ChangeKind.METHOD_RENAMED)
+        assertContains(ChangeClassifier.classify(old, new, listOf(full(new, Revision.HEAD))), ChangeKind.METHOD_ADDED)
+    }
+
+    @Test
+    fun `multiple Kotlin initialization and condition sites retain independent change kinds`() {
+        val before = "object A { val one = 1; val two = 2; init { first() }; init { second() } }"
+        val after = "object A { val one = 3; val two = 4; init { third() }; init { fourth() } }"
+        val changed = classify(before, after, true)
+        assertContains(changed, ChangeKind.FIELD_INITIALIZER_CHANGED)
+        assertContains(changed, ChangeKind.CLASS_INITIALIZATION_CHANGED)
+        assertContains(changed, ChangeKind.CALL_CHANGED)
+        assertContains(classify("fun f(a: Boolean) { if(a) first(); if(a) second() }",
+            "fun f(a: Boolean) { if(!a) first(); if(!a) second() }", true), ChangeKind.CONDITION_CHANGED)
+    }
+
+    @Test
+    fun `Kotlin declaration documentation does not become a behavioral header change`() {
+        val old = "/** class docs */ class A { /** method docs */ fun f(): Int = 1 }"
+        val new = "/** changed docs */ class A { /** changed method docs */ fun f(): Int = 1 }"
+        assertEquals(setOf(ChangeKind.SOURCE_ONLY), classify(old, new, true))
+    }
+
+    @Test
+    fun `incomplete property names do not turn initializer changes into source only edits`() {
+        val changes = classify("val = 1", "val = 2", true)
+        assertFalse(ChangeKind.SOURCE_ONLY in changes)
+        assertContains(changes, ChangeKind.FIELD_INITIALIZER_CHANGED)
+    }
+
+    @Test
+    fun `unique renamed method stays distinct from a different removed method body`() {
+        val before = "class A { int oldName() { return 1; } int obsolete() { return 2; } }"
+        val after = "class A { int newName() { return 1; } }"
+        val changes = classify(before, after)
+        assertContains(changes, ChangeKind.METHOD_RENAMED)
+        assertContains(changes, ChangeKind.METHOD_REMOVED)
+        assertContains(classify("class A { static { first(); } static { second(); } }",
+            "class A { static { third(); } static { fourth(); } }"), ChangeKind.CLASS_INITIALIZATION_CHANGED)
+    }
+
     private fun classify(before: String, after: String, kotlin: Boolean = false): Set<ChangeKind> {
         val old = source(before, kotlin)
         val new = source(after, kotlin)

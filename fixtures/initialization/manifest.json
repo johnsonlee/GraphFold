@@ -20,5 +20,17 @@
     "violation": true,
     "path": "src/main/java/sample/Marker.java",
     "change": "added-default"
+  },
+  {
+    "id": "java_added_private_activates_initializer",
+    "violation": true,
+    "path": "src/main/java/sample/Marker.java",
+    "change": "added-private"
+  },
+  {
+    "id": "kotlin_added_private_activates_initializer",
+    "violation": true,
+    "path": "src/main/java/sample/Marker.java",
+    "change": "added-private"
   }
 ]

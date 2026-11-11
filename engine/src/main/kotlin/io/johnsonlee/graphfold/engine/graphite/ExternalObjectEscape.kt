@@ -84,7 +84,8 @@ internal class ExternalObjectEscape(private val classes: Map<String, ClassNode>)
         while (bounded && pending.isNotEmpty()) {
             val name = pending.first().also(pending::remove)
             if (!observed.add(name)) continue
-            bounded = classes[name]?.let { boundedOwner(it, pending) } == true
+            // Only boundedType enqueues names; an absent class makes bounded false before this loop continues.
+            bounded = boundedOwner(classes.getValue(name), pending)
         }
         return if (bounded) observed.mapTo(linkedSetOf()) { it.replace('/', '.') } else null
     }
@@ -97,8 +98,9 @@ internal class ExternalObjectEscape(private val classes: Map<String, ClassNode>)
             owner.methods.all { boundedMethod(it, pending) }
     }
 
-    private fun boundedType(type: Type?, pending: MutableSet<String>): Boolean = when (type?.sort) {
-        null, Type.ARRAY -> false
+    // Observable values have a type: null-typed/uninitialized values are already classified as scalars.
+    private fun boundedType(type: Type, pending: MutableSet<String>): Boolean = when (type.sort) {
+        Type.ARRAY -> false
         Type.OBJECT -> if (type.internalName in VALUE_ONLY_TYPES) true else {
             pending.add(type.internalName)
             type.internalName in classes

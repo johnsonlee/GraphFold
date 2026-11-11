@@ -57,7 +57,7 @@ class OriginMetadataKindsTest {
         val invalid = listOf(
             mutableListOf<Any>("mv"), mutableListOf<Any>(1, listOf(2, 1)),
             mutableListOf<Any>("mv", listOf("two")), mutableListOf<Any>("mv", listOf(2, 2)),
-            mutableListOf<Any>("mv", listOf(3)), mutableListOf<Any>("k", 1),
+            mutableListOf<Any>("mv", listOf(3)), mutableListOf<Any>("mv", listOf(2)), mutableListOf<Any>("k", 1),
         )
         invalid.forEach { values ->
             val annotation = AnnotationNode("Lkotlin/Metadata;").also { it.values = values }
@@ -92,6 +92,34 @@ class OriginMetadataKindsTest {
             }
             assertFailsWith<IllegalArgumentException> { remap(annotation) }
         }
+    }
+
+    @Test fun `multifile facade remapping preserves unrelated metadata fields`() {
+        val metadata = KotlinClassMetadata.MultiFileClassPart(KmPackage().apply { functions.add(function()) },
+            "sample/OldFacade", VERSION, 0).write()
+        val annotation = AnnotationNode("Lkotlin/Metadata;").apply {
+            values = mutableListOf("k", metadata.kind, "mv", metadata.metadataVersion,
+                "d1", metadata.data1, "d2", metadata.data2, "xs", metadata.extraString, "custom", "retained")
+        }
+        val owners = OWNERS + ("sample.OldFacade" to "sample.NewFacade")
+        remapKotlinOriginMetadata(annotation, OriginRemapper(owners), owners)
+        val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }
+        assertEquals("sample/NewFacade", values["xs"])
+        assertEquals("retained", values["custom"])
+        assertTrue(values["d1"] is List<*>)
+        assertTrue(values["d2"] is List<*>)
+    }
+
+    @Test fun `multifile part without its required facade owner cannot be remapped`() {
+        val metadata = KotlinClassMetadata.MultiFileClassPart(KmPackage(), "sample/Facade", VERSION, 0).write()
+        val annotation = AnnotationNode("Lkotlin/Metadata;").apply {
+            values = mutableListOf("k", metadata.kind, "mv", metadata.metadataVersion,
+                "d1", metadata.data1, "d2", metadata.data2)
+        }
+        val original = annotation.values.toList()
+        val failure = assertFailsWith<IllegalArgumentException> { remap(annotation) }
+        assertTrue(failure.message.orEmpty().contains("missing its facade owner"))
+        assertEquals(original, annotation.values)
     }
 
     private fun function() = KmFunction("produce").apply {

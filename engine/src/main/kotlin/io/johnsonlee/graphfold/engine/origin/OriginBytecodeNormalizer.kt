@@ -85,7 +85,8 @@ private fun nestedOriginOwner(node: ClassNode, mapped: Map<String, String>, diag
     val parent = node.innerClasses.singleOrNull { it.name == node.name }?.outerName ?: node.outerClass
     val targetParent = mapped[parent] ?: return null
     return if (node.name.startsWith("$parent$")) {
-        targetParent + node.name.removePrefix(requireNotNull(parent))
+        // A null parent cannot be a key in the typed owner map checked above.
+        targetParent + node.name.removePrefix(java.util.Objects.requireNonNull<String>(parent))
     } else {
         diagnostics += "Nested emitted owner has an unsupported binary layout: ${node.name} inside $parent"
         null

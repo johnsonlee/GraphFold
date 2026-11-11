@@ -86,6 +86,20 @@ class OriginHierarchyTest {
             OriginHierarchy(listOf(anonymous("library/Parent")), listOf(jar, directory.parent)).serializable("sample/Host\$1"))
     }
 
+    @Test fun `versioned entry for an unrelated class does not obscure a regular ancestor`() {
+        val jar = temporary.resolve("unrelated-version.jar")
+        JarOutputStream(Files.newOutputStream(jar)).use { archive ->
+            mapOf("library/Parent.class" to "library/Parent",
+                "META-INF/versions/17/library/Other.class" to "library/Other").forEach { (entry, owner) ->
+                archive.putNextEntry(JarEntry(entry))
+                archive.write(bytes(anonymous("java/lang/Object").apply { name = owner }))
+                archive.closeEntry()
+            }
+        }
+        val child = anonymous("library/Parent")
+        assertEquals(OriginSubtype.NO, OriginHierarchy(listOf(child), listOf(jar)).serializable(child.name))
+    }
+
     private fun bytes(node: ClassNode): ByteArray = ClassWriter(0).also(node::accept).toByteArray()
 
     private fun library(): Path {

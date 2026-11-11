@@ -10,7 +10,7 @@ import sootup.core.model.Body
 import sootup.core.model.MethodModifier
 
 /** Calls whose effects need a body; the exact resource API and value-only contracts stay local. */
-internal fun dependencyResourceCalls(body: Body, trustedIntrinsics: Boolean = false): Set<String> {
+internal fun dependencyResourceCalls(body: Body, trustedIntrinsics: Boolean): Set<String> {
     val definitions = body.stmts.filter { it.isJAssignStmt }.map { it.asJAssignStmt() }.groupBy { it.leftOp }
     val independent = ResourceIndependentCalls(definitions.mapValues { it.value.singleOrNull()?.rightOp })
     return body.stmts.mapNotNull { stmt ->
@@ -32,7 +32,7 @@ internal fun dependencyResourceCalls(body: Body, trustedIntrinsics: Boolean = fa
  */
 internal fun dependencyResourceInitializers(body: Body): Set<String> = body.stmts.flatMap { stmt ->
     val call = if (stmt.isInvokableStmt) stmt.asInvokableStmt().invokeExpr.orElse(null) else null
-    val callOwner = call?.takeUnless { it is JDynamicInvokeExpr }?.methodSignature?.declClassType?.fullyQualifiedName
+    val callOwner = call?.takeUnless { it is JDynamicInvokeExpr }?.let { it.methodSignature.declClassType.fullyQualifiedName }
     val assigned = if (stmt.isJAssignStmt) stmt.asJAssignStmt().leftOp else null
     val fieldOwners = (stmt.uses + listOfNotNull(assigned)).filterIsInstance<JFieldRef>()
         .map { field ->
@@ -41,7 +41,7 @@ internal fun dependencyResourceInitializers(body: Body): Set<String> = body.stmt
                 jvmMethodDescriptor(emptyList(), signature.type.toString()).removePrefix("()")
         }
     val allocated = if (stmt.isJAssignStmt) stmt.asJAssignStmt().rightOp as? JNewExpr else null
-    fieldOwners + listOfNotNull(callOwner, allocated?.type?.toString())
+    fieldOwners + listOfNotNull(callOwner, allocated?.let { it.type.toString() })
 }.toSet()
 
 /**
@@ -68,13 +68,13 @@ internal class DependencyResourceAnalysis(
                 method.modifiers.any { it == MethodModifier.ABSTRACT || it == MethodModifier.NATIVE }) {
                 unknown(identity)
             }
-            val invoked = calls[identity].orEmpty()
+            val invoked = calls[identity] ?: method.calls.also { unknown(identity) }
             val targets = callTargets(invoked, sites[identity].orEmpty())
             targets.forEach { target -> depend(identity, target) }
             inheritedMethods[owner(identity)]?.forEach { depend(identity, it) }
             if (owner(identity) in inheritedMethods && inheritedMethods[owner(identity)] == null) unknown(identity)
             // Modeled methods still initialize their declaring classes. Fields can trigger initialization without calls.
-            val operations = initializers?.getValue(identity) ?: (method.references + method.calls)
+            val operations = if (initializers != null) initializers.getValue(identity) else (method.references + method.calls)
                 .map { if (':' in it) it else owner(it) }.toSet()
             val owners = operations + targets.map(::owner) + owner(identity)
             owners.forEach { initialize(identity, it) }
@@ -82,7 +82,10 @@ internal class DependencyResourceAnalysis(
         propagate()
     }
 
-    fun reads(identity: String): List<ResourceRead> = effects[identity]?.toList() ?: listOf(UNKNOWN)
+    fun reads(identity: String): List<ResourceRead> {
+        val reads = effects[identity] ?: return listOf(UNKNOWN)
+        return reads.toList()
+    }
 
     /** Resource-only API evidence for a type with no declared reachable method, without executing its private constructors. */
     fun entryReads(owner: String): List<ResourceRead> {

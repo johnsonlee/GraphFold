@@ -67,20 +67,26 @@ internal class MavenClassInventory(private val checkout: Path, private val state
     private fun retire(entry: JsonNode) {
         val binary = checkout.resolve(entry.path("classFile").asText()).normalize()
         val relative = entry.path("owner").asText().replace('.', '/') + ".class"
-        checkBuild(directories.any { it.resolve(relative).normalize() == binary } && binary.startsWith(checkout),
-            "Invalid Maven owned class path")
+        val output = directories.firstOrNull { it.resolve(relative).normalize() == binary }
+            ?: throw BuildFailure("Invalid Maven owned class path")
+        checkBuild(binary.startsWith(checkout), "Invalid Maven owned class path")
         if (Files.exists(binary)) {
             checkBuild(binary.toRealPath().startsWith(checkout.toRealPath()), "Maven owned output escapes checkout")
             checkBuild(digest(binary) == entry.path("classHash").asText(), "Refusing to remove changed Maven output: $binary")
             Files.delete(binary)
         }
-        // Kotlin's incremental FileCopier can restore a deleted target/classes file from this owned cache entry.
-        val module = directories.firstOrNull { binary.startsWith(it) }?.parent
-        val cached = module?.resolve("kotlin-ic/compile/classes")?.resolve(entry.path("owner").asText().replace('.', '/') + ".class")
-        if (cached != null && Files.exists(cached)) {
-            checkBuild(cached.toRealPath().startsWith(checkout.toRealPath()), "Kotlin incremental output escapes checkout")
-            checkBuild(digest(cached) == entry.path("classHash").asText(), "Refusing to remove changed Kotlin incremental output")
-            Files.delete(cached)
-        }
+        retireMavenIncrementalOutput(output, relative, entry.path("classHash").asText(), checkout)
+    }
+}
+
+/** Retire only the exact output's compiler-owned cache; a filesystem root has no sibling cache. */
+internal fun retireMavenIncrementalOutput(output: Path, relative: String, expectedHash: String, checkout: Path) {
+    val parent = output.parent ?: return
+    // Kotlin's incremental FileCopier can restore a deleted target/classes file from this owned cache entry.
+    val cached = parent.resolve("kotlin-ic/compile/classes").resolve(relative)
+    if (Files.exists(cached)) {
+        checkBuild(cached.toRealPath().startsWith(checkout.toRealPath()), "Kotlin incremental output escapes checkout")
+        checkBuild(digest(cached) == expectedHash, "Refusing to remove changed Kotlin incremental output")
+        Files.delete(cached)
     }
 }

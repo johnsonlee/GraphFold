@@ -55,7 +55,8 @@ internal class BuildInputProof(
     ): Boolean {
         if (base == null || head == null) return false
         val scopeKnown = base.resourceConsumersKnown && head.resourceConsumersKnown &&
-            base.resourceEntries.keys == head.resourceEntries.keys && dependenciesCovered(dependenciesAnalyzed)
+            base.resourceEntries.keys == head.resourceEntries.keys &&
+            dependenciesCovered(dependenciesAnalyzed, base, head)
         val reads = methods.flatMap { it.resourceReads } + entryReads
         val byteChanges = base.resourceIndependentEntries.filter { (entry, marker) ->
             marker.startsWith("properties:") && base.nonClassEntries[entry] != head.nonClassEntries[entry]
@@ -70,9 +71,6 @@ internal class BuildInputProof(
             }
         }
     }
-
-    private fun dependenciesCovered(analyzed: Boolean): Boolean = analyzed ||
-        base?.resourceDependencies.orEmpty().isEmpty() && head?.resourceDependencies.orEmpty().isEmpty()
 
     fun reasons(code: ReasonCode, scenario: String, message: String): List<VerdictReason> = changes.map {
         VerdictReason(setOf(ChangeKind.BUILD_INPUT_CHANGED), code, message, emptyList(), scenario, it.basePath, it.headPath)
@@ -109,3 +107,6 @@ private fun applicationClassIdentity(directory: Path): Map<String, String> = Fil
 internal fun ChangedFile.isJvmSourceChange(): Boolean = listOfNotNull(basePath, headPath).all {
     it.endsWith(".java") || it.endsWith(".kt")
 }
+
+private fun dependenciesCovered(analyzed: Boolean, base: ProductionInventory, head: ProductionInventory): Boolean =
+    analyzed || base.resourceDependencies.isEmpty() && head.resourceDependencies.isEmpty()
