@@ -20,6 +20,7 @@ import org.objectweb.asm.tree.TryCatchBlockNode
 import org.objectweb.asm.tree.TypeAnnotationNode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ExternalObjectEscapeMetadataTest {
@@ -157,15 +158,15 @@ class ExternalObjectEscapeMetadataTest {
         private fun localAnnotation(method: MethodNode, visible: Boolean) {
             val annotations = mutableListOf(LocalVariableAnnotationNode(
                 TypeReference.newTypeReference(TypeReference.LOCAL_VARIABLE).value, null,
-                arrayOf(method.instructions.first as LabelNode), arrayOf(method.instructions.last as LabelNode),
+                arrayOf(assertIs<LabelNode>(method.instructions.first)), arrayOf(assertIs<LabelNode>(method.instructions.last)),
                 intArrayOf(1), "Lhidden/Using;",
             ))
             if (visible) method.visibleLocalVariableAnnotations = annotations else method.invisibleLocalVariableAnnotations = annotations
         }
 
         private fun addHandler(method: MethodNode, type: String?): TryCatchBlockNode {
-            val start = method.instructions.first as LabelNode
-            val end = method.instructions.last as LabelNode
+            val start = assertIs<LabelNode>(method.instructions.first)
+            val end = assertIs<LabelNode>(method.instructions.last)
             val handler = LabelNode()
             method.instructions.add(handler)
             method.visitInsn(Opcodes.POP)

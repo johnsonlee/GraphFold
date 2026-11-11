@@ -12,6 +12,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class MavenClassInventoryTest {
@@ -123,7 +124,7 @@ class MavenClassInventoryTest {
             }
             Files.writeString(unrelated, "preserve")
             val snapshot = MAPPER.readTree(fixture.snapshot.toFile())
-            val record = snapshot[0] as ObjectNode
+            val record = assertIs<ObjectNode>(snapshot[0])
             record.put("classFile", fixture.checkout.relativize(unrelated).toString())
             record.put("classHash", hash(unrelated))
             MAPPER.writeValue(fixture.snapshot.toFile(), snapshot)
@@ -179,7 +180,7 @@ class MavenClassInventoryTest {
             Files.writeString(fixture.binary("sample.Replacement"), "replacement bytecode")
             fixture.emit(listOf(fixture.output("sample.Replacement")))
             val pending = fixture.pending.resolve("compiler.json")
-            val document = MAPPER.readTree(pending.toFile()) as ObjectNode
+            val document = assertIs<ObjectNode>(MAPPER.readTree(pending.toFile()))
             if (field == "schema") document.put(field, 2) else document.put(field, false)
             MAPPER.writeValue(pending.toFile(), document)
             assertFailsWith<BuildFailure> { fixture.inventory().reconcile(fixture.pending) }
@@ -200,9 +201,9 @@ class MavenClassInventoryTest {
                 "outside" -> {
                     val external = temporary.resolve("external.java")
                     Files.writeString(external, "external source")
-                    (record.path("sources")[0] as ObjectNode).put("path", external.toString()).put("hash", hash(external))
+                    assertIs<ObjectNode>(record.path("sources")[0]).put("path", external.toString()).put("hash", hash(external))
                 }
-                else -> (record.path("sources")[0] as ObjectNode).put("hash", "wrong")
+                else -> assertIs<ObjectNode>(record.path("sources")[0]).put("hash", "wrong")
             }
             fixture.emit(listOf(record))
             assertFailsWith<BuildFailure> { fixture.inventory().reconcile(fixture.pending) }
@@ -228,7 +229,7 @@ class MavenClassInventoryTest {
         val outside = Files.createDirectories(temporary.resolve("external/sample"))
         val binary = Files.copy(fixture.binary(), outside.resolve("Owned.class"))
         val snapshot = MAPPER.readTree(fixture.snapshot.toFile())
-        (snapshot[0] as ObjectNode).put("classFile", binary.toString())
+        assertIs<ObjectNode>(snapshot[0]).put("classFile", binary.toString())
         MAPPER.writeValue(fixture.snapshot.toFile(), snapshot)
         Files.delete(fixture.source())
         val error = assertFailsWith<BuildFailure> { fixture.inventory(listOf(outside.parent)).prepare() }

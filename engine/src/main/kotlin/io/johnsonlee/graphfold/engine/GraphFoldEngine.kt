@@ -280,7 +280,8 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         )
         if (differences.isNotEmpty() && obligation.locations.isEmpty()) {
             state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNLOCATED_MOVE_DIFFERENCE,
-                "Moving ${obligation.basePath} to ${obligation.headPath} changes JVM representation: ${differences.joinToString()}")
+                "Moving ${diagnosticLabel(obligation.basePath)} to ${diagnosticLabel(obligation.headPath)} " +
+                    "changes JVM representation: ${differences.joinToString()}")
         } else if (differences.isNotEmpty()) {
             val prefix = if (comparison.originsVerified) "Surviving program representation differs" else
                 "Unverified compiler provenance; original JVM identity representations differ (not a confirmed behavior change)"

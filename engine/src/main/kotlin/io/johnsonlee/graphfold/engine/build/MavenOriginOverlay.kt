@@ -200,5 +200,6 @@ private fun Element.append(name: String, text: String? = null): Element = ownerD
 }
 private fun Element.replaceWithCopy(name: String, original: Element): Element {
     children(name).forEach(::removeChild)
-    return (ownerDocument.importNode(original, true) as Element).also(::appendChild)
+    val imported: org.w3c.dom.Node = ownerDocument.importNode(original, true)
+    return (imported as Element).also(::appendChild)
 }

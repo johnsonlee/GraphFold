@@ -11,6 +11,7 @@ import org.jetbrains.org.objectweb.asm.Opcodes
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class OriginClassGeneratorTest {
@@ -23,14 +24,16 @@ class OriginClassGeneratorTest {
             override fun visit(name: String?, value: Any?) { observed += name to value }
             override fun visitEnd() { ended = true }
         }
-        val downstream = Proxy.newProxyInstance(ClassGenerator::class.java.classLoader, arrayOf(ClassGenerator::class.java)) {
+        val downstream = assertIs<ClassGenerator>(Proxy.newProxyInstance(
+            ClassGenerator::class.java.classLoader, arrayOf(ClassGenerator::class.java),
+        ) {
                 _, method, _ ->
             when (method.name) {
                 "defineClass", "done" -> null
                 "visitAnnotation" -> visitor
                 else -> error("Unexpected generator callback: ${method.name}")
             }
-        } as ClassGenerator
+        })
         val collector = KotlinOriginCollector(temporary.resolve("origins"), "2.1.20", KotlinFrontend.K2, "null-name")
         val generator = OriginClassGenerator(downstream, null, collector, "null-name")
         generator.defineClass(Opcodes.V17, Opcodes.ACC_PUBLIC, "sample/Copy", null, "java/lang/Object", emptyArray())

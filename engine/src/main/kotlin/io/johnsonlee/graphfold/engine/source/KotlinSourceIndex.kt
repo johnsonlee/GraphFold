@@ -187,7 +187,7 @@ class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List
             }
             if (matches.size == 1) {
                 val owner = matches.single().name
-                result += SourceSymbol("$owner.${property.name}", owner, SymbolKind.FIELD, location(property))
+                result += SourceSymbol("$owner.${property.nameAsSafeName.asString()}", owner, SymbolKind.FIELD, location(property))
             }
         }
         return result

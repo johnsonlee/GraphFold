@@ -25,15 +25,21 @@ internal class OriginObjectFlow(owner: String, method: MethodNode, types: Origin
     fun safeOperands(instruction: AbstractInsnNode, count: Int): Boolean {
         val frame = frames?.get(instructions.indexOf(instruction)) ?: return false
         return frame.stackSize >= count && (frame.stackSize - count until frame.stackSize).all { index ->
-            (frame.getStack(index) as RenderValue).safe
+            frame.renderValue(index).safe
         }
     }
 
     fun nonNullReceiver(instruction: AbstractInsnNode, arguments: Int): Boolean {
         val frame = frames?.get(instructions.indexOf(instruction)) ?: return false
         val index = frame.stackSize - arguments - 1
-        return index >= 0 && (frame.getStack(index) as RenderValue).nonNull
+        return index >= 0 && frame.renderValue(index).nonNull
     }
+}
+
+/** An analyzed stack slot contains a nonnull value produced by [RenderInterpreter]. */
+private fun Frame<BasicValue>.renderValue(index: Int): RenderValue {
+    val value: BasicValue = getStack(index)
+    return value as RenderValue
 }
 
 /** Exact allocation types only. Declared parameter/field types are not concrete receiver identities. */

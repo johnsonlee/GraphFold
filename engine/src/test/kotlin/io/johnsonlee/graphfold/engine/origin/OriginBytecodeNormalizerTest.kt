@@ -19,8 +19,9 @@ import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.LdcInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class OriginBytecodeNormalizerTest {
@@ -84,11 +85,10 @@ class OriginBytecodeNormalizerTest {
         assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
         val renamed = read(result.classes.resolve("sample/Stable.class"))
         val attributes = renamed.visibleAnnotations.single { it.desc == "Lkotlin/Metadata;" }.values.chunked(2)
-            .associate { it[0] as String to it[1] }
-        @Suppress("UNCHECKED_CAST")
+            .associate { assertIs<String>(it[0]) to it[1] }
         val rewritten = Metadata(kind = 1, metadataVersion = intArrayOf(2, 1, 0),
-            data1 = (attributes.getValue("d1") as List<String>).toTypedArray(),
-            data2 = (attributes.getValue("d2") as List<String>).toTypedArray())
+            data1 = assertIs<List<*>>(attributes.getValue("d1")).map { assertIs<String>(it) }.toTypedArray(),
+            data2 = assertIs<List<*>>(attributes.getValue("d2")).map { assertIs<String>(it) }.toTypedArray())
         val decoded = KotlinClassMetadata.readStrict(rewritten) as KotlinClassMetadata.Class
         assertEquals(".sample/Stable", decoded.kmClass.name)
         assertEquals("sample/Host\$1", renamed.visibleAnnotations.single { it.desc == "Lsample/Label;" }.values.last())

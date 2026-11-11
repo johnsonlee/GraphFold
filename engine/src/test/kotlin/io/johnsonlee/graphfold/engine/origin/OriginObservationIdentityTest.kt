@@ -65,7 +65,7 @@ class OriginObservationIdentityTest {
         }
         retainedOriginGaps.forEach { (identity, gaps) ->
             val calls = snapshot.methods.getValue(identity).calls
-            gaps.forEach { gap -> assertTrue(gap.callee in calls, "$identity: ${gap.callee} missing from $calls") }
+            gaps.forEach { gap -> assertTrue(gap.callee in calls, "$identity: ${gap.callee ?: "<missing callee>"} missing from $calls") }
         }
     }
 }

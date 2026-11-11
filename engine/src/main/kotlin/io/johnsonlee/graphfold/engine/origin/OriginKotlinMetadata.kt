@@ -67,8 +67,11 @@ private fun metadataStrings(value: Any?): Array<String> = when (value) {
 /** Decode the pinned JVM metadata schema without rewriting declarations or guessing source ownership. */
 internal fun readOriginMetadata(annotation: AnnotationNode): Metadata {
     val pairs = annotation.values.orEmpty().chunked(2)
-    require(pairs.all { it.size == 2 && it[0] is String }) { "Malformed annotation fields" }
-    val values = pairs.associate { it[0] as String to it[1] }
+    val values = pairs.associate { pair ->
+        val name = pair[0]
+        require(pair.size == 2 && name is String) { "Malformed annotation fields" }
+        name to pair[1]
+    }
     val version = metadataIntegers(values["mv"])
     require(version.isNotEmpty()) { "Missing metadata schema" }
     require(version[0] < 2 || version[0] == 2 && version.getOrElse(1) { 0 } <= 1) {

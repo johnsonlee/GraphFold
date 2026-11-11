@@ -18,6 +18,7 @@ import org.objectweb.asm.tree.InvokeDynamicInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** Exact diff anchors remain required even when generated JVM members retain a CLASS proof obligation. */
@@ -142,8 +143,7 @@ class KotlinGeneratedSourceLocationTest {
             val returned = type.getMethod("run", kotlin.coroutines.Continuation::class.java).invoke(instance, completion)
             assertEquals(kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED, returned)
             assertTrue(resumed.isEmpty(), "Continuation must not complete before explicit resume")
-            @Suppress("UNCHECKED_CAST")
-            val pending = type.getMethod("getPending").invoke(instance) as kotlin.coroutines.Continuation<Int>
+            val pending = assertIs<kotlin.coroutines.Continuation<Int>>(type.getMethod("getPending").invoke(instance))
             pending.resumeWith(Result.success(10))
             assertEquals(listOf(12), resumed, "Head behavior must resume through the generated state machine")
         }

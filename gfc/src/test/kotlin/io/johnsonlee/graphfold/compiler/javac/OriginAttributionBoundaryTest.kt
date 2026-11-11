@@ -15,6 +15,7 @@ import javax.lang.model.element.Element
 import javax.tools.ToolProvider
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -75,8 +76,8 @@ class OriginAttributionBoundaryTest {
         val source = Files.writeString(temporary.resolve("Example.java"), text)
         val compiler = ToolProvider.getSystemJavaCompiler()
         compiler.getStandardFileManager(null, null, Charsets.UTF_8).use { manager ->
-            val task = compiler.getTask(null, manager, null, listOf("-proc:none"), null,
-                manager.getJavaFileObjectsFromPaths(listOf(source))) as JavacTask
+            val task = assertIs<JavacTask>(compiler.getTask(null, manager, null, listOf("-proc:none"), null,
+                manager.getJavaFileObjectsFromPaths(listOf(source))))
             val unit = task.parse().single()
             task.analyze()
             val anonymousPaths = mutableListOf<TreePath>()

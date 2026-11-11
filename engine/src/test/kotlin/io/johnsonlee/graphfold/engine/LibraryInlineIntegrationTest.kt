@@ -32,8 +32,8 @@ class LibraryInlineIntegrationTest {
         val project = ProjectCompiler(Duration.ofMinutes(2)).compile(repository, temporary.resolve("compiled"))
         val catalog = readOrigins(project, repository)
         assertTrue(catalog.diagnostics.isEmpty(), catalog.diagnostics.toString())
-        assertTrue(catalog.origins.isEmpty(), catalog.toString())
-        assertTrue(catalog.compiledOwners.size > 1, catalog.toString())
+        assertTrue(catalog.origins.isEmpty(), "$catalog")
+        assertTrue(catalog.compiledOwners.size > 1, "$catalog")
     }
 
     @ParameterizedTest

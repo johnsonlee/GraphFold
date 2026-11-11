@@ -13,6 +13,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.EnumSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 class OriginProtocolTest {
     @TempDir lateinit var temporary: Path
@@ -36,8 +37,8 @@ class OriginProtocolTest {
             val protocol = OriginProtocol::class.java
             protocol.declaredClasses.forEach { type ->
                 val isolated = loader.loadClass(type.name)
-                val actual = isolated.enumConstants.map { (it as Enum<*>).name }
-                assertEquals(type.enumConstants.map { (it as Enum<*>).name }, actual)
+                val actual = isolated.enumConstants.map { assertIs<Enum<*>>(it).name }
+                assertEquals(type.enumConstants.map { assertIs<Enum<*>>(it).name }, actual)
             }
             val compiler = loader.loadClass(OriginProtocol.Compiler::class.java.name)
             val wireValue = compiler.getMethod("wireValue")

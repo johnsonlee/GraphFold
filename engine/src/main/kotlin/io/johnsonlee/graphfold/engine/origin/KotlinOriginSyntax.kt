@@ -17,6 +17,7 @@ import org.jetbrains.kotlin.psi.KtClassBody
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.psi.KtObjectDeclaration
 import org.jetbrains.kotlin.psi.KtObjectLiteralExpression
 import org.jetbrains.kotlin.psi.KtProperty
@@ -61,15 +62,18 @@ private fun kotlinOrigins(root: KtFile, text: String): List<OriginSyntax> {
 private fun kotlinContainer(element: PsiElement, text: String): String? = when (element) {
     // PSI supplies the declared name and the implicit Companion name without inventing one here.
     is KtObjectDeclaration -> if (element.isObjectLiteral()) null else "type:${element.nameAsSafeName.asString()}"
-    is KtClassOrObject -> "type:${element.name}"
-    is KtNamedFunction -> "method:${element.receiverTypeReference?.let { kotlinShape(it, text) }.orEmpty()}:${element.name}(" +
+    is KtClassOrObject -> "type:${element.originName()}"
+    is KtNamedFunction -> "method:${element.receiverTypeReference?.let { kotlinShape(it, text) }.orEmpty()}:${element.originName()}(" +
         kotlinParameters(element.valueParameters, text) + ")"
     is KtSecondaryConstructor -> "constructor:(" +
         kotlinParameters(element.valueParameters, text) + ")"
-    is KtProperty -> if (element.parent is KtClassBody || element.parent is KtFile) "field:${element.name}" else null
+    is KtProperty -> if (element.parent is KtClassBody || element.parent is KtFile) "field:${element.originName()}" else null
     is KtAnonymousInitializer -> "initializer:instance"
     else -> null
 }
+
+/** Preserve the existing source-origin label for unnamed declarations; this is not a JVM symbol. */
+private fun KtNamedDeclaration.originName(): String = name ?: "null"
 
 private fun kotlinRange(element: PsiElement): OriginSpan = element.textRange.let { OriginSpan(it.startOffset, it.endOffset) }
 

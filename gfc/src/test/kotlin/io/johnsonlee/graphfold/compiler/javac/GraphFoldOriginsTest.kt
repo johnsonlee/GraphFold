@@ -17,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class GraphFoldOriginsTest {
@@ -204,9 +205,9 @@ class GraphFoldOriginsTest {
         val diagnostics = DiagnosticCollector<JavaFileObject>()
         val compiler = ToolProvider.getSystemJavaCompiler()
         val success = compiler.getStandardFileManager(diagnostics, null, options.charset).use { manager ->
-            val task = compiler.getTask(null, manager, diagnostics,
+            val task = assertIs<JavacTask>(compiler.getTask(null, manager, diagnostics,
                 listOf("-g:none", "-proc:none", "--release", "17", "-d", classes.toString()), null,
-                manager.getJavaFileObjectsFromPaths(listOf(file))) as JavacTask
+                manager.getJavaFileObjectsFromPaths(listOf(file))))
             if (options.pluginArguments != null) {
                 GraphFoldOrigins().init(task, *options.pluginArguments.toTypedArray())
             } else if (plugin) {

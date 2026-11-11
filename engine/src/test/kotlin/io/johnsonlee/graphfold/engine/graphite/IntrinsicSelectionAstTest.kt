@@ -46,7 +46,8 @@ class IntrinsicSelectionAstTest {
     @Test fun `only scalar literal properties can establish intrinsic pattern selection`() {
         listOf(null, "enabled", 1, true, false).forEach { value ->
             assertTrue(intrinsicCallSiteSelection(listOf(
-                pattern(node.copy(properties = mapOf("callee_name" to CypherExpr.Literal(value)))), projection)), "$value")
+                pattern(node.copy(properties = mapOf("callee_name" to CypherExpr.Literal(value)))), projection)),
+                value?.toString() ?: "<null literal>")
         }
         assertFalse(intrinsicCallSiteSelection(listOf(
             pattern(node.copy(properties = mapOf("callee_name" to CypherExpr.Literal(listOf("enabled"))))), projection)))

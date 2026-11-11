@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class OriginListenerTest {
@@ -21,10 +22,10 @@ class OriginListenerTest {
         val output = temporary.resolve("origins")
         val compiler = ToolProvider.getSystemJavaCompiler()
         compiler.getStandardFileManager(null, null, Charsets.UTF_8).use { manager ->
-            val task = compiler.getTask(null, manager, null, listOf("-proc:none"), null,
-                manager.getJavaFileObjectsFromPaths(listOf(source))) as JavacTask
+            val task = assertIs<JavacTask>(compiler.getTask(null, manager, null, listOf("-proc:none"), null,
+                manager.getJavaFileObjectsFromPaths(listOf(source))))
             val unit = task.parse().single()
-            val type = task.analyze().single() as javax.lang.model.element.TypeElement
+            val type = assertIs<javax.lang.model.element.TypeElement>(task.analyze().single())
             val listener = OriginListener(task, output, checkout, "generation-only")
             val failure = assertFailsWith<IllegalStateException> {
                 listener.finished(TaskEvent(TaskEvent.Kind.GENERATE, unit, type))

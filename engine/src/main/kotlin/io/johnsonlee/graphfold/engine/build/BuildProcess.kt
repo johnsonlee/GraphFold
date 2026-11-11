@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.build
 
+import io.johnsonlee.graphfold.engine.diagnosticLabel
 import io.johnsonlee.graphfold.engine.DEFAULT_BUILD_ENVIRONMENT
 import java.nio.file.Files
 import java.nio.file.Path
@@ -35,7 +36,7 @@ internal fun buildFailureMessage(reason: String, log: Path): String {
     return try {
         "$reason; build output (tail):\n${logTail(log)}"
     } catch (failure: java.io.IOException) {
-        "$reason; could not read build output: ${failure.message}"
+        "$reason; could not read build output: ${diagnosticLabel(failure.message)}"
     }
 }
 

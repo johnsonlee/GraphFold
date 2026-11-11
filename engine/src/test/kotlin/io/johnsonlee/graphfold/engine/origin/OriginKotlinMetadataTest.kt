@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Test
 import org.objectweb.asm.tree.AnnotationNode
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalContextReceivers::class, ExperimentalContracts::class)
@@ -274,12 +275,11 @@ class OriginKotlinMetadataTest {
     private fun remap(annotation: AnnotationNode) = remapKotlinOriginMetadata(annotation,
         OriginRemapper(OWNERS), OWNERS)
 
-    @Suppress("UNCHECKED_CAST")
     private fun decode(annotation: AnnotationNode): KmClass {
-        val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }
+        val values = annotation.values.chunked(2).associate { assertIs<String>(it[0]) to it[1] }
         val metadata = Metadata(kind = 1, metadataVersion = intArrayOf(2, 1, 0),
-            data1 = (values.getValue("d1") as List<String>).toTypedArray(),
-            data2 = (values.getValue("d2") as List<String>).toTypedArray())
+            data1 = assertIs<List<*>>(values.getValue("d1")).map { assertIs<String>(it) }.toTypedArray(),
+            data2 = assertIs<List<*>>(values.getValue("d2")).map { assertIs<String>(it) }.toTypedArray())
         return (KotlinClassMetadata.readStrict(metadata) as KotlinClassMetadata.Class).kmClass
     }
     private companion object { val OWNERS = mapOf("sample.Host\$1" to "sample.Stable") }
