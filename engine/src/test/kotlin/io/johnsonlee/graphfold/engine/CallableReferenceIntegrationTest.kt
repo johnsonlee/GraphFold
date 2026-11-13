@@ -1,6 +1,9 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
+import io.johnsonlee.graphfold.engine.inputs.archive.toStaticScope
 import io.johnsonlee.graphfold.engine.origin.readOrigins
 import java.nio.file.Files
 import java.nio.file.Path
@@ -24,8 +27,8 @@ class CallableReferenceIntegrationTest {
         val source = repository.resolve("src/main/kotlin/sample/References.kt")
         Files.createDirectories(source.parent)
         Files.copy(Path.of("../gfc/src/test/resources/kotlin/callable-references/References.kt"), source)
-        val project = ProjectCompiler(Duration.ofMinutes(2)).compile(repository, temporary.resolve("compiled"))
-        val catalog = readOrigins(project, repository)
+        val project = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(repository, temporary.resolve("compiled"))
+        val catalog = readOrigins(project.toStaticScope(temporary.resolve("static-input")), repository)
         assertTrue(catalog.diagnostics.isEmpty(), catalog.diagnostics.toString())
         assertEquals(1, catalog.origins.size)
         val origin = catalog.origins.single()
@@ -51,7 +54,7 @@ class CallableReferenceIntegrationTest {
                     .setCommitter("GraphFold Test", "test@example.invalid").call().name
             }
         }
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), commits[0], commits[1], Files.readString(fixtures.resolve("fold.yml"))),
         )
         assertTrue(result.diagnostics.none { it.blocking }, result.toString())

@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.ResourceDeclarations
+
 import io.johnsonlee.graphite.core.CallSiteNode
 import io.johnsonlee.graphite.core.TypeDescriptor
 import io.johnsonlee.graphite.input.LoaderConfig

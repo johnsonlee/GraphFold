@@ -233,7 +233,7 @@
   },
   {
     "id": "kotlin_inline_member_dead",
-    "violation": false
+    "violation": true
   },
   {
     "id": "kotlin_inline_top_level_uncontrolled",
@@ -245,7 +245,7 @@
   },
   {
     "id": "kotlin_inline_top_level_dead",
-    "violation": false
+    "violation": true
   },
   {
     "id": "kotlin_inline_property_uncontrolled",
@@ -257,7 +257,7 @@
   },
   {
     "id": "kotlin_inline_property_dead",
-    "violation": false
+    "violation": true
   },
   {
     "id": "kotlin_inline_accessor_uncontrolled",
@@ -269,7 +269,7 @@
   },
   {
     "id": "kotlin_inline_accessor_dead",
-    "violation": false
+    "violation": true
   },
   {
     "id": "kotlin_inline_setter_uncontrolled",
@@ -281,7 +281,7 @@
   },
   {
     "id": "kotlin_inline_setter_dead",
-    "violation": false
+    "violation": true
   },
   {
     "id": "kotlin_inline_object_member_uncontrolled",
@@ -293,7 +293,7 @@
   },
   {
     "id": "kotlin_inline_object_member_dead",
-    "violation": false
+    "violation": true
   },
   {
     "id": "kotlin_inline_object_top_level_uncontrolled",
@@ -305,6 +305,6 @@
   },
   {
     "id": "kotlin_inline_object_top_level_dead",
-    "violation": false
+    "violation": true
   }
 ]

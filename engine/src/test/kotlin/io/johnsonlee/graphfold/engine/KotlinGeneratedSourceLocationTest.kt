@@ -1,6 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -45,10 +47,10 @@ class KotlinGeneratedSourceLocationTest {
             Files.copy(root.resolve("head/Example.kt"), source, StandardCopyOption.REPLACE_EXISTING)
             base to commit(git, "head")
         }
-        val compiled = ProjectCompiler(Duration.ofMinutes(2)).compile(repository, temporary.resolve("${case.id}-bytecode"))
+        val compiled = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(repository, temporary.resolve("${case.id}-bytecode"))
         verifyGeneratedStructure(case, readClasses(compiled.classes))
         if (case.structure == Structure.SUSPEND) verifyRealSuspension(compiled.classes)
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), revisions.first, revisions.second, Files.readString(fixtures.resolve("fold.yml"))),
         )
         assertTrue(result.diagnostics.none { it.blocking }, "${case.id}: ${result.diagnostics}")

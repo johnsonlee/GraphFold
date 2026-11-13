@@ -1,8 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.FieldSnapshot
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.FieldSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import org.junit.jupiter.api.Test
 import sootup.core.model.MethodModifier
 import kotlin.test.assertFalse

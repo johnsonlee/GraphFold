@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.junit.jupiter.api.Test
@@ -33,7 +35,7 @@ class NegativeScenarioIntegrationTest {
         val base = commit(repository)
         copyTree(source.resolve("head"), repository)
         val head = commit(repository)
-        val engine = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache")))
+        val engine = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache")))
         fun analyze(fold: String) = engine.analyze(
             AnalysisRequest(repository.toString(), base, head, Files.readString(source.resolve(fold))),
         )

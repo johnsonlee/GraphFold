@@ -1,7 +1,8 @@
 package io.johnsonlee.graphfold.engine.origin
 
-import io.johnsonlee.graphfold.engine.build.CompiledProject
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
+import io.johnsonlee.graphfold.engine.inputs.archive.toStaticScope
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -65,14 +66,15 @@ class InlineOriginAlignmentIntegrationTest {
                 object : java.util.function.IntSupplier { override fun getAsInt(): Int = value() }
         """.trimIndent())
         Files.writeString(sources.resolve("Client.kt"), "package sample\nclass Client { $methods }")
-        val project = ProjectCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("$revision-output"))
+        val project = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("$revision-output"))
+            .toStaticScope(Files.createTempDirectory(temporary, "static-"))
         val catalog = readOrigins(project, root)
         assertTrue(catalog.diagnostics.isEmpty(), catalog.diagnostics.toString())
         assertActualAllocationContexts(project, catalog.origins)
         return catalog
     }
 
-    private fun assertActualAllocationContexts(project: CompiledProject, origins: List<SourceOrigin>) {
+    private fun assertActualAllocationContexts(project: StaticScope, origins: List<SourceOrigin>) {
         val nodes = Files.walk(project.classes).use { files ->
             files.filter { it.toString().endsWith(".class") }.map { file ->
                 ClassNode().also { ClassReader(Files.readAllBytes(file)).accept(it, 0) }

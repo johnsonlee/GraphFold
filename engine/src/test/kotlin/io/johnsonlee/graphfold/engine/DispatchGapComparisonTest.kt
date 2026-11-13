@@ -1,8 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -82,9 +82,8 @@ class DispatchGapComparisonTest {
     @Test fun `unverified origins cannot justify a complete dispatch closure`() {
         val snapshot = snapshot()
         val gaps = SnapshotComparison(snapshot, snapshot, originsVerified = false).analysisGaps(obligation)
-        assertEquals(2, gaps.size)
+        assertEquals(1, gaps.size)
         assertTrue(dispatch.message in gaps)
-        assertTrue(gaps.any { "Compiler provenance is unverified" in it })
     }
 
     @Test fun `normalized equal bodies cannot hide raw differences behind dispatch closure`() {
@@ -105,16 +104,16 @@ class DispatchGapComparisonTest {
         val identity = "Hidden.callback()V"
         val obligation = ProofObligation(identity, SymbolKind.METHOD, "Hidden", emptyList())
         val comparison = SnapshotComparison(base, changed(base, identity))
-        assertTrue(comparison.isUnreachable(obligation), "No explicit edge represents this possible callback")
-        assertTrue(comparison.differences(obligation).isEmpty())
-        assertEquals(listOf(dispatch.message), comparison.analysisGaps(obligation))
+        assertTrue(!comparison.isUnreachable(obligation), "No call edge is needed to compare an explicit production declaration")
+        assertEquals(listOf(identity), comparison.differences(obligation))
+        assertTrue(comparison.analysisGaps(obligation).isEmpty())
     }
 
     @Test fun `unchanged private callback in another owner permits an independent closure proof`() {
         val snapshot = crossOwnerSnapshot()
         val obligation = ProofObligation("Hidden.callback()V", SymbolKind.METHOD, "Hidden", emptyList())
         val comparison = SnapshotComparison(snapshot, snapshot)
-        assertTrue(comparison.isUnreachable(obligation))
+        assertTrue(!comparison.isUnreachable(obligation))
         assertTrue(comparison.analysisGaps(obligation).isEmpty())
     }
 
@@ -125,7 +124,7 @@ class DispatchGapComparisonTest {
         assertTrue(comparison.analysisGaps(obligation).isEmpty())
         assertEquals(listOf(entry), comparison.differences(obligation))
         val unseen = ProofObligation(hidden, SymbolKind.METHOD, "Application", emptyList())
-        assertTrue(comparison.differences(unseen).isEmpty())
+        assertEquals(listOf(hidden), comparison.differences(unseen))
         assertEquals(listOf(dispatch.message), comparison.analysisGaps(unseen),
             "The other obligation's difference must never prove the unseen change controlled")
         assertEquals(listOf(dispatch.message), comparison.resourceAnalysisGaps())
@@ -139,7 +138,6 @@ class DispatchGapComparisonTest {
         val unverified = SnapshotComparison(base, head, originsVerified = false).analysisGaps(obligation)
         assertTrue(dispatch.message in unverified)
         assertTrue(bodyGap.message in unverified)
-        assertTrue(unverified.any { "Compiler provenance" in it })
     }
 
     @Test fun `a changed initialization dependency is an independent surviving witness`() {

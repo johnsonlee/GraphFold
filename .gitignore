@@ -3,6 +3,8 @@
 .idea
 /build/
 /*/build/
+/plugin/gradle/build/
+/plugin/maven/build/
 
 # Ignore Gradle GUI config
 gradle-app.setting

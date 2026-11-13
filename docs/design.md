@@ -1,6 +1,6 @@
 # GraphFold 设计文档
 
-状态：设计与实现并行收敛。已实现 engine、CLI、Gradle plugin，并扩展 Java/Kotlin 检测与解释能力；扩展后的全量回归仍在验证。已执行证据见 [validation.md](validation.md)，旧版本验收不能替代新增能力的验证。本文中的目标能力不等于已经交付的保证，当前边界见第 18 节。
+状态：设计与实现并行收敛。已实现 engine、Gradle plugin、Maven plugin，并扩展 Java/Kotlin 检测与解释能力；扩展后的全量回归仍在验证。已执行证据见 [validation.md](validation.md)，旧版本验收不能替代新增能力的验证。本文中的目标能力不等于已经交付的保证，当前边界见第 18 节。
 
 初稿日期：2026-10-30；Graphite observer 接入更新：2026-11-07。
 
@@ -29,7 +29,7 @@ fold(head, A_PR) ≡ fold(base, A_PR)
 | `PASS` | 分析成功完成，本次所有相关变化均被证明消除或等价 |
 | `FAIL` | 确认 uncontrolled change，或存在阻止完成证明的错误、缺口或定位失败 |
 
-`FAIL` 不等于所有失败都已证明业务行为违规。结果必须区分确定的行为差异、无法证明的变更以及运行错误。
+`FAIL` 区分未受 control 约束的静态生产代码差异、证据不足的变更和分析过程错误；它不声称已经发生运行时业务行为差异。
 
 ### 1.1 变更归属
 
@@ -62,56 +62,70 @@ AB 是一个外部适配场景：PR title 中的 JIRA ticket 可以用于查询�
 
 多模块 Kotlin 工程，包名前缀统一为 `io.johnsonlee.graphfold`，引擎模块使用 `io.johnsonlee.graphfold.engine`。
 
-```text
-GraphFold/
-├── gfc/
-├── engine/
-├── cli/
-├── gradle-plugin/
-└── docs/
-```
-
 ```mermaid
 flowchart LR
-    CLI[CLI] --> E[Engine]
-    GP[Gradle Plugin] --> E
-    E --> CP[Compiler Plugin]
+    GP[plugin/gradle / Gradle model] --> E[engine / Git + static analysis + input contract]
+    MP[plugin/maven / MavenProject] --> E
     E --> G[Graphite JVM modules]
 ```
 
 | 模块 | 职责 |
 | --- | --- |
-| `gfc` | javac/Kotlin 编译来源采集、共享来源协议；包名 `io.johnsonlee.graphfold.compiler` |
-| `engine` | Git/隔离 checkout、diff、构建适配、折叠编排、比较、源码归因、结果模型 |
-| `cli` | 命令行解析、输入校验、报告输出、退出码；直接调用引擎 |
-| `gradle-plugin` | 配置 DSL、task、Gradle 生命周期集成；直接调用引擎 |
+| `engine` | Git fetch/checkout/diff，消费准备好的静态输入，建图、control 折叠、比较、源码归因和 verdict；不了解构建工具 |
+| `plugin/gradle` | 读取当前进程的 Gradle 项目、source sets、归档任务、依赖和编译输出；不启动 gradlew 或 init script |
+| `plugin/maven` | 读取当前生命周期的 MavenProject/MavenSession；不启动外部 mvn |
+| `gfc` | javac/Kotlin 编译来源提供器，拥有 Java-only 来源协议；engine 依赖并消费该协议，gfc 不依赖 engine |
 
-CLI 和 Gradle plugin 不互相调用，不复制分析逻辑。引擎不依赖 Gradle API，也不在核心规则中硬编码 AB SDK。
+各集成入口只依赖 engine，不互相依赖。构建工具无关的归档解码、MR 选择和输入快照准备属于 engine 的 `engine.inputs`，只在 engine 中编译一次。插件只负责从原生构建模型提取输入，不通过 `srcDir` 共享实现或测试。不存在共享的构建工具自动探测或启动模块。
+插件在各 revision 的正常构建中导出不可变字节码快照和源码关联；engine 通过 Git 获得
+两端源码和 diff，然后比较两端输入，不能在 checkout 后复用另一个 revision 的构建模型。
 
-四个模块共享同一个版本号、同一次发布。engine 声明同版本 `gfc` 依赖，并直接定位解析出的 JAR；CLI 分发包携带该独立 JAR，Gradle plugin 通过传递依赖取得它。不再从 engine 编译结果筛选插件类或内嵌插件 JAR。发布门禁验证插件 SPI、engine POM 的同版本依赖及 CLI 分发包中的插件版本。javac 入口和共享协议只依赖 JDK，Kotlin compiler API 为 compile-only，由被分析项目的编译器提供。
+BASE 和 HEAD 两侧输入都必须由可信、受控的构建流程从对应提交生成，并保存在 PR 无法替换的制品存储中。
+构建和导出配置本身也必须受信任；仅把 PR 可控制的导出程序放进 CI 执行并不能认证其输出。
+不能把随 PR 提供的快照 manifest 或 assets 当作构建来源证据。manifest 内的摘要只能检测相对该
+manifest 的损坏或修改；攻击者同时替换 assets 和摘要仍会通过，因此它不是身份认证或源码到
+字节码的来源证明。Git SHA 校验也不能单独证明任意归档来自该提交。导出拒绝未提交的 tracked
+变更和未忽略的 untracked 文件；正常构建产物应由 `.gitignore` 忽略，不能因此忽略生产源码。
+详见 README 的 [快照信任边界](../README.md#snapshot-trust-boundary)。
 
-gfc 的三个运行时 SPI（javac 入口、Kotlin registrar 和 command-line processor）统一使用 `@AutoService` 注解，由 KSP 生成注册文件，不维护手写的 `META-INF/services` 配置。engine 的方法捕获改为直接调用 Graphite `loadObserved`，不再注册 `SnapshotExtension` 服务；observer 的状态只属于当前一次 load。
+输入契约保留 `sourceRoots`、`sourceOutputs`、`sourceClasspaths`、声明的 source sets
+及可选 compiler evidence。Gradle/Maven 插件提供构建模型中的源码根、输出和 classpath 关联；
+当前不会自动启用 gfc，也不会自动采集或导出其 sidecar、runId 和 compiler evidence。
+显式提供的编译来源证据由输入契约承载，并由 engine 校验。
+无来源记录时仍执行完整原始字节码折叠；源码关联仅解释和定位差异，不能代替完整比较
+或授权忽略没有 control 覆盖的修改。缺失映射降低归因精度，不阻止建图和折叠。
 
-Gradle 和直接 Kotlin 编译使用解析出的插件 JAR；Maven 为保留既有 annotation processor 配置并支持本地构建，将相同 JAR 按内容摘要暂存到分析工作区的本地 Maven 仓库。该内部坐标只用于缓存隔离，不是独立发布的插件版本。来源 schema、runId 和源码/class hash 校验继续保留，用于识别陈旧或不完整的产物；同步发布不替代目标 JDK、Kotlin 编译器及第三方插件组合的兼容性验证。
+所有模块同版本发布。engine 不依赖 Gradle/Maven API 或编译器 provider。
+插件源码位于 `plugin/gradle`、`plugin/maven`，Gradle 项目路径为 `:plugin:gradle`、`:plugin:maven`；发布 artifact ID 仍为 `gradle-plugin`、`maven-plugin`。
+gfc 的 compiler hooks 使用宿主编译器 API。测试中的 fixture 编译器不属于 engine 生产实现。
 
-Git 采用 JGit 与共享对象的隔离 checkout；CLI 采用 Clikt。认证集成的验证边界见第 4 节；submodule 与 Git LFS 尚未建立完整产物模型，检测到时阻断。
+GFC 在真实编译完成后记录 emitted class 的 SHA-256。Kotlin 使用编译器输出回调提供的实际 class 路径；
+javac 的 `GraphFoldOrigins` 插件接收第四个 Base64 URL 编码参数，即与 `-d` 一致的 class 输出目录，
+或由调用方使用接受该目录的 `attach` 重载。旧三参数调用只提供未绑定 class hash 的来源记录，
+不能满足 `requireOriginClassHashes` 的严格 prepared input 校验。插件默认源码模型关联与可选 GFC
+接入是不同契约；默认 Gradle/Maven 入口不会自动启用 GFC，也不据此宣称已提供 compiler origins。
+
+### 引擎内部分析职责
+
+`engine.snapshot` 保存 GraphFold 的静态比较证据，不依赖 Graphite 适配器。
+`engine.bytecode.asm` 负责 ASM 字节码清单、JVM 元数据、初始化、逃逸和目标声明证明；
+`engine.bytecode.sootup` 负责 SootUp 方法表示、资源与 lambda 证据、曝光条件证明和规范化。
+`engine.graphite` 只负责 Graphite 加载与查询、选点、完整性证据、审计及观察回调的转换。
+回调收集器把方法体交给字节码分析代码，产出 snapshot；比较与 verdict 消费 snapshot，
+不会反向依赖这些收集器。预折叠调用证据由适配器提取，再交给 engine 的同输入 control 覆盖证明。
 
 ## 3. 输入与输出
 
 ### 3.1 请求
 
-用户输入固定为四类：
+插件为每个 revision 导出不可变静态输入，集成层解码为 `PreparedRevision`。公开 engine API 接收两版准备好的输入与规则：
 
 ```kotlin
-data class AnalysisRequest(
-    val repository: String,
-    val base: String,
-    val head: String,
-    val fold: String,
-)
+val comparison = engine.prepare(baseRevision, headRevision, fold)
+val result = engine.analyze(comparison)
 ```
 
-其中 `fold` 对应用户提供的 fold Cypher。缓存目录、资源上限、构建适配器等属于引擎运行配置，不混入业务判定条件。
+engine 校验 revision 的 Git 身份并从 commit tree 计算 diff；调用方不能提供过滤后的变更列表。`PreparedComparison` 是 engine 生成的不透明比较请求，`ChangedFile` 是内部类型，其中变更类型与编辑坐标直接使用 JGit 的 `DiffEntry.ChangeType`、`Edit`。`RepositoryConfiguration` 管理仓库缓存和工作区预算；`EngineConfiguration` 提供分析缓存与场景数量限制，均不管理构建工具。
 
 `fold` 当前传入 YAML 文档内容：Graphite 的 `select` 返回调用点，替换值通过独立 `value` 提供；纯查询字符串不足以表达完整假定。引擎沿用 Graphite 规则结构，并接受场景集合：
 
@@ -127,21 +141,20 @@ scenarios:
         value: false
 ```
 
-这是同一个 fold 输入内部的结构，不新增第五类业务输入。单场景直接接受 `version: 1` 与 `folds`；多场景使用上述 `scenarios` 包装，每个场景均须通过。默认最多 32 个场景，超过上限阻断。YAML 必须是单一对象文档；语法错误、重复键、额外文档、未知属性、非法版本及规则结构在 Git checkout 和构建之前阻断，错误包含场景/规则索引。规则字段由 Graphite 的解析器校验，Cypher 语法和返回类型则在实际图上执行查询时校验。
+这是同一个 fold 输入内部的结构。单场景直接接受 `version: 1` 与 `folds`；多场景使用上述 `scenarios` 包装，每个场景均须通过。默认最多 32 个场景，超过上限阻断。YAML 必须是单一对象文档；语法错误、重复键、额外文档、未知属性、非法版本及规则结构在实际图分析之前阻断，错误包含场景/规则索引。规则字段由 Graphite 的解析器校验，Cypher 语法和返回类型则在实际图上执行查询时校验。
 
 规则表达的是用户授权的假定；过宽的查询也会产生过宽的假定。引擎记录实际选点供审计，并验证规则中的参数约束，但不能凭业务知识证明用户声明的假定正确。
 
-有限的预定义状态和 code 在内部使用 enum；外部 JSON、CLI 与构建协议中的字符串在边界解析/编码。该约定也适用于 Git 变更类型、Gradle 导出记录类型、编译器来源类型/前端、方法修饰符和 CLI 报告格式。Git rename/copy 的相似度是独立数值，不编码进类型字符串。未知协议标签会显式拒绝，不静默忽略。路径、符号名、JVM 描述符及自由文本诊断仍是字符串。
+有限的预定义状态和 code 在内部使用 enum；外部 JSON 与构建协议中的字符串在边界解析/编码。该约定也适用于 Git 变更类型、Gradle 导出记录类型、编译器来源类型/前端、方法修饰符和报告格式。Git rename/copy 的相似度是独立数值，不编码进类型字符串。未知协议标签会显式拒绝，不静默忽略。路径、符号名、JVM 描述符及自由文本诊断仍是字符串。
 
 | 内部领域 | 类型 | 外部表示 |
 | --- | --- | --- |
 | diagnostic code | `DiagnosticCode` | 既有大写 code 名称 |
-| Git 文件变化 | `GitChangeType` | rename/copy 相似度单独保存在 `similarityScore` |
+| Git 文件变化 | JGit `DiffEntry.ChangeType` | rename/copy 相似度单独保存在 `similarityScore` |
 | Gradle 导出记录 | `GradleInputKind` | 保留 `classes` / `source` / `dependency` / `sourceOutput` 标签 |
 | 编译器与来源 | `OriginProtocol` 中的 compiler/backend/frontend/kind/provenance enums | 保留原 manifest 与 bytecode marker 值；共享类型只依赖 JDK |
 | 方法修饰符 | SootUp `MethodModifier` | 仅生成 canonical 文本时按名称排序并编码 |
 | 来源对齐版本 | `Revision` | 诊断文字和既有 hash 输入仍编码为小写 base/head |
-| CLI 报告格式 | `ReportFormat` | 保留 `--format json` / `--format text` |
 
 ### 3.2 结果模型
 
@@ -198,7 +211,7 @@ Finding 分类：
 | `UNCONTROLLED_CHANGE` | 已确认本次变化在折叠后仍存活且不等价 | 是 |
 | `UNVERIFIABLE_CHANGE` | 已定位本次变化，但无法证明其受控或等价 | 是 |
 
-构建失败、Git 失败、源码映射失败等使用阻断 diagnostic，不虚构源码位置或业务 violation。`Diagnostic.code` 使用 `DiagnosticCode` enum；引擎、CLI 和 Gradle plugin 均按 enum 分支，不比较 hardcoded 字符串。JSON 仍序列化为既有 code 名称，Schema 枚举值与模型通过测试核对。即使 findings 为空，只要有阻断 diagnostic，verdict 仍为 `FAIL`。
+构建失败、Git 失败和已声明源码映射证据的校验失败使用阻断 diagnostic，不虚构源码位置或业务 violation。可选映射未提供时仍可执行独立建图、折叠和原始字节码比较。`Diagnostic.code` 使用 `DiagnosticCode` enum；引擎、Gradle plugin 和 Maven plugin 均按 enum 分支，不比较 hardcoded 字符串。JSON 仍序列化为既有 code 名称，Schema 枚举值与模型通过测试核对。即使 findings 为空，只要有阻断 diagnostic，verdict 仍为 `FAIL`。
 
 当前 Metadata 记录解析后的 SHA、Graphite 版本、场景和 obligation/证明完成数量。编译器版本、规则摘要、构建产物身份与完整 provenance 仍是待补的审计信息，不能声称已经输出。Finding ID 使用内容摘要，不依赖图节点编号。
 
@@ -211,7 +224,7 @@ JSON 报告包含 `schemaVersion: 1`，规范为 [verdict.schema.json](../engine
 这保留了 worktree 方案希望达到的对象共享与工作目录隔离，但不是原生 linked worktree 管理。JGit 从 7.0 起支持读取 linked worktree，7.8 的公开 API 仍缺少 add/list/remove/move 管理命令；不能把“缺少管理命令”表述为完全不支持 worktree。依据：[7.0 发布说明](https://github.com/eclipse-jgit/jgit/wiki/New-and-Noteworthy-7.0)、[维护者对管理 API 的说明](https://github.com/eclipse-jgit/jgit/issues/264)。
 
 ```text
-<cache>/                                            # CLI / Gradle 默认 ~/.cache/graphfold
+<cache>/                                            # 集成入口指定的分析缓存
 ├── git/
 │   ├── repositories/
 │   │   ├── <repository-key>.git/                    # bare 仓库，共享 objects
@@ -219,37 +232,32 @@ JSON 报告包含 `schemaVersion: 1`，规范为 [verdict.schema.json](../engine
 │   └── workspaces/<repository-key>/
 │       ├── slot-0.lock                              # 进程间租约，位于 checkout 外
 │       ├── slot-0/
-│       │   ├── base/                               # base 构建的工作目录（cwd）
+│       │   ├── base/                               # BASE 源码 checkout，不在此启动构建
 │       │   │   ├── .git/                           # 独立元数据，alternates 指向共享 objects
-│       │   │   ├── .gradle/                        # Gradle 状态及 GraphFold provider
-│       │   │   ├── gradlew / pom.xml / src/...      # 对应 revision 的项目文件
-│       │   │   └── <module>/
-│       │   │       ├── build/                      # Gradle 编译产物与 provenance
-│       │   │       └── target/                     # Maven 编译产物与 provenance
-│       │   └── head/                               # head 构建的 cwd，结构同 base
+│       │   │   └── <revision source files>
+│       │   └── head/                               # HEAD 源码 checkout
 │       ├── slot-1.lock
-│       └── slot-1/...                              # 另一对可独占的持久 checkout
-└── analysis-<random>/                              # 每次分析独立的临时目录
-    ├── base/                                       # 导出的 classes、origins、输入清单和构建日志
-    ├── head/                                       # 同上
-    └── normalized/                                 # 来源规范化后的分析输入
+│       └── slot-1/...
+└── snapshot-analysis-<random>/                      # 集成层每次解码的临时目录
+    ├── base/                                       # 从已导出的静态输入准备分析字节码
+    └── head/
 ```
 
-`<cache>` 指 `EngineConfiguration.cacheDirectory`；CLI 可用 `--cache-dir` 指定。上图中的 Gradle 与 Maven 目录是不同项目类型的示意，并非每个项目同时存在；根项目自身也可能有 `build/` 或 `target/`。两侧构建顺序为 base 后 head，外部 Gradle/Maven 命令的 cwd 分别是对应 checkout 根目录，多模块产物留在各模块自己的构建目录。checkout、原始编译产物和增量状态在分析结束后保留。导出到 `analysis-<random>` 的 classes 是本轮分析快照，正常完成或失败后都会尝试清理该临时目录；它不是增量编译目录。源码直接编译模式没有 Gradle/Maven 状态，classes 直接写入本轮 `analysis-<random>/{base,head}/classes`，目前不复用该模式的编译产物。
+`<cache>` 指 `RepositoryConfiguration.cacheDirectory`。BASE/HEAD 的打包与不可变快照导出在调用方的正常构建中完成，早于分析；分析过程不在这些 checkout 中执行 Gradle、Maven 或编译器。Git checkout 用于读取精确 revision 的源码及 diff。集成层解码快照所用临时目录在分析成功或失败后清理，调用方保存的原始快照不随之删除。
 
 流程：
 
 1. 规范化仓库身份，复用缓存；凭据不进入缓存键和日志。
 2. 通过 JGit fetch 缺失对象：完整 SHA 优先直接获取，服务端不支持时再回退分支发现；缩写先发现分支，再解析为完整 commit SHA。歧义缩写和非 commit 对象提供明确错误，要求使用完整 commit SHA。
 3. 校验两个 commit 可读取；不依赖可变 branch 名继续分析。
-4. 租用空闲 slot 中的一对持久 checkout；每个仓库最多使用 `EngineConfiguration.maximumWorkspaceSlots` 个 slot（默认 2），全部忙碌时可中断地等待 `workspaceLeaseTimeout`（默认 `2 × buildTimeout + 5 分钟`，即 25 分钟），超时以 `WORKSPACE_CAPACITY_TIMEOUT` 诊断阻断分析，不产生代码变更 finding。`workspaceLeaseTimeout` 只计 commit 解析之后、checkout 之前获取空闲 slot 的等待时间，拿到 slot 即结束；不是无 activity 超时，也不限制 checkout 或 lease 持有时长。该默认值是等待预算的启发式，不是分析的总耗时上限：构建超时按外部命令生效，Maven 每个 revision 可能执行多条命令，源码模式的 javac 在进程内运行且不受该超时控制，图分析也会持有 slot。较大构建或长队列可显式加大等待预算。以原始 commit blob 恢复源码，内容及 mode 未变化的文件不重写、保留 mtime；被构建修改的 tracked 文件恢复原值，目标 commit 删除的文件移除。不运行 checkout hook 或 smudge filter。
-   Slot 按同一缓存中的仓库身份共享，不绑定 PR，不缓存分析结论。对可成功获取非阻塞锁的既有 slot，优先选择完全相同的 base/head，其次选择相同 base 且 head 历史距离较近的候选；同级距离相等或无法判断时按 slot 序号确定顺序。每个 head 最多探索 256 个祖先集合内的提交（含自身），通过已观察到的共同祖先计算两侧距离之和；这是有界启发式，不承诺任意历史上的全局最近距离。已占用的 slot 跳过；没有可获取的既有 slot 时才启用空 slot。读取候选 checkout 的 HEAD 前持有其锁，选择期间最多暂持两个候选锁；时间预算耗尽但已有候选时返回该空闲 slot，不伪报容量不足。获得最终候选后仍按目标 commit 恢复源码，历史状态仅用于调度，不作为源码正确性的证据。跨 PR 的增量收益依赖实际输入差异。
-5. 按目标 commit 的 ignore 规则清理非忽略的 untracked 文件。私有 checkout 的 `info/exclude` 额外保留 `.gradle/`、`build/`、`target/`，构建系统负责验证其任务输入与输出。在独立工作目录构建与分析；用 JGit 读取 commit tree 与 diff。
-6. 完成分析后释放 slot 租约，保留工作目录与构建状态，后续分析继续使用相同路径。checkout 准备失败时删除该 slot 的不完整目录并释放租约；本次导出的分析快照仍独立管理。
+4. 租用空闲 slot 中的一对持久 checkout；每个仓库最多使用 `RepositoryConfiguration.maximumWorkspaceSlots` 个 slot（默认 2），全部忙碌时可中断地等待 `workspaceLeaseTimeout`（默认 25 分钟），超时以 `WORKSPACE_CAPACITY_TIMEOUT` 诊断阻断分析，不产生代码变更 finding。`workspaceLeaseTimeout` 只计 commit 解析之后、checkout 之前获取空闲 slot 的等待时间，拿到 slot 即结束；不是无 activity 超时，也不限制 checkout 或 lease 持有时长。该预算只用于等待 checkout 租约，不是总分析超时；engine 不执行构建工具。较长分析或长队列可显式加大等待预算。通过 JGit `DirCacheCheckout` 恢复源码、索引和文件模式；内容偏离 commit 的 tracked 文件恢复原值，目标 commit 删除的文件移除。私有 checkout 的 attributes 配置关闭 filter、文本换行及 ident 转换；不运行 checkout hook。文件状态复用由 JGit 负责。
+   Slot 按同一缓存中的仓库身份共享，不绑定 PR，不缓存分析结论。对可成功获取非阻塞锁的既有 slot，优先选择完全相同的 base/head，其次选择相同 base 且 head 历史距离较近的候选；同级距离相等或无法判断时按 slot 序号确定顺序。每个 head 最多探索 256 个祖先集合内的提交（含自身），通过已观察到的共同祖先计算两侧距离之和；这是有界启发式，不承诺任意历史上的全局最近距离。已占用的 slot 跳过；没有可获取的既有 slot 时才启用空 slot。读取候选 checkout 的 HEAD 前持有其锁，选择期间最多暂持两个候选锁；时间预算耗尽但已有候选时返回该空闲 slot，不伪报容量不足。获得最终候选后仍按目标 commit 恢复源码，历史状态仅用于调度，不作为源码正确性的证据。历史 checkout 的复用只影响准备成本，不改变分析输入。
+5. 按目标 commit 的 ignore 规则清理非忽略的 untracked 文件。仅保留目标 revision 的 ignore 规则实际忽略的内容；不根据构建工具名称自行添加忽略规则。这些文件不能替代插件已导出的静态输入。用 JGit 读取 commit tree 与 diff，不在 checkout 中重新构建。
+6. 完成分析后释放 slot 租约，保留源码工作目录，后续分析继续使用相同路径。checkout 准备失败时删除该 slot 的不完整目录并释放租约；本次导出的分析快照仍独立管理。
 
 并发与恢复：
 
-- 影响共享仓库状态的 fetch 使用按仓库锁；等待 slot、独占 slot 的 checkout 准备和构建均不持有此锁。
+- 影响共享仓库状态的 fetch 使用按仓库锁；等待 slot、独占 slot 的 checkout 准备和分析均不持有此锁。
 - JVM 内 reservation 与操作系统 file lock 共同保证一个 slot 同时只有一个使用者；base/head 始终是独立目录。释放租约可在不同线程执行，清理不触及用户 checkout 或仍在使用的其他 slot。
 - 进程退出后操作系统释放 file lock，后续分析可重新租用并恢复 tracked 源码；这不等于验证过任意崩溃点的事务恢复。JGit index 锁残留等恢复异常必须阻断，不能使用未确认的源码。持久 slot 数量受配置上限限制；历史版本或调低上限前已存在的额外 slot 不再租用，但不会自动删除。目前没有磁盘配额或自动淘汰策略；共享 objects 回收必须同时考虑所有保留的 checkout。
 - submodule 和 Git LFS 尚未完整支持，检测到时阻断，不分析占位文件。
@@ -297,7 +305,7 @@ flowchart TD
 | 字段 | 初始值、属性和读写语义变化受控 | 所有可能读写者、常量内联使用者、初始化路径 |
 | 类声明 | 继承、接口、注解、可见性变化受控 | 实例化、动态分派、反射和框架使用 |
 | 新增/删除/移动成员 | 匹配两侧身份并证明使用与生命周期影响 | 两侧调用/引用、初始化、外部入口 |
-| 配置/资源/依赖/构建输入 | 对产物和运行行为的影响受控 | 生成代码、资源消费者、依赖解析及工具链 |
+| 配置/资源/依赖/构建输入 | 实际静态产物的变化受 control 约束 | 生成代码、资源消费者、依赖解析及工具链 |
 
 声明是组织分析的单位，不是最终定位的最小单位。一个方法中的多项修改保留各自 change ID 与表达式范围；相互作用的变化可组成联合证明义务，不能孤立证明后忽略组合效果。
 
@@ -307,7 +315,7 @@ flowchart TD
 
 分析从变更对象出发，在 base/head 两侧展开所需依赖，而不是仅在 head 查询引用：
 
-1. 反向查询调用者、字段使用者及入口，判断变化是否仍可能执行或被观察。
+1. 反向查询调用者、字段使用者及入口，建立 control 覆盖与静态比较所需的依赖；不能仅凭缺少调用者豁免变化。
 2. 查询控制依赖和 gate，确定指定假定对到达路径的影响。
 3. 前向查询调用目标、状态写入、返回值使用及异常影响，建立比较所需的行为范围。
 4. 纳入初始化、动态分派、框架和生成代码等隐式依赖；没有覆盖证据的边界明确标记未知。
@@ -318,7 +326,7 @@ flowchart TD
 
 ### 5.3 必须覆盖的反例
 
-**共享 helper 修改。** 从修改方法反向找调用者。如果能证明全部执行入口被折叠消除，允许通过；如果存在存活路径，比较其效果；如果存在未知框架调用，不能宣称不可达。
+**共享 helper 修改。** 从修改方法反向找调用者，要求同一输入中选定 control 的折叠证据证明相关路径被消除。原本就没有调用者不构成该证明；未被消除的修改继续参与静态表示比较。
 
 **字段常量修改。** `static final int LIMIT = 10` 改为 `20`，使用者的源码可能不变但字节码改变。不能仅依赖图中的字段引用，因为常量可能已内联。需要源码符号引用或编译来源信息补足依赖，检查重新编译后的使用者；无法建立完整使用范围时阻断。Finding 归属字段初始化的 diff。
 
@@ -332,23 +340,29 @@ flowchart TD
 
 ## 6. 构建与可比性
 
-引擎通过构建适配器在两个 checkout 构建 pre-minification 产物，并收集项目 class、运行所需依赖、生成代码、源码目录和编译设置。
+Gradle/Maven 插件从各自当前进程模型读取已产出的 JAR/WAR，导出各 revision 的不可变输入。engine 拥有 Git 操作与 diff，消费准备好的静态输入，不调用构建系统，也不从无关模块的编译目录合成应用图。
 
-当前已有 Gradle wrapper、Maven 以及约定 source-root 的 Java/Kotlin 编译适配；支持这些入口不意味着支持全部构建布局。仓库地址无法单独确定自定义构建命令；不支持或多义的布局仍应阻断。
+Gradle 与 Maven 插件直接使用当前构建模型，不根据仓库文件猜测构建命令或源码布局。源码关联来自 source sets、编译输出和所选归档的实际关系；无法提供映射时保留字节码并降低归因精度。
 
 两侧应使用可比的 JDK、编译器及构建配置。记录仓库 wrapper、插件、依赖解析结果和其他影响产物的输入；构建成功不等于产物可比。
 
 - 独立工作目录隔离生成文件与构建输出。
 - 可以复用构建系统的依赖下载缓存，但不能复用没有输入身份校验的产物。
 - 工具链或依赖发生变化时必须覆盖其影响，首版无法证明则阻断；不能静默将其归一化。
-- 如使用 Gradle plugin 运行 GraphFold，内部构建不得再次触发同一个 GraphFold task，避免递归。
+- 插件只读取正常生命周期已经产生的输入，engine 不启动嵌套构建。
 - 相同输入若出现无法解释的产物漂移，视为不可比，不能随机选择一次结果通过。
 
 ### 6.1 非源码变更按实际生产产物证明
 
-不使用 README、`docs/`、`.github/` 或文件扩展名白名单。所有非 Java/Kotlin diff 保留为 `BUILD_INPUT_CHANGED` 义务，两侧构建完成后以实际输出决定是否需要继续分析。README 被生成器读取、CI 文件被打包、翻译文件来自自定义目录，都适用相同流程。
+分析输入是构建模型选定的 JAR/WAR，而不是各模块编译目录的合并。Gradle 插件优先读取启用的 `bootJar`、`war` 或 application 项目的 `jar`；没有这些产物时读取 `runtimeElements` 声明的生产 JAR。Maven 插件读取当前项目的已打包 artifact 和已解析依赖；reactor 信息仅用于关联实际依赖中的生产者。每个选定归档独立形成静态范围，库 JAR 同样有效，不要求可执行或具有 `Main-Class`。普通 JAR 读取根目录中的类和明确声明的依赖，Spring Boot JAR 读取 `BOOT-INF/classes` 与 `BOOT-INF/lib`，WAR 读取 `WEB-INF/classes` 与 `WEB-INF/lib`。构建声明的 `provided` / `compileOnly` 依赖只补充对应应用的外部类型信息，不冒充打包的应用代码。
 
-构建适配器导出 `ProductionInventory`：应用 class、处理后的资源、按模块及顺序记录的 runtime classpath、实际生产包。清单的键使用逻辑位置及相对路径，值为内容摘要；ZIP 时间戳、压缩参数及条目排列不参与比较。资源、manifest、依赖内容、classpath 顺序与模块边界保留。只有 JVM 路径和内容均匹配已建图应用 class 的条目才能从非 class 清单移除，未知或被打包插件转换的 class 仍保留，不能冒充已被 Graphite 证明。Kotlin 编译来源标记含 checkout 绝对路径，不能把该工具注入的路径差异当成生产变化。原始字节不一致时，先完成两侧 provenance 校验，再仅移除保留的 `SourceOrigin` 注解比较 class；不改用户字符串、其他注解、方法体或 owner 名称。这一步与原始 class 装载位置及非 class 清单共同成立，才允许输出未改变的结论。两侧共有应用 class 的资源/classpath/归档位置另行比较，防止编译结果相同但打包时删除或移动 class 被误放行；真正新增或删除的 class 继续由可达性和图比较判断。
+静态分析不要求安装 Tomcat，不验证 JVM 启动参数、容器版本或启动脚本。无法确定的字节码、类型或调用关系应保留相应分析缺口；不能把“能否启动”设为分析准入条件。输入选择存在歧义时应明确要求选择产物，不能用模块合并图替代。
+
+无法读取、缺失或损坏的选定归档由适配层拒绝，当前仓库适配器返回准备失败报告，不调用引擎分析该请求。源码映射缺失不属于归档准备失败：保留原始字节码继续建图和折叠，按证据完整性决定归因精度及 verdict。输入范围增删则由引擎以实际内容对空输入比较，不等同于准备失败。
+
+不使用 README、`docs/`、`.github/` 或文件扩展名白名单。只有两侧存在的路径均属于选定输入的生产源码根的 Java/Kotlin diff 才进入声明级证明；测试、构建脚本及未归属的 Java/Kotlin 文件与其他输入一起保留为 `BUILD_INPUT_CHANGED` 义务。源码归属来自构建声明，不按目录名豁免。两侧构建完成后以实际输出决定是否需要继续分析。README 被生成器读取、CI 文件被打包、翻译文件来自自定义目录，都适用相同流程。
+
+各入口通过 engine 静态输入格式建立 `ContentInventory`：选定产物的 class、资源、依赖内容及解析顺序。键使用稳定的输入范围和相对路径，值为内容摘要；归档时间戳和压缩参数不是业务变更。只有路径和内容均匹配已建图应用 class 的条目，才可由源码声明证明覆盖。打包改写、生成内容、缺失或移动的 class 必须保留证明义务。编译来源校验完成后，仅规范化工具注入的来源标记；不改写用户字符串、注解、方法体或 JVM 身份。摘要只能证明输入内容变化，不能证明启动兼容性或运行时行为。
 
 | 构建证据 | 处理 | verdict reason / diagnostic |
 | --- | --- | --- |
@@ -356,10 +370,11 @@ flowchart TD
 | 已有 properties 资源的 key/value 不同 | 若每个变化 key 在 base/head 折叠图均没有存活 reader，且其他产物一致，则通过；否则阻断 | `FOLDED_EQUIVALENT` / `PRODUCTION_OUTPUT_CHANGED` |
 | 其他资源、包内非 class 内容或运行时依赖不同 | 未被资源模型证明的变化阻断，并列出实际变化的输出条目 | `PRODUCTION_OUTPUT_CHANGED` |
 | 非 class 清单一致，但 class 不同或同时修改源码 | 完成来源校验和 Graphite 分析，在每个场景下比较整个已建模生产程序；源码 diff 同时保留声明级义务 | 成功为 `FOLDED_EQUIVALENT` |
-| 折叠后仍有程序差异，无法归因给某个非源码输入 | 保留该输入义务为未证明；不把生成文件或未改文件伪造成 finding | `UNVERIFIED_BUILD_INPUT` |
+| 来源已验证、比较完整且折叠后仍有 class 差异 | 报告存活的生产代码差异；不把生成文件或未改文件伪造成源码 finding | `SURVIVING_DIFFERENCE` / `PRODUCTION_OUTPUT_CHANGED` |
+| class 比较存在差异或缺口且不能建立完整证据 | 保留输入义务为未证明，不猜测源码归因 | `ANALYSIS_INCOMPLETE` / `UNVERIFIED_BUILD_INPUT` |
 | 任一侧未建立完整生产清单 | 明确报告缺少构建范围证据；不能仅凭扩展名放行或声称业务违规 | `PRODUCTION_INVENTORY_UNAVAILABLE` |
 
-例如 README 和受控 Java 修改同时出现，且资源、运行时依赖及折叠后的程序均一致，可以通过。若 Java 留下差异，其 finding 仍定位到 Java diff；README 的影响没有独立因果证明时只记录分析缺口。当前不执行反事实构建来分别隔离每个输入的贡献，因此混合 PR 可能有保守的未证明 reason。
+例如 README 和受控 Java 修改同时出现，且资源、运行时依赖及折叠后的程序均一致，可以通过。若 Java 留下差异，其 finding 仍定位到 Java diff；完整且来源已验证的 class 比较同时为输入义务记录 `SURVIVING_DIFFERENCE`，不声称差异由 README 单独引起。当前不执行反事实构建来隔离每个输入的贡献；确有证据缺口时保留 `ANALYSIS_INCOMPLETE`。
 
 **资源 key 证明的范围。** 当前支持由构建适配器导出的既有 ASCII `.properties` 文件（包括 Java Unicode 转义）。直接从折叠后 IR 提取 `ResourceBundle.getBundle(String)` 与 `getString` / `getObject` / `getStringArray` / `containsKey` 的常量 bundle 和 key。局部 bundle 必须有唯一直接定义；locale 子资源按照 basename 归属保守匹配。新增 key 只有折叠掉的 reader 使用时可通过；控制路径读取的 key 改值或删除仍阻断。资源输出与 runtime 目录/JAR/生产包内副本必须路径及字节均匹配，才允许将这些副本的内容差异交给 key 证明；布局、文件存在性、未匹配副本及其他内容仍比较。
 
@@ -371,13 +386,15 @@ flowchart TD
 
 应用中的未建模语义注解（含字段、参数和类型注解）可能引入配置注入或框架拦截，因此也使资源消费者范围保持未知；精确的编译器标记和 GraphFold 来源注解除外。无关依赖类的注解不会据此污染整个应用。原始文件/流读取、未建模 JDK 调用、非 ASCII 编码、重复路径内容冲突和增删整个 bundle 文件继续保守阻断。包内 `BOOT-INF/classes/` 等前缀也不会被猜测成 classloader 映射，只按实际资源路径匹配。此版不宣称覆盖 Spring 配置绑定、任意 Properties 流处理、Android `R.*`、自定义 ResourceBundle 控制器或框架隐式资源发现。即使资源证明失败，混合 PR 的源码义务仍继续分析，保留源码 diff finding 及 reason；不会因资源缺口提前丢弃源码证据。
 
-依赖资源分析仅在需要它的非源码证明中启用。应用身份由应用清单界定，依赖体范围通过 `DependencyBodyScope.Declared(artifacts = listOf("*"))` 独立声明，当前仍 eager 展开提供的依赖。Graphite 已提供 `Reachable` 范围与预算证据，但 GraphFold 暂不切换：应用继承的 API、对外暴露的静态字段及其初始化可能没有普通调用点，必须先证明这些隐式入口也纳入展开。目录依赖单独暂存为确定性 JAR，避免与应用 loose classes 合并；编号按依赖数量补零，保留 Graphite 按路径排序时的 classpath 顺序。
+生产源码也可能驱动生成类、资源或其他应用的打包内容。因此，已知选定产物内容发生变化时还需整体验证；声明级证明不能替代产物证明。产物未变化的快捷证明仍需完成编译来源校验。
 
-资源方法快照与图来自同一次 `loadObserved` 调用。observer 不需要把依赖提升为 application，也不需要第二张捕获图；返回的 final completeness 和 method receipts 共同约束快照使用。方法/dispatch 缺口按所属调用和资源效果传播；缺少 completeness、类解析失败、重复定义或不支持的 multi-release 布局仍可能产生全局阻断。multi-release 仅有版本化模块描述符时，须独立检查实际 archive：versioned class 必须是合法、无 service provider 的 `module-info.class`，并拒绝可执行类变体、损坏或重复条目及嵌套归档。该例外只消除模块元数据引起的 class-variant 缺口，不证明其他资源、module 或运行时布局安全。历史能力探针与端到端回归见 [依赖分析记录](research/dependencies/README.md)，新版本验收另行记录。按需展开、跨分析缓存和上下文精度仍是 GraphFold 后续工作；observer-enabled 代表性多图性能尚未验收。
+依赖资源分析仅在产物证明需要它时启用。应用身份由应用清单界定，依赖体范围通过 `DependencyBodyScope.Declared(artifacts = listOf("*"))` 独立声明，当前仍 eager 展开提供的依赖。Graphite 已提供 `Reachable` 范围与预算证据，但 GraphFold 暂不切换：应用继承的 API、对外暴露的静态字段及其初始化可能没有普通调用点，必须先证明这些隐式入口也纳入展开。目录依赖单独暂存为确定性 JAR，避免与应用 loose classes 合并；编号按依赖数量补零，保留 Graphite 按路径排序时的 classpath 顺序。
 
-**适配范围。** Gradle 执行生产 `main` 输出及 `runtimeElements` 出站 artifact 的依赖任务，导出各项目实际 runtime classpath（包含应用输出）和 source-set 输出。发现额外可消费的 Java runtime variant 时，保留主源码分析，但不声明生产清单完整。Maven 使用 effective reactor 模型、单次 reactor 构建内独立导出的 runtime scope classpath，以及约定 JAR/package 输出；分析注入的 POM 仅在清单副本中还原为原 POM，真实构建输出保持可复用。自定义 Maven packaging、无法确定的资源映射或未支持的插件组合不宣称清单完整。source-only 编译器没有资源与打包模型，非源码 diff 会报告缺少生产清单。
+资源方法快照与图来自同一次 `loadObserved` 调用。observer 不需要把依赖提升为 application，也不需要第二张捕获图；返回的 final completeness 和 method receipts 共同约束快照使用。方法/dispatch 缺口按所属调用和资源效果传播；缺少 completeness、类解析失败、重复定义或不支持的 multi-release 布局仍可能产生全局阻断。multi-release JAR 按集成提供的实际构建 JDK 选择单一视图，BASE 与 HEAD 分别保留自己的构建版本；仅检查选中视图的字节码和模块描述符，不展开其他 JDK 版本。历史能力探针与端到端回归见 [依赖分析记录](research/dependencies/README.md)，新版本验收另行记录。按需展开、跨分析缓存和上下文精度仍是 GraphFold 后续工作；observer-enabled 代表性多图性能尚未验收。
 
-**增量与局限。** 不禁用增量编译或任务缓存；复用 checkout 时必须验证删除资源不会残留。Maven 对受支持的资源复制保存输入、目标和输出 hash，只有旧输入已删除且目标仍匹配所有权记录时才清理旧资源，不能删除任意生成输出。这个证明覆盖适配器明确导出的生产范围，不覆盖仓库外部署步骤、未声明的运行时文件读取、容器构建或外部 CI 发布逻辑。Gradle `runtimeElements` 未声明的自定义部署任务需要独立适配；不能把清单一致解释为所有部署环境的行为等价。完整清单哈希有额外 I/O 成本，尚无代表性多图负载的性能验收。
+**适配范围。** Gradle plugin 通过实际 source set、编译任务及归档任务提供字节码、依赖和源码映射。Maven plugin 从 MavenProject/MavenSession 提供同类证据。两个入口最终提供两版准备好的静态输入、可选来源证据及 fold；diff 由 engine 从 Git commit tree 生成，调用方不指定或删减 diff。Engine 不执行构建或解析应用打包布局，也不要求可执行入口、启动脚本或容器安装。选定 JAR/WAR 中不存在的类不能从编译目录补入；缺失证据保留为输入或分析缺口。
+
+**增量与局限。** 适配层可以复用增量编译和任务缓存，但必须校验内容身份、源码映射及删除输入的残留。摘要一致仅说明适配器提供的静态输入一致，不授权忽略未经 control 覆盖的生产源码变化，不代表所有运行环境下的行为等价。
 
 ## 7. Graphite 能力基线与当前接入
 
@@ -455,7 +472,7 @@ flowchart TD
 
 节点 ID 仅在对应场景/revision 的图内有意义，不能跨版本 join，也不替代 finding 的精确 diff 坐标。非 Cypher 的 `CALL_SITE_MATCH` 规则同样记录原始图上的候选调用点；为此无来源归一化路径也需要物化未折叠图，尚未完成代表性多图负载性能验收。
 
-默认 `[graphfold.fold]` 日志仅输出每个 scenario/revision/rule 的选择状态、选点数与匹配数，未知计数显示 `unknown`。文本报告包含摘要，CLI 文本模式不再向 stderr 重复输出；JSON 模式将摘要写入 stderr，stdout 保持单一完整 JSON 报告。CLI `--verbose` 用完整审计 JSON 替代 stderr 摘要；Gradle 在 lifecycle 级别输出摘要，仅在 info 级别启用时序列化并输出完整节点清单。JSON 报告始终保留全部 `ruleAudits`，文本报告和默认日志大小不再随选点数量增长。
+默认 `[graphfold.fold]` 日志仅输出每个 scenario/revision/rule 的选择状态、选点数与匹配数，未知计数显示 `unknown`。文本报告包含摘要；Gradle 在 lifecycle 级别输出摘要，仅在 info 级别启用时序列化并输出完整节点清单。JSON 报告始终保留全部 `ruleAudits`，文本报告和默认日志大小不再随选点数量增长。
 
 ### 8.1 折叠语义
 
@@ -528,7 +545,7 @@ SSA、内存依赖和别名分析是提高精度的候选手段，不是声称�
 
 源码证明可用独立的 dispatch coverage 论证免除单个 `dispatchOnly` 缺口：实际比较闭包之外的所有应用方法，其未经过成员对齐或比较规范化的 folded canonical 必须未变；全局类/字段声明、入口、初始化、override 及来源/嵌套元数据必须一致，compiler provenance 已验证，且不存在 alignment 或 normalization 擦除的差异。闭包之内的方法仍须逐项完成比较。这样证明的是遗漏的 dispatch edge 不会隐藏闭包外另一项应用实现变化，不是已经穷尽未知调用目标。body 提取失败、recovery、opaque observation 及其他 gap 不由此免除；资源效果证明和选点完整性检查也不使用此例外，`resourceEffectModeled` 本身不能授权源码证明。
 
-另有两个独立且用途不同的论证。第一，扫描全部已提供应用／依赖 class header 和所需 JDK 祖先声明；只有完整、无重复、无循环、无缺失祖先的输入集合，才能证明某个具体应用类没有任何子类型；没有 superclass 的普通 class 和覆盖运行中 JDK 类型的输入定义均拒绝该证明。调用必须是折叠后 body 中实际存活的 direct call，且目标方法由该非抽象、非接口应用类直接声明；派生 target、继承方法和未检查布局不能借用此证明。该 leaf-owner 证明只消除这一个调用的 dispatch 不确定性，不消除目标 body、recovery、资源效果或来源观察缺口，也不参与 Cypher 选点。它依赖封闭的构建输入集合；运行时生成／加载的新子类仍属于未建模能力边界，不能声称已被 class header 扫描排除。
+另有两个独立且用途不同的论证。第一，扫描全部已提供应用／依赖 class header 和所需 JDK 祖先声明；只有完整、无重复、无循环、无缺失祖先的输入集合，才能证明某个具体应用类没有任何子类型；没有 superclass 的普通 class 和覆盖运行中 JDK 类型的输入定义均拒绝该证明。调用必须是折叠后 body 中实际存活的 direct call，且目标方法由该非抽象、非接口应用类直接声明；派生 target、继承方法和未检查布局不能借用此证明。该 leaf-owner 证明只消除这一个调用的 dispatch 不确定性，不消除目标 body、recovery、资源效果或来源观察缺口，也不参与 Cypher 选点。它依赖封闭的构建输入集合；运行时生成／加载的新子类仍属于未建模能力边界，不能声称已被 class header 扫描排除。 启用 Spring Boot／Tomcat 生命周期模型时，禁用非 final 应用类的 leaf 推断；仅保留 JVM 保证不可覆盖的 static／private／final 方法和 final 具体类声明的独立证据，避免把 CGLIB 等运行时子类误当成不存在。
 
 第二，当当前 diff 义务自己的方法已有存活表示差异，并且在既定入口／初始化／构造对象模型下，不经过剩余未知 dispatch 边即可到达，或当前 CLASS 义务 owner 自己的初始化依赖边发生变化，且该 owner 在包含新增／删除边的同一版本可独立到达时，该义务已经比较失败。METHOD 义务还有一个精确的初始化特例：实际字节码证明该接口非 abstract、非 static 方法（包括 private 方法）的集合从空变为仅包含当前义务的方法，或反向移除；两侧 class shape 完全一致，并且同一版本独立到达的类新增／删除了该接口初始化依赖。这覆盖无需调用这些接口方法就能激活接口静态初始化的 JVM 语义。已有触发方法的 body／metadata 修改、static／abstract 方法、一次新增多个触发方法或同时改变类层次时，不借用此证明。新增／删除字段也可以提供独立差异：字段必须只存在于一侧，并且在字段存在的同一版本中独立到达的已变更方法，保留至少一次该字段引用，而且引用次数与另一版本不同；源码字段以精确 owner＋名称连接到两版本联合清单中的唯一 JVM 字段描述符；同名多 descriptor 或 descriptor 改变不使用此证明。未使用字段、只在未知 dispatch 后到达的写入、仅修改现有字段或无关方法差异都不能借用这个证明。未穷尽的调用目标不能消除这个独立差异，报告以 `SURVIVING_DIFFERENCE` 解释 FAIL；不会把另一个义务的差异借给本义务，也不会因此产生 PASS。为避免借用 partial dispatch 的派生 target，独立 witness 可达性不沿带有任何剩余 dispatch 缺口的方法的出边传播。未知目标证据仍保留于快照；body/recovery、未验证 provenance、归一化擦除和资源证明继续使用原有阻断规则。这是表示差异证据，不是对任意 JVM 行为不等价的确认。
 
@@ -538,9 +555,9 @@ Kotlin 的 class 级源码范围只在文件内所有 emitted owner 都能通过
 
 ### 9.3 可达性与方法增删
 
-方法体等价与方法是否可执行是两个维度。
+比较对象是生产代码变更及其 control 覆盖，不以是否执行作为准入条件。
 
-- 已修改方法若在折叠后仍可能执行，比较其存活行为。
+- 已修改方法即使未被调用，也比较其折叠后的静态表示。
 - 若能证明仅从被折叠路径可达，允许其变化被消除。
 - 新增方法不能因为没有调用点就通过；删除方法也不能仅因缺少图节点就被忽略。
 - Java backend 的框架入口包括 controller、listener、scheduled job 等；反射、动态加载和框架代理需要明确边界。
@@ -575,7 +592,7 @@ Java 源码定位为首版重点。其他 JVM 语言、注解生成代码、无�
                  Git 变更清单
 ```
 
-源码适配器负责声明、表达式及物理文本范围；Graphite/Jimple 负责字节码行为分析。源码语法视图不作为行为等价判据。位置来自原始文件范围，不从合成声明或字节码行表猜测列号。UAST 的历史运行时和定位评估见 [调研记录](research/uast/evaluation.md)。
+源码适配器负责声明、表达式及物理文本范围；Graphite/Jimple 负责字节码行为分析。源码语法视图不单独作为 control coverage 判据。位置来自原始文件范围，不从合成声明或字节码行表猜测列号。UAST 的历史运行时和定位评估见 [调研记录](research/uast/evaluation.md)。
 
 现有源码适配器仍须结合实际编译产物，持续建设和验证以下来源关联：
 
@@ -629,23 +646,29 @@ headless Kotlin PSI 已通过实际编译及定位测试，使用只读 token �
   → typed 字节码/metadata 归一化 → Graphite 折叠与比较
 ```
 
-**编译记录。** javac 在 attribution 后读取 `Elements.getBinaryName`，并用生成事件确认输出；Kotlin 插件从实际 JVM class generation 读取 emitted owner 与 IR 源码范围。inline 复制通过 provenance 身份绑定的临时不可见 annotation 传播定义来源。编译完成后写入 sidecar；直接编译、Gradle 和 Maven 适配器都接入该插件。Gradle 保留项目的增量编译与 build cache 配置，不设置 `incremental=false`、强制执行或禁止缓存。编译插件的内容摘要作为稳定 provenance 身份，插件路径直接指向同版本依赖 JAR；每个编译 task 在自己的 `build/graphfold/origins/<task>/` 中保存声明的输出。增量编译产生的 owner 覆盖旧记录，未重编译的 owner 必须同时通过源码 hash 与 class hash 校验；已删除 class 的记录被移除。编译成功后再发布完整 manifest；失败或缺失的记录不能通过旧 manifest 放行。`UP-TO-DATE` 和 `FROM-CACHE` 的 classes 与 provenance 一起接受校验，再导出到本次分析的独立目录。Maven 使用临时配置覆盖并在 finally 恢复 POM。
+**编译记录与当前接入边界。** gfc 是可选的编译来源提供器。javac 在 attribution 后读取 `Elements.getBinaryName`，并用生成事件确认输出；Kotlin 插件从实际 JVM class generation 读取 emitted owner 与 IR 源码范围。inline 复制通过 provenance 身份绑定的不可见 annotation 传播定义来源，编译完成后写入 sidecar。编译器来源采集能力与构建插件是否导出这些记录是两项不同的能力。
 
-Kotlin inline 副本还依赖定义的物理源码身份：只在定义前增加空行时，KGP 可能认为 inline 语义未变，不重编译调用方，但旧副本的来源 hash／offset 已过期。因此为每个 Kotlin 编译 task 增加 `inlineSources` 插件参数，覆盖本 task，以及逐层遍历各项目自身 compile classpath 得到的项目依赖闭包中的 inline 来源文件；这包括调用方 classpath 不直接暴露的 `implementation` 依赖。这些文件的路径／内容摘要变化时，由 Gradle/KGP 的正常输入失效机制重编译受影响的 task；其它普通源码编辑保持增量编译，无关项目继续 UP-TO-DATE。识别采用保守的 `inline` token 筛选、文件粒度 hash，包含该 token 的注释／字符串或同文件其它声明的编辑也可能多触发一次受影响 task 的重编译；不会靠猜测偏移修补旧来源记录。
+当前 `plugin/gradle` 读取同一次构建的项目、source sets、归档 task、编译输出及解析后的依赖；`graphFoldInputs` 依赖正常归档生产任务并导出不可变快照。`plugin/maven` 的 goal 读取当前 `MavenProject`、`MavenSession`、已打包产物、源码根和已解析依赖。它不重写 POM、不生成 init script、不运行外部构建、不清理 reactor 的输出目录，也不把所有 reactor 模块合并成一张图。BASE 和 HEAD 必须分别在各自的正常构建中导出，engine 只通过 Git 取得两端源码与 diff，再分析各自的快照。
 
-当前 Gradle compiler arguments 含 checkout 内的绝对路径，build cache 按 checkout 路径隔离；支持同一路径的增量、up-to-date 与缓存恢复，不承诺跨目录或跨机器缓存命中。Kotlin marker 中仍保存物理源码路径，不能直接把其它 checkout 的 sidecar 当作本地来源。编译输出正确性与大仓库性能是不同的验收项目；后者仍需代表性的多图负载测量。
+这两个插件目前不会自动注入 gfc 或导出其来源 manifest。输入 API 接受可选的 `originDirectory`、`originRunId` 和 `compilerEvidence`；提供者必须保证记录对应实际编译输出。缺失可选来源记录时仍保留原始字节码建图和折叠，不能声称已获得编译器级匿名对象或 inline 副本归因。项目自身的编译器配置、增量编译和缓存复用仍由构建系统负责；不能把旧适配器的 sidecar 合并、缓存恢复或 inline 输入失效策略描述为当前插件的保证。
 
-Maven 同样保留项目配置的增量编译；配置未变且上次构建完整时，不强制 `useIncrementalCompilation=false` 或执行 `clean`。checkout 的 `target/graphfold/maven/` 保存稳定 provider、来源快照与编译器输出清单。javac 的 GENERATE 事件以及 Kotlin 实际输出消息记录 class 的 owner 与物理输入文件，独立于匿名对象的源码范围；不能从 `SourceFile` 或生成类名反推删除归属。增量结果合并后校验源码与 class hash，删除源码或重编译后消失的 owner 只清理先前编译器明确记录且 hash 未变化的输出；Kotlin 对应的增量 class 缓存也必须核对。未归属的 class、混合来源的部分删除、来源或字节码过期均阻断。Maven 的 effective POM／provider 身份改变、首次接管未验证的输出或上次构建未完成时，自动删除当前 reactor 各模块的 `target/` 并重新构建，成功后恢复增量复用；不会因旧身份永久阻塞持久化 slot。reactor 由 effective POM 的已激活模块声明递归解析，不扫描 fixture/example POM；生产源码只从这些模块的约定根目录导出，source-only 模式也只编译仓库根目录的约定源码。保留 `-DskipTests` 并编译测试源码，以支持 reactor 的 test-jar 依赖；测试 class 不导入分析结果；测试编译 execution 使用独立 `test-origins/`，避免相同 FQCN／匿名 owner 覆盖生产来源。混合 compile 与 test-compile goal 的单一 execution 明确阻断。Kotlin Maven 2.1.20 的跨文件 inline 物理位置变化已验证由原生增量编译刷新副本的 hash 与 offset；没有照搬 Gradle 的参数失效策略，其它编译器／依赖组合仍需单独验证，未刷新的副本由 hash 校验阻断。
+独立 CLI 和 source-only 构建入口已移除。测试中的直接 javac/kotlinc fixture 编译器用于验证 gfc 与引擎契约，不属于 engine 的生产构建能力。旧构建适配器的编译与增量验证属于历史证据，见 [编译器验证记录](research/compiler/README.md) 和 [验证记录](validation.md)，不替代当前原生插件的接入验证。
 
-**校验。** 引擎检查成功构建的 runId、schema、完成标记、源码 hash、文件归属、范围、实际 class 和 Kotlin marker，并将编译范围与 AST 表达式精确匹配。找不到、重复或过期的记录产生 `UNVERIFIED_ORIGIN`，不能变成 PASS。Kotlin 编译器会折叠 CRLF 并去掉开头 BOM，provider 先将 IR 偏移转换回原始 UTF16 边界；inline marker 中的物理坐标不再转换。headless PSI 使用保持文本长度的输入预处理，token 与报告坐标仍取原文。sidecar 范围使用从零开始、末端不包含的 UTF16 offset；报告仍保留 diff 的文件与一基起止行列。来源绑定不依赖 SourceFile/LineNumberTable；普通 Kotlin 方法的现有索引仍有自己的调试信息限制。
+**校验。** 对已声明的编译来源证据，引擎检查 runId、schema、完成标记、源码 hash、文件归属、范围、实际 class 和 Kotlin marker，并将编译范围与 AST 表达式精确匹配。该证据缺失、重复或过期时产生 `UNVERIFIED_ORIGIN`；这与调用者完全不提供可选来源映射不同。Kotlin 编译器会折叠 CRLF 并去掉开头 BOM，provider 先将 IR 偏移转换回原始 UTF16 边界；inline marker 中的物理坐标不再转换。headless PSI 使用保持文本长度的输入预处理，token 与报告坐标仍取原文。sidecar 范围使用从零开始、末端不包含的 UTF16 offset；报告仍保留 diff 的文件与一基起止行列。来源绑定不依赖 SourceFile/LineNumberTable；普通 Kotlin 方法的现有索引仍有自己的调试信息限制。
 
 Java 方法参数、返回值与构造参数的 descriptor 由已解析类型的声明包含关系构造 JVM binary name，并处理数组和泛型擦除；不能直接把源码限定名中的 `.` 全部换成 `/`，否则嵌套 enum 等类型会与实际字节码脱节。测试分别以源码、class 目录和依赖 JAR 解析，并与真实 javac 产物对照。
 
-**多模块产物重叠边界。** Gradle 的 compile classpath 可能引用同一项目的 JAR variant，而合并的应用 classes 已包含该项目输出。GraphFold 在来源归一化之前，先按 `ARTIFACT` 导出的实际项目产物路径识别候选 JAR，再验证其中非空 class 集合的每个条目都与合并输出具有相同路径和相同字节；只有完全匹配才从图的依赖列表排除，并保留其余依赖顺序。原始 production/runtime inventory 不变，资源、manifest 和 class placement 仍参加比较。外部同内容 JAR、含独有或改写 class 的 shaded JAR、嵌套归档、重定位/版本化条目、manifest Class-Path 或异常布局均不满足证明（`META-INF/`、`BOOT-INF/`、`WEB-INF/` 下的 class 即使两侧路径和字节均匹配，也显式保留），保留后仍可能因重复 identity 阻断；不能静默丢弃未知 class 或忽略重复方法。真实多模块 JAR variant fixture 同时覆盖源码与资源的受控/未受控变更，并验证资源分析不会重新加入已经证明重复的普通项目 JAR。
+**静态输入与源码溯源边界。** 每张图对应一个明确的静态输入范围。适配层根据实际选定归档及该输入的依赖规则准备有效字节码；Engine 不解释部署或启动配置。源码映射由编译来源证据和归档内字节身份共同验证。打包替换或重定位的字节码不能继承未经验证的来源关系。未属于该输入的其他模块输出不得进入图。
+
+**静态输入范围与证明边界。** 新增／删除静态输入范围以其实际内容与另一侧的空输入比较，不能用范围成员变化本身代替 control 覆盖判断。交集中的范围继续独立建图、折叠和比较。源码未归属或映射不完整影响归因与 verdict 精度，不得阻止实际字节码建图和 control 折叠；未证明的部分保留明确诊断。无法读取或损坏的归档由适配层在调用 Engine 前拒绝；可读取但缺少静态类型或调用证据的输入由 Engine 分析并报告证据缺口。不得以删除类的方式伪造输入完整性。
+
+共享依赖的分析副本由适配层按单次请求缓存。缓存键保留内容 hash、规范化规则、依赖顺序、遮蔽关系以及相关应用字节身份。缓存命中不能丢失任何输入完整性证据。Engine 接收已经完成依赖规范化的静态输入。
+
+外部方法的“当前执行不观察应用”证明与“不会保留引用供以后观察”证明分别计算。应用对象进入外部调用时，需要同时证明后者，才可消除逃逸诊断；引用字段／数组写入、引用返回及异常抛出保守地保留阻断。类初始化循环中的暂定结论只在整个根查询成功后保留，失败时清除该遍历产生的缓存结论，避免先后查询顺序改变证明结果。
 
 **生成类分类。** Java 的 `ACC_SYNTHETIC` enum-switch holder 不是源码匿名对象，不要求匿名表达式来源，但仍保留在编译 owner 清单和分析图中。Kotlin callable/property reference 的实际 backend origin 分别作为声明处理，真实 object literal 仍要求匿名来源。对库 inline 生成且没有 checkout IR 的类，只在实际输出具有唯一 Kotlin synthetic metadata（`k=3`）、`EnclosingMethod` 精确指向本次编译且来源已验证的声明方法时接受其生成类别。class 字节来自编译器明确报告的本次输出路径，不扫描旧输出目录；存在冲突 marker、不完整 emission、无法验证的 enclosing method 或来自外部库的普通匿名 object（`k=1`）时仍阻断。此分类不虚构物理匿名表达式，不按生成名称或 body hash 配对；这些类保留实际 JVM 身份，编号变化仍可能导致保守差异。
 
-**来源失败后的部分分析。** 缺失、过期或歧义来源仍产生 blocking `UNVERIFIED_ORIGIN`；但不再因此提前跳过整个图分析。引擎从原始编译输出创建隔离副本，仅删除 GraphFold 私有 marker，保留原始 JVM 名称、指令和 metadata，并继续 Cypher 选点、diff 义务与表示比较。失败情况下不使用部分来源归一化，也不声称任何依赖该比较的义务已被证明；比较携带 `ANALYSIS_INCOMPLETE`，最终仍为 FAIL。发现的差异定位到本次 diff，并明确标记为基于原始 JVM 身份的未验证表示差异，因为匿名类重编号也可能产生这种差异。这使独立修改仍可见，同时不把来源缺口降级为安全证明；尚未实现把来源失败精确收窄到特定义务的影响闭包。
+**可选来源与无效来源证据。** 未声明源码来源证据的静态输入可以直接比较原始 JVM 身份并执行 control 折叠；缺少映射不会自动阻断，完整静态证据仍可证明受控，但不能虚构源码位置。已声明却缺失、过期或歧义的来源证据产生 blocking `UNVERIFIED_ORIGIN`；同样不提前跳过整个图分析。引擎从已准备的实际应用字节码创建隔离副本，仅删除 GraphFold 私有 marker，保留原始 JVM 名称、指令和 metadata，并继续 Cypher 选点、diff 义务与表示比较。失败情况下不使用部分来源归一化，也不声称任何依赖该比较的义务已被证明；比较携带 `ANALYSIS_INCOMPLETE`，最终仍为 FAIL。发现的差异定位到本次 diff，并明确标记为基于原始 JVM 身份的未验证表示差异，因为匿名类重编号也可能产生这种差异。这使独立修改仍可见，同时不把来源缺口降级为安全证明；尚未实现把来源失败精确收窄到特定义务的影响闭包。
 
 **跨版本配对。** 文件对应关系（包括 Git rename）、命名声明、匿名父表达式和 AST 上下文共同约束候选。唯一上下文可以绑定内容发生改变的对象；在同一命名作用域内，唯一的未变表达式可辅助识别上下文移动。结构相同不是单独的身份依据。重复同形表达式无法区分时阻断，不按出现顺序配对。一个定义被 inline 成多个类时，定义范围本身不够；仅当真实字节码的分配调用方上下文可唯一地区分副本才配对。同一调用方法内的多个不可区分副本仍阻断，不能把多个 emitted owner 合并成一个类。实际 `InnerClasses`/`EnclosingMethod` 关系用于嵌套依赖，不再以 `$` 名称前缀推断。匿名类 body 内的改动可以建立类义务；allocation 的构造参数可能在调用方执行（Java fixture 已验证），不能因整个表达式绑定到类而遗漏参数变化。参数区保留外层义务及其构造调用依赖；Kotlin 的实际 lowering 可能将表达式放进生成构造器，不能照搬 Java 的字节码假设。
 
@@ -675,44 +698,33 @@ Java 方法参数、返回值与构造参数的 descriptor 由已解析类型的
 
 缺口是否影响结论本身需要依据。方法级缺口结合折叠后可达性、义务闭包、调用方和已界定的观察 owner 判定；普通可达方法在没有被归一化隐藏的差异时，不再因无关方法中的未知对象逃逸而阻断。字段/类义务、不可达 private callback、全程序资源证明及实际归一化差异仍保留全局观察范围。只有证明与本次变化和证明依赖无关，才能不阻断。
 
-## 12. CLI 与 Gradle plugin
+## 12. 原生构建插件
 
-### 12.1 CLI
+GraphFold 通过 Gradle 与 Maven 插件接入正常构建，没有独立 CLI 或应用分发包。两个插件共享 engine 的公开准备输入 API，不向 engine 传入构建命令。
 
-当前 CLI 形式：
+release 构建通过 `-Pversion` 指定版本；开发构建使用 `baseVersion` 加 JGit 读取的 HEAD 前 12 位 SHA。各模块发布版本一致；插件目录与 Gradle 项目路径调整不改变 Maven artifact ID。
 
-```sh
-graphfold --repository <url> --base <sha> --head <sha> --fold <rules.yml> --format json
-```
+### 12.1 Gradle plugin
 
-采用 cmdline library 负责帮助、参数校验与错误提示。stdout 用于报告，stderr 用于进度和运行日志，便于 CI 消费结构化结果。
+当前 plugin ID 为 `io.johnsonlee.graphfold`。`graphFoldInputs` 在正常构建中读取当前 Gradle 模型并导出不可变输入，输出目录由 `graphfold.inputsDirectory` 指定。`graphFoldCheck` 接收 `graphfold.baseInputs`、`graphfold.headInputs` 和 `graphfold.fold`，消费两个已导出的快照，不再次启动 Gradle。它通过 process-isolated Worker API 直接调用 engine，并输出机器可读和人类可读报告；门禁失败时 task 失败。
 
-当前退出码：`0` 表示 `PASS`，`1` 表示分析门禁 `FAIL`，`2` 表示输入、Git 或构建失败，`3` 表示可重试的工作区容量等待超时。所有非零状态均不放行；运行失败能够生成结果时，结果 verdict 也是 `FAIL`。
+Git 工作区容量和租约等待由 `RepositoryConfiguration` 控制。Gradle/Maven 已处于正常构建进程中，不存在供 engine 使用的构建 timeout 或环境 allowlist。各入口均不自动重试失败的分析。
 
-`graphfold --version` 无需分析参数，输出构建时打包的版本号后以 `0` 退出。release 构建通过 `-Pversion` 指定版本；非 release 构建使用 `gradle.properties` 中的 `baseVersion`（当前 `0.1.0`）加 JGit 读取的 HEAD 前 12 位 SHA，例如 `0.1.0-a1b2c3d4e5f6`。基础版本由配置管理，不自动查找 tag。各模块、发布产物和 CLI 共用同一个版本值。显式指定版本会跳过版本推导中的 Git 读取；现有发布插件自身仍要求 Git 元数据，因此不能承诺源码归档直接构建。运行已打包的 CLI 不需要 Git。release 校验同时验证 CLI JAR 内的版本资源与 ZIP/TAR 内可执行文件的版本输出。
+分析任务不自动挂到 `check`。调用方显式提供 BASE/HEAD 快照与 control 规则；源码根、编译输出和依赖对应关系来自当前构建模型。
 
-### 12.2 Gradle plugin
+### 12.2 Maven plugin
 
-当前 plugin ID 为 `io.johnsonlee.graphfold`，task 名为 `graphFoldCheck`。通过 Gradle Provider API 读取 `graphfold.base`、`graphfold.head` 和 `graphfold.fold` 三个必需的 project property；仓库默认使用 root project 目录，规则文件的相对路径也以该目录解析。不注册 `graphfold` extension。输出机器可读和人类可读报告；门禁失败时 task 失败。
-
-执行参数同时提供 CLI 和 Gradle property 入口：`--workspace-slots` / `graphfold.workspaceSlots`（默认 2），`--build-timeout` / `graphfold.buildTimeout`（每条外部构建命令默认 600 秒），`--lease-timeout` / `graphfold.leaseTimeout`（默认两次构建预算加 300 秒）。显式数值范围为 `1..2147483647`；超时单位为秒。未覆盖 lease 时，增大 build timeout 会同步增大默认等待预算。CLI 的 `--build-env NAME` 可重复，Gradle 的 `graphfold.buildEnv` 用逗号分隔变量名；两者均向默认 allowlist 增补名称，从启动进程继承对应值，不接受 `NAME=value`。SDK 仍可直接设置 `EngineConfiguration`。
-
-CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他输入、Git、构建失败仍为 `2`，分析 gate 失败为 `1`，通过为 `0`。Gradle worker 保留诊断报告，并以容量超时专用消息使 task 失败。所有失败均阻断 gate，入口不自动重试。
-
-
-当前使用 process-isolated Worker API 隔离分析依赖与内存，worker 直接调用引擎，不通过 CLI 转发。
-
-分析 task 默认不宣称可缓存：远程仓库状态、外部构建和工具版本必须先转成完整且可复现的输入身份。当前显式调用 `graphFoldCheck`，不自动挂到 `check`，避免内部构建递归。
+Maven plugin 的 `snapshot` 和 `check` goal 读取当前 `MavenProject`、`MavenSession`，在正常打包之后导出或比较静态输入，不启动外部 mvn。`graphfold.snapshotDirectory` 指定导出目录；`check` 还接收 `graphfold.baseSnapshot`、`graphfold.rules`、`graphfold.report`。POM aggregator 本身没有字节码产物，不构造虚假的模块合并图。
 
 ## 13. 大仓库的资源与缓存策略
 
-- Git objects、依赖下载缓存共享；每个仓库复用持久 slot，base/head 与并发分析的 checkout 和构建输出隔离。slot 保留增量状态，不做无条件全目录清理；尚无磁盘配额或自动淘汰。
+- Git objects、依赖下载缓存共享；每个仓库复用持久 slot，base/head 与并发分析的源码 checkout 隔离。正常构建独立导出不可变输入；slot 复用源码状态，不做无条件全目录清理；尚无磁盘配额或自动淘汰。
 - 原始选点图按输入身份复用，场景折叠结果分别标识。
 - 首版完整建图，diff 驱动深入比较；不实现仅重建变更类的增量建图。收益首先来自减少不必要的比较与源码展开，不预支建图成本下降。
 - 方法 IR 流式消费与落盘，不能因做比较而重新长期驻留整个程序。
-- base/head 构建或场景并发受总内存预算控制，不固定假设并发越多越快。
+- base/head 分析或场景并发受总内存预算控制，不固定假设并发越多越快。
 - 同一 loader 实例不并发执行多次 load；每个工作单元使用隔离实例。
-- 支持取消，取消传播到构建与分析进程，并完成受控清理。
+- 取消分析时应释放租约并清理本次分析临时文件，不终止或重启调用方的构建生命周期。
 - 缓存键包含 commit/产物摘要、构建设置、依赖、Graphite/GraphFold 版本、规则与场景、表示 schema 版本。不能仅按方法名或 Git SHA 缓存等价结论。
 - 证明结果的复用还须校验依赖集合及前提：调用者、使用者、类型层次、入口或假定变化都可能使未修改方法的旧结论失效。增量建图和跨 revision 证明缓存后续单独验收。
 
@@ -744,7 +756,7 @@ CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他�
 ### 14.2 故障与集成验证
 
 - 模拟缺类、解析失败、unsupported、选点错误、OOM/预算耗尽、定位失败，断言不能 `PASS`。
-- 对比 CLI 与 Gradle task 的 findings、verdict 和稳定 ID。
+- 对比 Gradle task 与 Maven goal 的 findings、verdict 和稳定 ID。
 - 验证 checkout 并发、取消、崩溃恢复与缓存失效，不修改用户 checkout。
 - 验证所有 finding 主位置确实归属于 diff，且列范围对应正确源码。
 - 验证每个 diff 项都进入义务账本，依赖队列遗漏、未知边界、预算耗尽和未完成场景不能关闭义务。
@@ -761,7 +773,7 @@ CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他�
 3. 验证义务驱动的 IR 比较、精确源码关联与内联常量等隐式依赖；在固定版本上验证 observer 输出、receipt 对账和失败路径，不用旧 SPI 结果代替新接口验收。
 4. 完成完整性诊断与逐场景证明账本，证明 diff 或依赖未覆盖的改动不会被放行。
 5. 实现引擎编排、Git 缓存/隔离 checkout、构建适配及结构化 findings。
-6. 接入 CLI、Gradle plugin 和 CI 正确性验证。
+6. 接入 Gradle plugin、Maven plugin 和 CI 正确性验证。
 7. 基于真实误报逐步增加上下文分析、框架入口适配和局部等价证明，再做代表性多图资源及性能验收。
 
 ### 15.2 选型状态与后续事项
@@ -769,7 +781,7 @@ CLI 对工作区容量超时返回 exit code `3`，供 CI 选择重试；其他�
 | 问题 | 当前方向 |
 | --- | --- |
 | fold 输入编码 | 已实现 Graphite `select + value` 文档与多场景包装 |
-| 构建系统 | 已有 Gradle wrapper/Maven/plain JVM 适配；扩展布局需独立验证 |
+| 构建系统 | 当前进程内的 Gradle/Maven 插件读取正常构建模型；无独立 CLI 或外部构建适配器 |
 | Git 实现 | JGit 7.8，共享 bare objects、独立元数据与 alternates checkout |
 | JVM select 编排 | 复用现有 Kotlin Cypher，补齐 Rust 流程中的选点与来源校验 |
 | IR 输出接口 | Graphite 2.15.0 `loadObserved` 方法回调；同次 load 的 immutable snapshot、receipt 与 final evidence；GraphFold 落盘尚未实现 |
@@ -878,10 +890,10 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 
 以下描述当前实现及其限制。已执行的回归与门禁结果见 [validation.md](validation.md)，不代表对任意生产仓库的能力保证。
 
-- CLI 和 Gradle plugin 共享 engine 的同一 SDK 判定逻辑；gfc 只负责来源采集；CLI 使用 Clikt，Gradle task 使用隔离 Worker，避免宿主 Gradle 的依赖版本污染分析器。
-- Git 使用 JGit 7.8、共享 bare object cache 与 alternates checkout，原始 blob materialization 不调用 checkout hook 或 smudge filter。Git 可执行文件不是运行前提；无 Git 的测试及清理验证结果以 validation.md 为准。checkout 使用持久排他租约，关闭后保留增量状态；进程退出释放文件锁，但任意崩溃点恢复、磁盘配额和自动淘汰尚未完整验收，不提供未经测量的大仓库内存或吞吐 SLA。
+- Gradle 和 Maven plugin 共享 engine 的同一 SDK 判定逻辑；gfc 只负责来源采集；Gradle task 使用隔离 Worker，避免宿主 Gradle 的依赖版本污染分析器。
+- Git 使用 JGit 7.8、共享 bare object cache 与 alternates checkout，源码恢复和索引更新由 JGit `DirCacheCheckout` 完成，私有 attributes 禁用内容转换，不调用 checkout hook 或 smudge filter。Git 可执行文件不是运行前提；无 Git 的测试及清理验证结果以 validation.md 为准。checkout 使用持久排他租约，关闭后保留增量状态；进程退出释放文件锁，但任意崩溃点恢复、磁盘配额和自动淘汰尚未完整验收，不提供未经测量的大仓库内存或吞吐 SLA。
 - Java 使用 JavaParser；Kotlin 使用固定 2.1.20 的 headless PSI，并从 ASM 清单获取实际 JVM 身份。不采用 UAST。统一使用 UTF-16、一基、结束位置不包含的坐标；Kotlin 歧义映射可回退 CLASS obligation，缺失 ownership 则阻断。
-- 构建适配包含约定布局的 Java/Kotlin/混合源码、Gradle wrapper 与 Maven。任意 compiler plugin、生成器、Multiplatform、自定义 source set、依赖锁定及环境 provenance 不属于已验证的通用保证。
+- 构建入口为当前进程内的 Gradle 与 Maven 插件；它们读取实际构建模型和归档，不调用 wrapper 或独立编译器。任意 compiler plugin、生成器、Multiplatform、自定义 source set、依赖锁定及环境 provenance 不属于已验证的通用保证。
 - Graphite 目标版本固定为 2.15.0。需要 Cypher 选点时仍构建 plain selection graph，随后 `loadObserved` 在同一次 folded build 返回方法快照、method receipts、图及最终完整性证据。`SnapshotExtension` SPI 和辅助捕获图均不再使用；ASM 清单仍独立检查缺类、缺方法及声明信息。新版本的测试结果以 validation.md 对应记录为准。
 - 当前快照保存在内存。未实现流式落盘、增量图、跨过程常量专门化、一般符号等价证明或自动场景缩减。源码侧的 `dispatchOnly` 例外要求第 9.2 节的独立覆盖证明；资源模型不能代替它，结构/元数据变化或未完成 body 证据不会因此被忽略。
 - 存活结构差异输出 `UNVERIFIABLE_CHANGE`，不冒充已确认业务反例。基础设施失败、变化的非 class 生产产物或缺失分析信息通过 blocking diagnostic 阻断；非源码 diff 按第 6.1 节的实际产物证据判断。
@@ -892,19 +904,19 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 
 `reasons` 对 PASS 和 FAIL 都提供解释，包括 AST 识别的 `changes`、证明结论 `code`、文字说明、场景、diff 位置和 base/head 路径。分类包括字段初始化值变化、条件增删、调用变化、成员增删、字段/方法重命名候选、文件移动/改名与类初始化变化。JavaParser/Kotlin PSI 只负责描述变化；分类本身不决定 verdict。
 
-`FOLDED_EQUIVALENT` 表示受支持的表示中未留下差异；`UNREACHABLE` 表示当前入口模型下没有存活执行路径到达变化；`SURVIVING_DIFFERENCE` 表示仍有未证明一致的表示差异。分析完整性缺口由 blocking diagnostic 表达，不能伪装成已定位 violation。`METHOD_RENAMED`/`FIELD_RENAMED` 是一对一结构候选，正文或值同时变化时不能只凭名称相似进行配对。
+`FOLDED_EQUIVALENT` 表示受支持的表示中未留下差异；`UNREACHABLE` 表示同一输入内有静态证据证明，选定 control 的折叠消除了通往该变更的路径；未调用或没有流量本身不能得到该结论；`SURVIVING_DIFFERENCE` 表示仍有未证明一致的表示差异。分析完整性缺口由 blocking diagnostic 表达，不能伪装成已定位 violation。`METHOD_RENAMED`/`FIELD_RENAMED` 是一对一结构候选，正文或值同时变化时不能只凭名称相似进行配对。
 
 分类器以实际 diff 范围筛选节点，并允许在两侧源码中配对重命名，使仅有 BASE 或 HEAD 位置的 obligation 也能得到解释。未细分的语法保守标记为 `DECLARATION_CHANGED`/`BODY_CHANGED`；例如部分构造器与 Kotlin 主构造器属性参数尚无专用分类。这影响解释粒度，不豁免证明义务。
 
 ### 18.2 可达性、重构、路径和初始化
 
-已有可外部调用的方法为保守入口，并结合当前已建模的 override、callback 和外部入口信息展开。新增方法/类需要存活引用或已建模入口才能影响执行；仅有 public 修饰符不会自动成为新增入口。新增但没有生产执行路径到达的代码可以得到 `UNREACHABLE`，不是“所有新增代码自动忽略”。
+新增、删除和已有方法/类的变化都属于静态比较范围，包括未调用方法、未消费 Stream 和未执行 callback。只有同一侧输入中选定 control 的折叠证据能证明路径被消除时，才可用 `UNREACHABLE` 解释受控变化；不能用没有生产执行路径、没有外部入口或没有流量豁免变化。调用、override、callback 与初始化关系用于建立静态证明依赖，不用于预测实际执行。
 
 私有成员同步改名需要声明、引用与行为共同匹配。公开 API 改名、反射/序列化绑定及框架名称协议属于独立边界。私有成员等价规则不能泛化为任意重构等价证明。
 
 纯路径移动需要 JVM 身份与构建归属保持可比；Kotlin 顶层文件名可能改变 facade，固定 `@file:JvmName` 与未固定的情况分别建 fixture。纯移动没有字符 diff 时记录旧/新路径，不虚构行列；移动导致无法证明一致的 JVM 差异时输出阻断诊断。
 
-构造对象、静态调用、静态字段引用与继承初始化关系参与比较。`<clinit>` 不按普通“无调用方法”排除；副作用字段初始化、静态块及抛异常初始化都需要证明。常量池内联的常量读取不应被误当作必然触发类初始化。未引用的新类与被实际初始化的新类具有不同的可达性义务。
+构造对象、静态调用、静态字段引用与继承初始化关系参与比较。`<clinit>` 不按普通“无调用方法”排除；副作用字段初始化、静态块及抛异常初始化都需要证明。常量池内联的常量读取不应被误当作必然触发类初始化。未引用的新类也保留声明与初始化变化的证明义务，不以实际是否初始化决定覆盖范围。
 
 ### 18.3 Kotlin metadata 的有限规范化
 
@@ -922,11 +934,11 @@ Java/Kotlin 反射、native/JNI 回调、序列化钩子和框架入口不能仅
 
 边界模型允许 primitive、String、boxed primitive、null，以及参数内容均已证明安全的固定参数不可变工厂（`List.of`、`Set.of`、`Map.of`、`Collections.empty/singleton`、`Optional.empty/of/ofNullable`）。集合声明类型本身不构成证明，varargs 数组、可变集合及未知来源仍不放行。精确 SLF4J `Logger` 日志方法仅在实际参数全部为标量且 receiver 不是应用实现时排除对象图逃逸；对象参数和 varargs 不在此模型内。
 
-只有完整字段与行为图均封闭的 final DTO 可以界定 `observedOwners`：继承 Object 且不实现接口（避免遗漏接口默认方法），所有字段、方法签名及相关指令都限于标量或同样可界定的应用类型。语义注解（包括类型与参数注解）、泛型签名、声明异常、带类型的异常处理器、自定义 class-file 属性及多维数组分配尚未建模，出现时放弃 DTO 范围证明；仅来源标记与无类型的 finally 处理器可保留。未知对象、数组、容器、库 receiver、native、invokedynamic 或外部调用无法界定观察目标时，存活的调用仍可能影响任意应用声明；任意反射同理。不能仅因调用图没有边就忽略这类 gap，但也不能把每个未知对象逃逸都附加到所有方法义务。普通可达方法的完整折叠表示没有被擦除的差异时，无关 observer 不再使其证明失败；义务依赖、调用方和 `observedOwners` 的关联仍保留。以下情况仍要求全局观察保护：字段/类变更、不可达 private 方法（外部代码可能反射调用）、全程序资源证明，以及 private member 对齐、匿名 owner 原名映射增删/重编号、完整 `canonical` 不同但归一化比较相同的初始化状态变化。快照记录规范 owner 到原 JVM owner 的映射；比较完整映射而不只检查调用闭包，覆盖 class token 与已移除的 NestMembers/InnerClasses 元数据。初始化守卫复用已有完整 canonical，不把被擦掉的未读字段赋值当作无变化。这个归一化守卫目前按整个 snapshot pair 生效，仍可能让无关的归一化差异扩大 gap 范围；它不是通用堆流或反射建模。gap 应作为分析缺口统计，不能计作已定位 violation。
+只有完整字段与行为图均封闭的 final DTO 可以界定 `observedOwners`：继承 Object 且不实现接口（避免遗漏接口默认方法），所有字段、方法签名及相关指令都限于标量或同样可界定的应用类型。语义注解（包括类型与参数注解）、泛型签名、声明异常、带类型的异常处理器、自定义 class-file 属性及多维数组分配尚未建模，出现时放弃 DTO 范围证明；仅来源标记与无类型的 finally 处理器可保留。未知对象、元素类型不能排除应用对象的数组、未证明内容的容器、库 receiver、native、invokedynamic 或外部调用无法界定观察目标时，存活的调用仍可能影响任意应用声明；任意反射同理。不能仅因调用图没有边就忽略这类 gap，但也不能把每个未知对象逃逸都附加到所有方法义务。普通可达方法的完整折叠表示没有被擦除的差异时，无关 observer 不再使其证明失败；义务依赖、调用方和 `observedOwners` 的关联仍保留。以下情况仍要求全局观察保护：字段/类变更、不可达 private 方法（外部代码可能反射调用）、全程序资源证明，以及 private member 对齐、匿名 owner 原名映射增删/重编号、完整 `canonical` 不同但归一化比较相同的初始化状态变化。快照记录规范 owner 到原 JVM owner 的映射；比较完整映射而不只检查调用闭包，覆盖 class token 与已移除的 NestMembers/InnerClasses 元数据。初始化守卫复用已有完整 canonical，不把被擦掉的未读字段赋值当作无变化。这个归一化守卫目前按整个 snapshot pair 生效，仍可能让无关的归一化差异扩大 gap 范围；它不是通用堆流或反射建模。gap 应作为分析缺口统计，不能计作已定位 violation。 标量及最终标量类型的数组（含多维数组、字段读取及元素加载）可证明其负载不包含应用对象；该证明不忽略数组写入、异常或资源效果。对于 static/private/final 精确目标，应用 helper 按实际抽象参数值分析返回值，保留局部别名并区分安全与不安全调用上下文；不推断任意对象字段或 Object[] 的内容，不豁免 helper 内部的未知调用。递归或超过 32 层 helper 深度时返回未知，不能把预算耗尽解释为安全。 对实际提供的第三方依赖，还独立读取精确目标及初始化闭包的字节码以证明不会发现或调用隐藏的应用成员；简单 getter 与封闭 helper 可以获得该证明。native、反射、未知虚调用、动态 bootstrap、应用回调、缺失或重复定义、超过深度预算均保持未知，即使外部调用不接收应用对象或没有参数，也不能据此取消全局观察守卫。该依赖证明不代表资源效果安全。
 
 Kotlin `inline` 函数、顶层函数、属性及独立 inline getter/setter 的义务保留 inline 标记。调用方复制的指令可能没有原方法调用边，所以这类义务比较两版折叠后所有可达方法；没有存活副本差异时为 `FOLDED_EQUIVALENT`，不会误判 `UNREACHABLE`。finding 仍锚定 diff 中的定义范围。暂未实现精确复制指令来源，因此同 PR 其他可达差异可能使 inline 义务保守失败；参见 [inline fixture](../fixtures/kotlin/inline.md)。
 
-全程序比较直接扫描两版可达方法的并集、可达类声明和初始化依赖变化，方法差异每个 snapshot pair 只计算一次；不再对每个 owner 重复遍历重叠闭包。该改动有共享依赖、递归和初始化正确性回归；性能验收仍须使用代表性多图请求负载，单图测试不能充当性能证据。
+全程序比较直接扫描两版全部应用方法、类声明和初始化依赖变化，包括未调用的代码；方法差异每个 snapshot pair 只计算一次。仅有选定 control 的同侧静态消除证据才能排除对应方法差异；不再对每个 owner 重复遍历重叠闭包。该改动有共享依赖、递归和初始化正确性回归；性能验收仍须使用代表性多图请求负载，单图测试不能充当性能证据。
 
 保守误报仍可能来自 owner 级源码映射、嵌套回调依赖展开、未支持资源/配置、全范围动态诊断、未建立 provenance 的生成代码，以及逻辑等价但 IR 不同的重写。Stream fixture 包含 terminal operation、中间调用修改、filter 增删、lambda 运算与 predicate 条件增删；不承诺任意惰性 pipeline 或 lambda 编号变化都能证明等价。
 
@@ -934,7 +946,7 @@ Kotlin `inline` 函数、顶层函数、属性及独立 inline getter/setter 的
 
 ### 18.5 回归集与验收含义
 
-fixture 按 Java 语义族、Kotlin 对等语义族、Kotlin 独有特性、移动、初始化和原因报告组织。正例表示存活的 uncontrolled change，反例表示折叠受控、已证明等价或不可达的变化。Stream、条件控制和 callback 均要求正反配对。
+fixture 按 Java 语义族、Kotlin 对等语义族、Kotlin 独有特性、移动、初始化和原因报告组织。正例表示存活的 uncontrolled change，反例表示折叠受控、静态表示已证明等价或由选定 control 消除的变化；运行时未执行不构成反例。Stream、条件控制和 callback 均要求正反配对。
 
 此前验收的 corpus 包含 Java 118 例与 Kotlin 166 例。新增局部 gate negative 后，清单扩展为 Java 130 例与 Kotlin 186 例（Java 60 positive / 70 negative，Kotlin 84 positive / 102 negative），扩展集的实际验收结果见 [validation.md](validation.md)。另有 22 组生成代码源码定位 fixture（Java 8 组、Kotlin 14 组），不计入这 316 个检测案例。移动、新增文件、初始化、外部依赖边界和原因报告另有专项测试。构建失败或能力诊断不能计入正确检出。
 
@@ -946,4 +958,4 @@ fixture 按 Java 语义族、Kotlin 对等语义族、Kotlin 独有特性、移�
 
 JDK 声明读取使用 `ModuleFinder.ofSystem()` 和 `ModuleReader`，按运行中 JDK image 的模块包归属查找，包括由 application loader 定义的 `jdk.compiler` 等模块。不会搜索 GraphFold 自身的 application/context classpath；缺失的第三方依赖不能借用宿主依赖放行。该读取统一用于继承 API、来源层级及引用存在性检查，不扩大外部调用的安全效果模型，也不证明目标运行时采用不同 JDK 时等价。
 
-2.12.0 的旧适配以已审计的顶层日志前缀识别遗漏，并防止业务字符串伪造诊断；这是历史行为。当前 2.15.0 接入使用 final `AnalysisCompleteness` 与同次 load 的方法 receipt，结构化状态不是通过业务字符串匹配得到。`methods` 状态表为稀疏表，缺项不能脱离类状态及图中声明直接当成 ANALYZED。`ANALYZED_WITHOUT_CONTROL_FLOW` 不证明 branch scope 完整；native/no-body、解析/提取失败和未闭合 dispatch 仍须模型或阻断。一个成功的 body callback 不能消除最终图中的 `DISPATCH_UNRESOLVED`、`DISPATCH_PARTIAL` 或 `DISPATCH_SATURATED`。类解析失败、重复类定义、未知运行时版本选择等全局范围问题仍保守阻断；这些证据也不替代 GraphFold 的入口、资源语义和义务关联。
+2.12.0 的旧适配以已审计的顶层日志前缀识别遗漏，并防止业务字符串伪造诊断；这是历史行为。当前 2.15.0 接入使用 final `AnalysisCompleteness` 与同次 load 的方法 receipt，结构化状态不是通过业务字符串匹配得到。`methods` 状态表为稀疏表，缺项不能脱离类状态及图中声明直接当成 ANALYZED。`ANALYZED_WITHOUT_CONTROL_FLOW` 不证明 branch scope 完整；native/no-body、解析/提取失败和未闭合 dispatch 仍须模型或阻断。一个成功的 body callback 不能消除最终图中的 `DISPATCH_UNRESOLVED`、`DISPATCH_PARTIAL` 或 `DISPATCH_SATURATED`。类解析失败和歧义类定义等输入证据缺口仍保守阻断；多版本归档由适配层导出显式静态变体，不推断运行时选择。这些证据也不替代 GraphFold 的入口、资源语义和义务关联。

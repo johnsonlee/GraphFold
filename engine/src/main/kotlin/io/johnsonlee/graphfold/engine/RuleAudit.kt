@@ -1,5 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphite.input.ConstantFold
+import io.johnsonlee.graphite.input.FoldSites
+
 /** Selection execution is distinct from applying folds to bytecode. */
 enum class RuleSelectionStatus {
     /** Selection has not run, for example because an earlier stage failed or the diff was empty. */
@@ -78,4 +81,12 @@ data class RuleAudit(
 ) {
     /** Unique selected-node count after successful selection, otherwise null; independent of [matchedCallCount]. */
     val selectedCount: Int? get() = if (selectionStatus == RuleSelectionStatus.SELECTED) selectedNodes.size else null
+}
+
+internal fun initialAudits(scenario: FoldScenario, revision: Revision): List<RuleAudit> = scenario.rules.mapIndexed { index, rule ->
+    val selector = when (rule) {
+        is FoldSites -> RuleSelector(RuleSelectorKind.CYPHER, rule.select, rule.description)
+        is ConstantFold -> RuleSelector(RuleSelectorKind.CALL_SITE_MATCH, null, rule.description)
+    }
+    RuleAudit(scenario.name, revision, index, selector, message = "Analysis did not reach rule selection")
 }

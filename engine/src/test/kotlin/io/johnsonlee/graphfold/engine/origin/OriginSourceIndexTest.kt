@@ -3,7 +3,8 @@ package io.johnsonlee.graphfold.engine.origin
 import io.johnsonlee.graphfold.engine.Revision
 import io.johnsonlee.graphfold.engine.SourceLocation
 import io.johnsonlee.graphfold.engine.SourceRange
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
+import io.johnsonlee.graphfold.engine.inputs.archive.toStaticScope
 import io.johnsonlee.graphfold.engine.source.JavaSourceIndex
 import io.johnsonlee.graphfold.engine.source.KotlinSourceIndex
 import io.johnsonlee.graphfold.engine.source.ProofPlanner
@@ -33,7 +34,8 @@ class OriginSourceIndexTest {
             val path = "src/main/$language/Example.$extension"
             Files.createDirectories(root.resolve(path).parent)
             Files.writeString(root.resolve(path), text)
-            val compiled = ProjectCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("$extension-output"))
+            val compiled = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("$extension-output"))
+            .toStaticScope(Files.createTempDirectory(temporary, "static-"))
             val catalog = readOrigins(compiled, root)
             assertTrue(catalog.diagnostics.isEmpty(), catalog.diagnostics.toString())
             val origin = catalog.origins.single()

@@ -1,5 +1,9 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
+
 import io.johnsonlee.graphite.graph.AnalysisStatus
 import io.johnsonlee.graphite.input.FoldSites
 import java.nio.file.Files

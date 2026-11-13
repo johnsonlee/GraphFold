@@ -1,5 +1,9 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.ResourceDeclarations
+
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
+
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.tools.ToolProvider

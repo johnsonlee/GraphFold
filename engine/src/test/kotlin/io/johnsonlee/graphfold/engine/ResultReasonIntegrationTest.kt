@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import java.nio.file.Files
@@ -56,7 +58,7 @@ class ResultReasonIntegrationTest {
         git(repository, "add", ".")
         git(repository, "commit", "--quiet", "-m", "head")
         val head = git(repository, "rev-parse", "HEAD").trim()
-        return GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        return sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), base, head, Files.readString(fixtures.resolve("fold.yml"))),
         )
     }

@@ -1,9 +1,9 @@
 package io.johnsonlee.graphfold.engine
 
 import sootup.core.model.MethodModifier
-import io.johnsonlee.graphfold.engine.graphite.FieldSnapshot
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.FieldSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -32,6 +32,10 @@ class PrivateMemberAlignmentTest {
         val new = helper("Example.after()I")
         val base = snapshot(root(old.identity), old)
         val head = snapshot(root(new.identity), new)
+        val lambdaHead = head.copy(methods = head.methods +
+            (root().identity to head.methods.getValue(root().identity).copy(lambdaTargets = setOf(new.identity))))
+        assertEquals(setOf(old.identity),
+            PrivateMemberAlignment(base, lambdaHead).aligned().methods.getValue(root().identity).lambdaTargets)
         val triggerBase = base.copy(initializationTriggerMethods = setOf(old.identity))
         val triggerHead = head.copy(initializationTriggerMethods = setOf(new.identity, "Other.unchanged()V"))
         assertEquals(setOf(old.identity, "Other.unchanged()V"),
@@ -41,6 +45,18 @@ class PrivateMemberAlignmentTest {
         assertTrue(SnapshotComparison(base, head).differences(obligation(new.identity)).isEmpty())
         val changed = head.copy(methods = head.methods + (new.identity to new.copy(referenceCanonical = "return 2")))
         assertTrue(SnapshotComparison(base, changed).differences(obligation(root().identity)).isNotEmpty())
+    }
+
+    @Test
+    fun `control removal certificates follow verified private renames without changing unrelated identities`() {
+        val old = helper("Example.before()I")
+        val new = helper("Example.after()I")
+        val untouched = helper("Example.untouched()I").copy(referenceCanonical = "distinct body")
+        val base = snapshot(old, untouched)
+        val head = snapshot(new, untouched).copy(controlRemovedMethods = setOf(new.identity, untouched.identity))
+        val aligned = PrivateMemberAlignment(base, head).aligned()
+        assertEquals(setOf(old.identity, untouched.identity), aligned.controlRemovedMethods)
+        assertEquals(setOf(old.identity, untouched.identity), aligned.methods.keys)
     }
 
     @Test
@@ -95,24 +111,24 @@ class PrivateMemberAlignmentTest {
     }
 
     @Test
-    fun `unused field metadata is omitted but initializers and used fields remain observable`() {
+    fun `explicit field changes remain uncontrolled even when reads are absent`() {
         val field = FieldSnapshot("Example.unused:I", "private", "1", true)
         val before = snapshot(root()).copy(fields = mapOf(field.identity to field), ignoredFields = setOf(field.identity))
         val after = before.copy(fields = mapOf(field.identity to field.copy(constant = "2")))
         val obligation = ProofObligation(field.identity, SymbolKind.FIELD, "Example", emptyList())
-        assertTrue(SnapshotComparison(before, after).differences(obligation).isEmpty())
+        assertTrue(SnapshotComparison(before, after).differences(obligation).isNotEmpty())
         assertTrue(SnapshotComparison(before.copy(ignoredFields = emptySet()),
             after.copy(ignoredFields = emptySet())).differences(obligation).isNotEmpty())
     }
 
     @Test
-    fun `uncalled added method is unreachable even in a reachable owner`() {
+    fun `uncalled added method is an uncontrolled production addition`() {
         val base = snapshot(root())
         val added = helper("Example.added()I").copy(modifiers = setOf(MethodModifier.PUBLIC))
         val head = snapshot(root(), added)
         val comparison = SnapshotComparison(base, head)
-        assertTrue(comparison.isUnreachable(obligation(added.identity)))
-        assertTrue(comparison.differences(obligation(added.identity)).isEmpty())
+        assertTrue(!comparison.isUnreachable(obligation(added.identity)))
+        assertEquals(listOf(added.identity), comparison.differences(obligation(added.identity)))
     }
 
     @Test

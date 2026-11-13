@@ -1,29 +1,13 @@
 import unittest
-import io
+import json
 import zipfile
 import shutil
-import tarfile
-from types import SimpleNamespace
-from unittest.mock import patch
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from release import (version, checksums, verify, compare, verify_cli_version, smoke,
-                     CLI_VERSION_RESOURCE, COMPILER_PLUGIN_SERVICES)
+from release import version, checksums, verify, compare, COMPILER_PLUGIN_SERVICES
 
 
 class VersionTest(unittest.TestCase):
-    def test_packaged_version_matches_release(self):
-        with zipfile.ZipFile(io.BytesIO(), "w") as archive:
-            archive.writestr(CLI_VERSION_RESOURCE, "1.2.3\n")
-            verify_cli_version(archive, "1.2.3")
-            with self.assertRaisesRegex(ValueError, "differs"):
-                verify_cli_version(archive, "1.2.4")
-
-    def test_missing_packaged_version_fails(self):
-        with zipfile.ZipFile(io.BytesIO(), "w") as archive:
-            with self.assertRaisesRegex(ValueError, "Missing packaged CLI version"):
-                verify_cli_version(archive, "1.2.3")
-
     def test_release(self):
         self.assertEqual(("1.2.3", False), version("v1.2.3"))
 
@@ -92,21 +76,31 @@ class PublicationsTest(unittest.TestCase):
         for service, provider in COMPILER_PLUGIN_SERVICES.items():
             self.plugin_entries[f"META-INF/services/{service}"] = (provider + "\n").encode()
             self.plugin_entries[provider.replace(".", "/") + ".class"] = b"implementation"
+        self.engine_entries = {
+            "io/johnsonlee/graphfold/engine/GraphFoldEngine.class": b"engine",
+            "io/johnsonlee/graphfold/engine/inputs/StaticInputSnapshots.class": b"snapshot",
+            "io/johnsonlee/graphfold/engine/inputs/archive/ArchiveInput.class": b"archive",
+        }
         entries = {
             "gfc": self.plugin_entries,
-            "engine": {"io/johnsonlee/graphfold/engine/GraphFoldEngine.class": b"engine"},
-            "cli": {"io/johnsonlee/graphfold/cli/MainKt.class": b"cli",
-                    CLI_VERSION_RESOURCE: self.VERSION.encode()},
+            "engine": self.engine_entries,
             "gradle-plugin": {"META-INF/gradle-plugins/io.johnsonlee.graphfold.properties": b"plugin"},
+            "maven-plugin": self.maven_entries(),
         }
         for module, contents in entries.items():
             directory = self.directory(module)
             directory.mkdir(parents=True)
             self.write_jar(module, contents)
+            metadata = {"component": {"group": self.GROUP, "module": module, "version": self.VERSION},
+                        "variants": [{"name": "runtimeElements", "files": [{
+                            "name": f"{module}-{self.VERSION}.jar", "url": f"{module}-{self.VERSION}.jar"}]}]}
+            (directory / f"{module}-{self.VERSION}.module").write_text(json.dumps(metadata))
             for classifier in ("sources", "javadoc"):
                 with zipfile.ZipFile(directory / f"{module}-{self.VERSION}-{classifier}.jar", "w") as archive:
                     archive.writestr("entry", "fixture")
-            dependency = self.dependency("gfc") if module == "engine" else ""
+            graph = {"engine": ("gfc",), "gfc": (),
+                     "gradle-plugin": ("engine",), "maven-plugin": ("engine",)}
+            dependency = "".join(self.dependency(name) for name in graph[module])
             self.write_pom(module, dependency)
         marker = "io.johnsonlee.graphfold.gradle.plugin"
         self.directory(marker).mkdir(parents=True)
@@ -123,6 +117,7 @@ class PublicationsTest(unittest.TestCase):
         (self.directory(module) / f"{module}-{self.VERSION}.pom").write_text(
             '<project xmlns="http://maven.apache.org/POM/4.0.0">'
             f"<groupId>{self.GROUP}</groupId><artifactId>{module}</artifactId><version>{self.VERSION}</version>"
+            f"<packaging>{'maven-plugin' if module == 'maven-plugin' else 'jar'}</packaging>"
             f"<dependencies>{dependencies}</dependencies></project>")
 
     def write_jar(self, module, entries):
@@ -133,23 +128,122 @@ class PublicationsTest(unittest.TestCase):
     def test_synchronized_publications_pass(self):
         verify(self.repository, self.VERSION)
 
+    def test_relocated_module_metadata_keeps_published_identity_and_artifacts(self):
+        for module, wrong_name in (("gradle-plugin", "gradle"), ("maven-plugin", "maven")):
+            path = self.directory(module) / f"{module}-{self.VERSION}.module"
+            original = path.read_text()
+            metadata = json.loads(original)
+            metadata["component"]["module"] = wrong_name
+            path.write_text(json.dumps(metadata))
+            with self.assertRaisesRegex(ValueError, "module identity"):
+                verify(self.repository, self.VERSION)
+            metadata = json.loads(original)
+            metadata["variants"][0]["files"][0]["url"] = f"{wrong_name}-{self.VERSION}.jar"
+            path.write_text(json.dumps(metadata))
+            with self.assertRaisesRegex(ValueError, "module artifact"):
+                verify(self.repository, self.VERSION)
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "Missing Gradle module"):
+                verify(self.repository, self.VERSION)
+            path.write_text(original)
+
+    def maven_entries(self, version=None, goals=("snapshot", "check")):
+        entries = {}
+        mojos = ""
+        for goal in goals:
+            implementation = f"io.johnsonlee.graphfold.maven.GraphFold{goal.title()}Mojo"
+            entries[implementation.replace(".", "/") + ".class"] = b"mojo"
+            mojos += f"<mojo><goal>{goal}</goal><implementation>{implementation}</implementation></mojo>"
+        entries["META-INF/maven/plugin.xml"] = (
+            f"<plugin><version>{version or self.VERSION}</version><mojos>{mojos}</mojos></plugin>").encode()
+        return entries
+
+    def test_maven_plugin_descriptor_and_goals_must_be_published(self):
+        for contents in (self.maven_entries(version="1.2.2"), self.maven_entries(goals=("snapshot",)),
+                         {"META-INF/maven/plugin.xml": self.maven_entries()["META-INF/maven/plugin.xml"]}):
+            with self.subTest(contents=contents):
+                self.write_jar("maven-plugin", contents)
+                with self.assertRaisesRegex(ValueError, "Maven"):
+                    verify(self.repository, self.VERSION)
+
+    def test_maven_plugin_packaging_is_required(self):
+        pom = self.directory("maven-plugin") / f"maven-plugin-{self.VERSION}.pom"
+        pom.write_text(pom.read_text().replace("<packaging>maven-plugin</packaging>", "<packaging>jar</packaging>"))
+        with self.assertRaisesRegex(ValueError, "packaging"):
+            verify(self.repository, self.VERSION)
+
+    def test_build_tool_integrations_cannot_leak_into_engine_publication(self):
+        for prefix in ("gradle", "maven", "engine/build"):
+            with self.subTest(prefix=prefix):
+                self.write_jar("engine", {**self.engine_entries,
+                    f"io/johnsonlee/graphfold/{prefix}/ArchiveInput.class": b"adapter",
+                })
+                with self.assertRaisesRegex(ValueError, "Engine must not contain"):
+                    verify(self.repository, self.VERSION)
+
+    def test_engine_owns_packaged_input_implementation(self):
+        for entry in list(self.engine_entries)[1:]:
+            with self.subTest(entry=entry):
+                self.write_jar("engine", {name: value for name, value in self.engine_entries.items() if name != entry})
+                with self.assertRaisesRegex(ValueError, "Missing engine input"):
+                    verify(self.repository, self.VERSION)
+
+    def test_plugins_cannot_duplicate_input_implementation(self):
+        for module in ("gradle-plugin", "maven-plugin"):
+            entries = (self.maven_entries() if module == "maven-plugin" else
+                       {"META-INF/gradle-plugins/io.johnsonlee.graphfold.properties": b"plugin"})
+            for prefix in ("engine/inputs", "integration"):
+                with self.subTest(module=module, prefix=prefix):
+                    self.write_jar(module, {**entries, f"io/johnsonlee/graphfold/{prefix}/ArchiveInput.class": b"copy"})
+                    with self.assertRaisesRegex(ValueError, "Plugins must not duplicate"):
+                        verify(self.repository, self.VERSION)
+            self.write_jar(module, entries)
+
+    def test_removed_modules_cannot_leak_into_release_repository(self):
+        for module in ("adapters", "inputs", "cli"):
+            with self.subTest(module=module):
+                self.directory(module).mkdir(parents=True)
+                with self.assertRaisesRegex(ValueError, "Obsolete module"):
+                    verify(self.repository, self.VERSION)
+                shutil.rmtree(self.directory(module).parent)
+
     def test_missing_compiler_publication_fails(self):
         shutil.rmtree(self.directory("gfc"))
         with self.assertRaisesRegex(ValueError, "Missing or empty publication"):
             verify(self.repository, self.VERSION)
 
-    def test_invalid_engine_dependency_fails(self):
+    def test_invalid_entrypoint_dependency_fails(self):
         dependencies = (
-            "", self.dependency("gfc", "1.2.2"),
-            self.dependency("gfc", extra="<scope>provided</scope>"),
-            self.dependency("gfc", extra="<optional>true</optional>"),
-            self.dependency("gfc") * 2,
+            "", self.dependency("engine", "1.2.2"),
+            self.dependency("engine", extra="<scope>provided</scope>"),
+            self.dependency("engine", extra="<optional>true</optional>"),
+            self.dependency("engine") * 2,
         )
         for dependency in dependencies:
             with self.subTest(dependency=dependency):
-                self.write_pom("engine", dependency)
-                with self.assertRaisesRegex(ValueError, "Engine.*compiler plugin"):
+                self.write_pom("gradle-plugin", dependency)
+                with self.assertRaisesRegex(ValueError, "gradle-plugin.*dependency"):
                     verify(self.repository, self.VERSION)
+
+    def test_compiler_provider_has_no_runtime_engine_dependency(self):
+        self.write_pom("gfc", self.dependency("engine"))
+        with self.assertRaisesRegex(ValueError, "Incorrect gfc project dependency graph"):
+            verify(self.repository, self.VERSION)
+
+    def test_core_cannot_depend_on_build_adapter(self):
+        self.write_pom("engine", self.dependency("gradle-plugin"))
+        with self.assertRaisesRegex(ValueError, "Incorrect engine project dependency graph"):
+            verify(self.repository, self.VERSION)
+
+    def test_entrypoints_cannot_depend_on_each_other(self):
+        self.write_pom("maven-plugin", self.dependency("gradle-plugin"))
+        with self.assertRaisesRegex(ValueError, "Incorrect maven-plugin project dependency graph"):
+            verify(self.repository, self.VERSION)
+
+    def test_missing_maven_plugin_publication_fails(self):
+        shutil.rmtree(self.directory("maven-plugin"))
+        with self.assertRaisesRegex(ValueError, "Missing or empty publication"):
+            verify(self.repository, self.VERSION)
 
     def test_embedded_plugin_fails(self):
         self.write_jar("engine", {"io/johnsonlee/graphfold/engine/GraphFoldEngine.class": b"engine",
@@ -174,37 +268,6 @@ class PublicationsTest(unittest.TestCase):
                 self.write_jar("gfc", entries)
                 with self.assertRaisesRegex(ValueError, "Incorrect compiler plugin service provider"):
                     verify(self.repository, self.VERSION)
-
-    def distributions(self, plugin_versions):
-        installation = self.root / f"graphfold-{self.VERSION}"
-        if installation.exists():
-            shutil.rmtree(installation)
-        library = installation / "lib"
-        library.mkdir(parents=True)
-        for plugin_version in plugin_versions:
-            shutil.copyfile(self.directory("gfc") / f"gfc-{self.VERSION}.jar",
-                            library / f"gfc-{plugin_version}.jar")
-        distributions = self.root / "distributions"
-        distributions.mkdir(exist_ok=True)
-        with zipfile.ZipFile(distributions / f"graphfold-{self.VERSION}.zip", "w") as archive:
-            for entry in library.iterdir():
-                archive.write(entry, entry.relative_to(self.root))
-        with tarfile.open(distributions / f"graphfold-{self.VERSION}.tar", "w") as archive:
-            archive.add(installation, arcname=installation.name)
-        return distributions
-
-    def test_distributions_include_synchronized_plugin(self):
-        results = [SimpleNamespace(returncode=0, stdout="--fold", stderr=""),
-                   SimpleNamespace(returncode=0, stdout=f"graphfold version {self.VERSION}", stderr=""),
-                   SimpleNamespace(returncode=2)] * 2
-        with patch("release.subprocess.run", side_effect=results) as run:
-            smoke(self.distributions([self.VERSION]), self.VERSION)
-        self.assertEqual(6, run.call_count)
-
-    def test_missing_mismatched_or_duplicate_distribution_plugin_fails(self):
-        for versions in ([], ["1.2.2"], [self.VERSION, "1.2.2"]):
-            with self.subTest(versions=versions), self.assertRaisesRegex(ValueError, "exactly the released compiler plugin"):
-                smoke(self.distributions(versions), self.VERSION)
 
 
 if __name__ == "__main__":

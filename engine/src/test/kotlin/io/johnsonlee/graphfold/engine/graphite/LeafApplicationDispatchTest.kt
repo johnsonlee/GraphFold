@@ -1,5 +1,9 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.LeafApplicationDispatch
+
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+
 import io.johnsonlee.graphite.core.CallSiteNode
 import io.johnsonlee.graphite.core.MethodDescriptor
 import io.johnsonlee.graphite.core.NodeId
@@ -77,6 +81,7 @@ class LeafApplicationDispatchTest {
     @Test fun `derived unknown and removed calls cannot borrow a leaf declaration`() {
         write("App", type("App"))
         val proof = proof()
+        assertFalse(proof.proves(site.copy(origin = site.id), methods))
         assertFalse(proof.proves(site.copy(ordinal = -1), methods))
         assertFalse(proof.proves(site.copy(ordinal = null), methods))
         assertFalse(proof.proves(site, emptyMap()))
@@ -124,7 +129,7 @@ class LeafApplicationDispatchTest {
         assertTrue(LeafApplicationDispatch(jar, setOf("App")).proves(site, methods))
     }
 
-    @Test fun `versioned module metadata is allowed but runtime class variants are not`() {
+    @Test fun `raw versioned module metadata and class variants require adapter normalization`() {
         val module = ClassWriter(0).apply {
             visit(Opcodes.V9, Opcodes.ACC_MODULE, "module-info", null, null, null)
             visitModule("fixture.module", 0, null).visitEnd()
@@ -132,7 +137,7 @@ class LeafApplicationDispatchTest {
         }.toByteArray()
         val jar = archive("application.jar", mapOf("App.class" to type("App"),
             "module-info.class" to module, "META-INF/versions/9/module-info.class" to module))
-        assertTrue(LeafApplicationDispatch(jar, setOf("App")).proves(site, methods))
+        assertFalse(LeafApplicationDispatch(jar, setOf("App")).proves(site, methods))
         archive("application.jar", mapOf("App.class" to type("App"), "META-INF/versions/9/App.class" to type("App")))
         assertFalse(LeafApplicationDispatch(jar, setOf("App")).proves(site, methods))
     }

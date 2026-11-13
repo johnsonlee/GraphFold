@@ -1,48 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
 import java.nio.file.Path
-import java.time.Duration
-
-/** Default deadline for each external build invocation; it does not bound the entire analysis. */
-val DEFAULT_BUILD_TIMEOUT: Duration = Duration.ofMinutes(10)
-private const val DEFAULT_MAXIMUM_SCENARIOS = 32
-/** Maximum concurrent analysis leases per repository cache unless configured otherwise. */
-const val DEFAULT_MAXIMUM_WORKSPACE_SLOTS = 2
-private const val REVISIONS_PER_ANALYSIS = 2L
-private const val WORKSPACE_PREPARATION_MARGIN_MINUTES = 5L
-
-/**
- * Computes a workspace acquisition budget from two build timeouts plus five minutes of preparation.
- *
- * @param buildTimeout Timeout for one external build invocation.
- * @return Waiting budget for an available workspace slot, not a total analysis deadline.
- * @throws ArithmeticException If the derived duration overflows.
- */
-fun defaultWorkspaceLeaseTimeout(buildTimeout: Duration = DEFAULT_BUILD_TIMEOUT): Duration =
-    buildTimeout.multipliedBy(REVISIONS_PER_ANALYSIS).plusMinutes(WORKSPACE_PREPARATION_MARGIN_MINUTES)
-
-/**
- * Business inputs for comparing two Git revisions under explicit folding assumptions.
- *
- * @property repository Local repository path or remote Git URL.
- * @property base Base revision to resolve to a commit.
- * @property head Head revision to resolve to a commit.
- * @property fold YAML document contents, not a filename; may contain multiple folding scenarios.
- * @throws IllegalArgumentException If any input is blank.
- */
-data class AnalysisRequest(
-    val repository: String,
-    val base: String,
-    val head: String,
-    val fold: String,
-) {
-    init {
-        require(repository.isNotBlank()) { "repository must not be blank" }
-        require(base.isNotBlank()) { "base must not be blank" }
-        require(head.isNotBlank()) { "head must not be blank" }
-        require(fold.isNotBlank()) { "fold must not be blank" }
-    }
-}
 
 /** Gate decision derived from findings, diagnostics, and proof completion. */
 enum class Verdict {
@@ -174,9 +132,9 @@ enum class DiagnosticCode {
     UNMATCHED_RULE,
     /** A changed input could not be mapped to supported source obligations. */
     UNMAPPED_CHANGE,
-    /** The build adapter did not establish a complete production output inventory for changed non-JVM inputs. */
+    /** A complete static input inventory is unavailable for changed non-JVM inputs. */
     PRODUCTION_INVENTORY_UNAVAILABLE,
-    /** Actual production resources, packaging, or runtime dependencies changed outside the folding model. */
+    /** Normalized resources or external dependencies changed outside the folding model. */
     PRODUCTION_OUTPUT_CHANGED,
     /** Non-JVM input changes could not be proved harmless by comparing the whole folded production program. */
     UNVERIFIED_BUILD_INPUT,
@@ -245,40 +203,17 @@ data class AnalysisResult(
         ) Verdict.PASS else Verdict.FAIL
 }
 
-/**
- * Resource limits and persistent cache settings shared by engine invocations.
- * Analyzed builds execute repository code and must be trusted or isolated by the caller.
- *
- * @property cacheDirectory Writable root for persistent Git workspaces and temporary analysis artifacts.
- * @property buildTimeout Positive timeout for each external build invocation, not the entire analysis.
- * @property maximumScenarios Positive upper bound on fold scenarios accepted in one request.
- * @property buildEnvironmentAllowlist Environment variable names external builds may inherit; not a sandbox.
- * @property maximumWorkspaceSlots Positive maximum number of concurrent workspace leases per repository cache.
- * @property workspaceLeaseTimeout Positive time budget for acquiring a free slot, not a checkout lease lifetime.
- * @throws IllegalArgumentException If any timeout or numerical limit is not positive.
- */
-data class EngineConfiguration(
+/** Working storage and scenario limit for static analysis; no build or repository configuration. */
+data class EngineConfiguration @JvmOverloads constructor(
     val cacheDirectory: Path,
-    val buildTimeout: Duration = DEFAULT_BUILD_TIMEOUT,
-    val maximumScenarios: Int = DEFAULT_MAXIMUM_SCENARIOS,
-    val buildEnvironmentAllowlist: Set<String> = DEFAULT_BUILD_ENVIRONMENT,
-    val maximumWorkspaceSlots: Int = DEFAULT_MAXIMUM_WORKSPACE_SLOTS,
-    val workspaceLeaseTimeout: Duration = defaultWorkspaceLeaseTimeout(buildTimeout),
+    val maximumScenarios: Int = 32,
 ) {
-    init {
-        require(!buildTimeout.isNegative && !buildTimeout.isZero) { "build timeout must be positive" }
-        require(maximumScenarios > 0) { "maximumScenarios must be positive" }
-        require(maximumWorkspaceSlots > 0) { "maximumWorkspaceSlots must be positive" }
-        require(!workspaceLeaseTimeout.isNegative && !workspaceLeaseTimeout.isZero) {
-            "workspace lease timeout must be positive"
-        }
-    }
+    init { require(maximumScenarios > 0) { "maximumScenarios must be positive" } }
 }
-
 
 /** Syntax-level categories describe the change, independently of whether it is safe. */
 enum class ChangeKind {
-    /** A repository input outside the Java/Kotlin syntax model changed; classification does not imply runtime impact. */
+    /** A repository input requires input-content proof beyond declaration comparison; this does not imply runtime impact. */
     BUILD_INPUT_CHANGED,
     /** A field declaration was added. */
     FIELD_ADDED,
@@ -326,7 +261,7 @@ enum class ReasonCode {
     BUILD_OUTPUT_UNCHANGED,
     /** No difference survives in the analyzed folded representation. */
     FOLDED_EQUIVALENT,
-    /** The change is unreachable under the analyzed entry model and folding assumptions. */
+    /** Validated same-input evidence ties removal of all static paths to the explicitly selected controls. */
     UNREACHABLE,
     /** The folded representations still differ for this obligation. */
     SURVIVING_DIFFERENCE,

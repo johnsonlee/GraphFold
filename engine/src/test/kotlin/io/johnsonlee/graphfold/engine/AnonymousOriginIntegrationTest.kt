@@ -1,8 +1,10 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
 import org.eclipse.jgit.api.Git
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
@@ -60,7 +62,7 @@ class AnonymousOriginIntegrationTest {
             listOf("base", "head").map { revision ->
                 val text = Files.readString(fixtures.resolve("anonymous-origins/${case.language}/${case.id}/$revision/Example.$extension"))
                 Files.writeString(source, format(text))
-                val project = ProjectCompiler(Duration.ofMinutes(2)).compile(repository, directory.resolve(revision))
+                val project = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(repository, directory.resolve(revision))
                 compiled += readClasses(project.classes)
                 git.add().addFilepattern("src").call()
                 git.commit().setMessage(revision).setAuthor("GraphFold Test", "test@example.invalid")
@@ -68,7 +70,7 @@ class AnonymousOriginIntegrationTest {
             }
         }
         verifyCompilerFacts(case, compiled)
-        val result = GraphFoldEngine(EngineConfiguration(directory.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(directory.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), commits[0], commits[1], Files.readString(fixtures.resolve("fold.yml"))),
         )
         assertTrue(result.diagnostics.none { it.blocking }, "${case.id}: $result")

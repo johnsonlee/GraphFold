@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import java.nio.file.Files
 import java.nio.file.Path
 import org.eclipse.jgit.api.Git
@@ -34,7 +36,7 @@ class FrontendDiagnosticsIntegrationTest {
                     .setCommitter("GraphFold Test", "test@example.invalid").call().name
             }
         }
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), commits[0], commits[1], Files.readString(fixtures.resolve("fold.yml"))),
         )
         assertTrue(result.diagnostics.none { it.blocking }, result.toString())

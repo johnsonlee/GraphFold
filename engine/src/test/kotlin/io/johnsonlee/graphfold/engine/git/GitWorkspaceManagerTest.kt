@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine.git
 
+import org.eclipse.jgit.diff.Edit
+import org.eclipse.jgit.diff.DiffEntry.ChangeType
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.Executors
@@ -50,11 +52,10 @@ class GitWorkspaceManagerTest {
         assertEquals(head, workspace.headSha)
         assertEquals("one\ntwo\nthree\n", Files.readString(workspace.baseDirectory.resolve("Example.java")))
         val change = workspace.changes().single()
-        assertEquals(listOf(ChangedLineRange(2, 2)), change.baseLines)
-        assertEquals(listOf(ChangedLineRange(2, 2), ChangedLineRange(4, 4)), change.headLines)
+        assertEquals(listOf(Edit(1, 2, 1, 2), Edit(3, 3, 3, 4)), change.edits)
         assertEquals("Example.java", change.basePath)
         assertFalse(change.binary)
-        assertEquals(GitChangeType.MODIFY, change.changeType)
+        assertEquals(ChangeType.MODIFY, change.changeType)
         assertNull(change.similarityScore)
         workspace.close()
         workspace.close()
@@ -76,19 +77,19 @@ class GitWorkspaceManagerTest {
         val head = commit()
         manager.open(repository.toString(), base, head).use { workspace ->
             val changes = workspace.changes()
-            val renamed = changes.single { it.changeType == GitChangeType.RENAME }
+            val renamed = changes.single { it.changeType == ChangeType.RENAME }
             assertEquals("old.java", renamed.basePath)
             assertEquals(100, renamed.similarityScore)
             assertEquals("renamed\nfile.java", renamed.headPath)
-            assertTrue(renamed.baseLines.isEmpty())
-            val added = changes.single { it.changeType == GitChangeType.ADD }
+            assertTrue(renamed.edits.all { it.lengthA == 0 })
+            val added = changes.single { it.changeType == ChangeType.ADD }
             assertNull(added.basePath)
-            assertEquals(listOf(ChangedLineRange(1, 2)), added.headLines)
-            assertTrue(added.baseLines.isEmpty())
-            val deleted = changes.single { it.changeType == GitChangeType.DELETE }
+            assertEquals(listOf(Edit(0, 0, 0, 2)), added.edits)
+            assertTrue(added.edits.all { it.lengthA == 0 })
+            val deleted = changes.single { it.changeType == ChangeType.DELETE }
             assertNull(deleted.headPath)
-            assertEquals(listOf(ChangedLineRange(1, 1)), deleted.baseLines)
-            assertTrue(deleted.headLines.isEmpty())
+            assertEquals(listOf(Edit(0, 1, 0, 0)), deleted.edits)
+            assertTrue(deleted.edits.all { it.lengthB == 0 })
         }
     }
 
@@ -101,7 +102,7 @@ class GitWorkspaceManagerTest {
         val head = commit()
         manager.open(repository.toString(), base, head).use {
             assertTrue(it.changes().single { change -> change.headPath == "binary" }.binary)
-            assertEquals("empty", it.changes().single { change -> change.changeType == GitChangeType.DELETE }.basePath)
+            assertEquals("empty", it.changes().single { change -> change.changeType == ChangeType.DELETE }.basePath)
         }
     }
 
@@ -211,8 +212,6 @@ class GitWorkspaceManagerTest {
         write("file", "before")
         val base = commit()
         assertFailsWith<GitOperationException> { manager.open(repository.toString(), base, "0123456789abcdef") }
-        assertFailsWith<IllegalArgumentException> { ChangedLineRange(0, 1) }
-        assertFailsWith<IllegalArgumentException> { ChangedLineRange(2, 1) }
     }
 
     @Test
@@ -248,7 +247,7 @@ class GitWorkspaceManagerTest {
         manager.open(repository.toString(), base, head).use {
             val change = it.changes().single()
             assertEquals("script", change.headPath)
-            assertTrue(change.headLines.isEmpty())
+            assertTrue(change.edits.all { edit -> edit.lengthB == 0 })
             assertTrue(Files.isExecutable(it.headDirectory.resolve("script")))
         }
     }
@@ -262,9 +261,9 @@ class GitWorkspaceManagerTest {
         commitIndex("change file type")
         manager.open(repository.toString(), base, head()).use { workspace ->
             val changes = workspace.changes()
-            assertEquals(setOf(GitChangeType.ADD, GitChangeType.DELETE), changes.map { it.changeType }.toSet())
-            val added = changes.single { it.changeType == GitChangeType.ADD }
-            val deleted = changes.single { it.changeType == GitChangeType.DELETE }
+            assertEquals(setOf(ChangeType.ADD, ChangeType.DELETE), changes.map { it.changeType }.toSet())
+            val added = changes.single { it.changeType == ChangeType.ADD }
+            val deleted = changes.single { it.changeType == ChangeType.DELETE }
             assertEquals("link", added.headPath)
             assertNull(added.basePath)
             assertEquals("link", deleted.basePath)

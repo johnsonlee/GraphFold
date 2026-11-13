@@ -1,29 +1,21 @@
 package io.johnsonlee.graphfold.engine.git
 
-import java.io.InputStream
-import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.dircache.DirCache
-import org.eclipse.jgit.dircache.DirCacheEntry
+import org.eclipse.jgit.dircache.DirCacheCheckout
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
-import org.eclipse.jgit.lib.ObjectId
-import org.eclipse.jgit.lib.ObjectLoader
-import org.eclipse.jgit.lib.ObjectInserter
+import org.eclipse.jgit.lib.ProgressMonitor
+import org.eclipse.jgit.lib.NullProgressMonitor
 import org.eclipse.jgit.lib.RefUpdate
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.TreeWalk
 
-/** Raw object checkout deliberately never executes hooks, clean/smudge filters, or external Git. */
-internal fun checkout(
-    cached: Repository, revision: String, directory: Path,
-    commitIndex: (DirCache) -> Boolean = DirCache::commit,
-    makeExecutable: (Path) -> Boolean = { it.toFile().setExecutable(true, false) },
-) {
+/** JGit restores the index and working tree; private checkout configuration disables content filters. */
+internal fun checkout(cached: Repository, revision: String, directory: Path) {
+    checkGitCancellation()
     Files.createDirectories(directory)
     val gitDirectory = directory.resolve(".git")
     if (!Files.exists(gitDirectory.resolve("HEAD"))) {
@@ -32,134 +24,65 @@ internal fun checkout(
     val alternate = gitDirectory.resolve("objects/info/alternates")
     Files.createDirectories(alternate.parent)
     Files.writeString(alternate, cached.directory.toPath().resolve("objects").toAbsolutePath().toString() + "\n")
-    Files.createDirectories(gitDirectory.resolve("info"))
-    Files.writeString(gitDirectory.resolve("info/exclude"), ".gradle/\nbuild/\ntarget/\n")
-    // Reopen after persisting alternates so both this process and later build tools see cached objects.
+    val info = Files.createDirectories(gitDirectory.resolve("info"))
+    Files.writeString(info.resolve("attributes"), "* -filter -text -ident\n")
+    val hooks = Files.createDirectories(gitDirectory.resolve("graphfold-empty-hooks"))
+    // Reopen after persisting alternates so JGit and later build tools see the same cached objects.
     JGitRepositories.open(gitDirectory, directory).use { checkout ->
-        val commit = RevWalk(cached).use { it.parseCommit(cached.resolve(revision)) }
-        TreeWalk(cached).use { tree ->
-            tree.addTree(commit.tree)
-            tree.isRecursive = true
-            checkoutTree(cached, checkout, tree, commit.tree, directory, commitIndex, makeExecutable)
+        checkout.config.apply {
+            setBoolean("core", null, "autocrlf", false)
+            setString("core", null, "hooksPath", hooks.toAbsolutePath().toString())
+            save()
         }
+        val commit = RevWalk(cached).use { it.parseCommit(cached.resolve(revision)) }
+        validateCompleteInput(cached, commit.tree)
+        val index = checkout.lockDirCache()
+        try {
+            val operation = DirCacheCheckout(checkout, index, commit.tree)
+            operation.setFailOnConflict(false)
+            operation.setForce(true)
+            operation.setProgressMonitor(CheckoutProgress)
+            check(operation.checkout()) { "Cannot restore every checkout path" }
+        } finally {
+            index.unlock()
+        }
+        checkGitCancellation()
         val result = checkout.updateRef(Constants.HEAD, true).apply {
             setNewObjectId(commit)
             isForceUpdate = true
         }.forceUpdate()
         if (result !in SUCCESSFUL_HEAD_UPDATES) throw GitOperationException("Cannot update checkout HEAD: $result")
-        // Apply the target revision's ignore rules after restoring sources and its index.
         Git(checkout).clean().setCleanDirectories(true).setForce(true).call()
     }
 }
 
-private fun checkoutTree(
-    cached: Repository, checkout: Repository, tree: TreeWalk, targetTree: ObjectId, directory: Path,
-    commitIndex: (DirCache) -> Boolean, makeExecutable: (Path) -> Boolean,
-) {
-    val index = checkout.lockDirCache()
-    try {
-        val paths = TreeWalk(cached).use { target ->
-            target.addTree(targetTree)
-            target.isRecursive = true
-            buildSet { while (target.next()) add(target.pathString) }
-        }
-        for (entryIndex in 0 until index.entryCount) {
-            val entry = index.getEntry(entryIndex)
-            if (entry.pathString !in paths) {
-                val destination = directory.resolve(entry.pathString)
-                ensureParents(directory, destination.parent)
-                deleteDirectory(destination)
-            }
-        }
-        val builder = index.builder()
+/** Unsupported external content cannot silently become complete static input. This does not materialize Git objects. */
+private fun validateCompleteInput(repository: Repository, treeId: org.eclipse.jgit.lib.ObjectId) {
+    TreeWalk(repository).use { tree ->
+        tree.addTree(treeId)
+        tree.isRecursive = true
         while (tree.next()) {
             checkGitCancellation()
-            val mode = tree.getFileMode(0)
-            materialize(cached, tree, directory, mode, makeExecutable)
-            builder.add(DirCacheEntry(tree.pathString).apply {
-                fileMode = mode
-                setObjectId(tree.getObjectId(0))
-            })
-        }
-        builder.finish()
-        index.write()
-        check(commitIndex(index)) { "Cannot persist checkout index" }
-    } finally {
-        index.unlock()
-    }
-}
-
-private fun materialize(
-    repository: Repository, tree: TreeWalk, directory: Path, mode: FileMode, makeExecutable: (Path) -> Boolean,
-) {
-    if (mode == FileMode.GITLINK) {
-        throw GitOperationException("Submodule inputs are not supported; analysis cannot be complete")
-    }
-    val destination = directory.resolve(tree.pathString).normalize()
-    if (!destination.startsWith(directory) || tree.pathString.split('/').any { it.equals(".git", ignoreCase = true) }) {
-        throw GitOperationException("Unsafe checkout path")
-    }
-    ensureParents(directory, destination.parent)
-    val loader = repository.open(tree.getObjectId(0), Constants.OBJ_BLOB)
-    if (matchesBlob(destination, mode, tree.getObjectId(0))) return
-    deleteDirectory(destination)
-    if (mode == FileMode.SYMLINK) {
-        Files.createSymbolicLink(destination, Path.of(String(loader.bytes, Charsets.UTF_8)))
-    } else {
-        writeBlob(loader, destination, mode, makeExecutable)
-    }
-}
-
-private fun ensureParents(directory: Path, parent: Path) {
-    var cursor = directory
-    directory.relativize(parent).forEach { segment ->
-        cursor = cursor.resolve(segment)
-        if (!Files.isDirectory(cursor, NOFOLLOW_LINKS)) {
-            deleteDirectory(cursor)
-            Files.createDirectory(cursor)
+            if (tree.getFileMode(0) == FileMode.GITLINK) {
+                throw GitOperationException("Submodule inputs are not supported; analysis cannot be complete")
+            }
+            rejectLfsPointer(repository, tree.getObjectId(0))
         }
     }
 }
 
-private fun matchesBlob(destination: Path, mode: FileMode, id: ObjectId): Boolean = when {
-    mode == FileMode.SYMLINK -> Files.isSymbolicLink(destination) && ObjectInserter.Formatter().idFor(
-        Constants.OBJ_BLOB, Files.readSymbolicLink(destination).toString().toByteArray(Charsets.UTF_8),
-    ) == id
-    !Files.isRegularFile(destination, NOFOLLOW_LINKS) -> false
-    Files.isExecutable(destination) != (mode == FileMode.EXECUTABLE_FILE) -> false
-    else -> Files.newInputStream(destination).use {
-        ObjectInserter.Formatter().idFor(Constants.OBJ_BLOB, Files.size(destination), it) == id
+private fun rejectLfsPointer(repository: Repository, blob: org.eclipse.jgit.lib.ObjectId) {
+    val prefix = repository.open(blob, Constants.OBJ_BLOB).openStream().use { it.readNBytes(LFS_PREFIX.length) }
+    if (String(prefix, Charsets.UTF_8) == LFS_PREFIX) {
+        throw GitOperationException("Git LFS inputs are not supported; analysis cannot be complete")
     }
 }
 
-private fun writeBlob(loader: ObjectLoader, destination: Path, mode: FileMode, makeExecutable: (Path) -> Boolean) {
-    loader.openStream().use { input ->
-        val prefix = input.readNBytes(LFS_PREFIX.length)
-        if (String(prefix, Charsets.UTF_8) == LFS_PREFIX) {
-            throw GitOperationException("Git LFS inputs are not supported; analysis cannot be complete")
-        }
-        Files.newOutputStream(destination).use { output ->
-            output.write(prefix)
-            copy(input, output)
-        }
-    }
-    if (mode == FileMode.EXECUTABLE_FILE && !makeExecutable(destination)) {
-        throw GitOperationException("Cannot preserve executable file mode")
-    }
-}
-
-private fun copy(input: InputStream, output: OutputStream) {
-    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-    var count = input.read(buffer)
-    while (count >= 0) {
-        checkGitCancellation()
-        output.write(buffer, 0, count)
-        count = input.read(buffer)
-    }
+private object CheckoutProgress : ProgressMonitor by NullProgressMonitor.INSTANCE {
+    override fun isCancelled(): Boolean = Thread.currentThread().isInterrupted
 }
 
 private const val LFS_PREFIX = "version https://git-lfs.github.com/spec/v1"
-
 private val SUCCESSFUL_HEAD_UPDATES = setOf(
     RefUpdate.Result.NEW, RefUpdate.Result.NO_CHANGE, RefUpdate.Result.FAST_FORWARD, RefUpdate.Result.FORCED,
 )

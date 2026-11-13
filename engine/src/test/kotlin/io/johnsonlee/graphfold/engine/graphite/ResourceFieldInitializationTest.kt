@@ -1,9 +1,16 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.ResourceDeclarations
+
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
+
 import io.johnsonlee.graphite.input.LoaderConfig
 import io.johnsonlee.graphite.sootup.JavaProjectLoader
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.jar.JarEntry
+import java.util.jar.JarFile
+import java.util.jar.JarOutputStream
 import javax.tools.ToolProvider
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -49,6 +56,43 @@ class ResourceFieldInitializationTest {
         assertTrue(ResourceRead("messages", "changed") in analysis.reads("App.run()Ljava/lang/String;"))
         assertTrue(analysis.reads("Impl.<init>()V").isEmpty(), "Constructing the implementing class does not initialize Values")
     }
+
+    @Test fun `full analyzer uses pinned Intrinsics resource contract while retaining application resource reads`() {
+        val pinned = Path.of(Unit::class.java.protectionDomain.codeSource.location.toURI())
+        val dependency = directory.resolve("pinned-intrinsics.jar")
+        // Copy real pinned definitions unchanged, including the exception classes referenced by Intrinsics.
+        // This fixture needs the contract's dependency closure, not the unrelated stdlib APIs.
+        JarFile(pinned.toFile()).use { source ->
+            JarOutputStream(Files.newOutputStream(dependency)).use { target ->
+                listOf("kotlin/jvm/internal/Intrinsics", "kotlin/KotlinNullPointerException", "kotlin/TypeCastException",
+                    "kotlin/UninitializedPropertyAccessException").forEach { owner ->
+                    val name = "$owner.class"
+                    target.putNextEntry(JarEntry(name))
+                    target.write(pinnedClassBytes(source, name))
+                    target.closeEntry()
+                }
+            }
+        }
+        val file = Files.writeString(directory.resolve("App.java"), """
+            public class App {
+                public static String run() {
+                    kotlin.jvm.internal.Intrinsics.checkNotNullParameter("value", "name");
+                    return java.util.ResourceBundle.getBundle("messages").getString("changed");
+                }
+            }
+        """.trimIndent())
+        val application = Files.createDirectories(directory.resolve("pinned-app"))
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
+            "-cp", dependency.toString(), "-d", application.toString(), file.toString()))
+        assertTrue(ResourceDeclarations(listOf(dependency)).trustedIntrinsics)
+        val snapshot = GraphiteAnalyzer().analyze(application, emptyList(), listOf(dependency), dependencyResources = true)
+        assertTrue(snapshot.resourceDependenciesAnalyzed, snapshot.diagnostics.toString())
+        assertEquals(listOf(ResourceRead("messages", "changed")), snapshot.methods.getValue("App.run()Ljava/lang/String;").resourceReads)
+        assertTrue(snapshot.methods.keys.none { it.startsWith("kotlin.") }, "Pinned library methods remain dependencies")
+    }
+
+    private fun pinnedClassBytes(archive: JarFile, name: String): ByteArray =
+        archive.getInputStream(requireNotNull(archive.getJarEntry(name))).use { it.readBytes() }
 
     @Test fun `lookalike Intrinsics contract cannot hide a dependency resource reader`() {
         val fake = directory.resolve("Intrinsics.java")

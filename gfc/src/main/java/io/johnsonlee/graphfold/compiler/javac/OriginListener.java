@@ -35,12 +35,18 @@ final class OriginListener implements TaskListener {
     private final Path output;
     private final Path root;
     private final String runId;
+    private final Path classes;
     private final Map<String, Origin> origins = new LinkedHashMap<>();
     private final Set<String> generated = new HashSet<>();
     private final Map<String, String> outputs = new LinkedHashMap<>();
     private boolean failed;
 
     OriginListener(JavacTask task, Path output, Path root, String runId) {
+        this(task, output, root, runId, null);
+    }
+
+    OriginListener(JavacTask task, Path output, Path root, String runId, Path classes) {
+        this.classes = classes == null ? null : classes.toAbsolutePath().normalize();
         this.runId = runId;
         this.task = task;
         this.trees = Trees.instance(task);
@@ -121,7 +127,10 @@ final class OriginListener implements TaskListener {
         // prevents completion; callers must additionally accept sidecars only after compiler success.
         if (!generated.containsAll(origins.keySet())) return;
         var records = new ArrayList<String>();
-        origins.values().stream().sorted(java.util.Comparator.comparing(Origin::owner)).forEach(origin -> records.add(origin.json()));
+        for (Origin origin : origins.values().stream().sorted(java.util.Comparator.comparing(Origin::owner)).toList()) {
+            String classHash = classes == null ? null : sha256(Files.readAllBytes(classes.resolve(origin.owner().replace('.', '/') + ".class")));
+            records.add(origin.json(classHash));
+        }
         String json = "{\"schema\":1,\"runId\":" + quote(runId) + ",\"producer\":{\"compiler\":" + quote(Compiler.JAVAC.wireValue()) + ",\"version\":"
             + quote(System.getProperty("java.version")) + ",\"backend\":" + quote(Backend.JVM.name()) + "},\"complete\":true,\"records\":["
             + String.join(",", records) + "],\"outputs\":[" + String.join(",", outputs.values()) + "]}\n";
@@ -177,8 +186,9 @@ final class OriginListener implements TaskListener {
     }
 
     private record Origin(String owner, String source, String hash, long start, long end, long allocationStart, long allocationEnd) {
-        String json() {
+        String json(String classHash) {
             return "{\"owner\":" + quote(owner) + ",\"source\":" + quote(source) + ",\"sourceHash\":" + quote(hash)
+                + (classHash == null ? "" : ",\"classHash\":" + quote(classHash))
                 + ",\"declaration\":{\"start\":" + start + ",\"end\":" + end + "},\"allocation\":{\"start\":"
                 + allocationStart + ",\"end\":" + allocationEnd + "}}";
         }

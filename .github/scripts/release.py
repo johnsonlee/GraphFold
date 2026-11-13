@@ -1,16 +1,13 @@
 """Release validation and local publication verification; no remote mutations."""
 import argparse
 import hashlib
+import json
 import re
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import zipfile
-import subprocess
-import tarfile
-import tempfile
 
 SEMVER = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?")
-CLI_VERSION_RESOURCE = "io/johnsonlee/graphfold/cli/version.txt"
 COMPILER_PLUGIN_SERVICES = {
     "com.sun.source.util.Plugin": "io.johnsonlee.graphfold.compiler.javac.GraphFoldOrigins",
     "org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar":
@@ -33,26 +30,42 @@ def verify_compiler_plugin(archive):
         raise ValueError("Missing compiler plugin origin protocol")
 
 
-def verify_engine_dependency(pom, release_version, namespace):
+PROJECT_DEPENDENCIES = {
+    "engine": {"gfc"}, "gfc": set(),
+    "gradle-plugin": {"engine"}, "maven-plugin": {"engine"},
+}
+
+
+def verify_project_dependencies(pom, module, release_version, namespace):
     dependencies = [dependency for dependency in pom.findall("m:dependencies/m:dependency", namespace)
-                    if dependency.findtext("m:groupId", namespaces=namespace) == "io.johnsonlee.graphfold"
-                    and dependency.findtext("m:artifactId", namespaces=namespace) == "gfc"]
-    if len(dependencies) != 1:
-        raise ValueError("Engine must depend on the released compiler plugin")
-    dependency = dependencies[0]
-    if dependency.findtext("m:version", namespaces=namespace) != release_version:
-        raise ValueError("Engine compiler plugin dependency differs from release version")
-    if dependency.findtext("m:scope", default="compile", namespaces=namespace) not in ("compile", "runtime"):
-        raise ValueError("Engine compiler plugin dependency is not a runtime dependency")
-    if dependency.findtext("m:optional", default="false", namespaces=namespace) != "false":
-        raise ValueError("Engine compiler plugin dependency must not be optional")
+                    if dependency.findtext("m:groupId", namespaces=namespace) == "io.johnsonlee.graphfold"]
+    names = [dependency.findtext("m:artifactId", namespaces=namespace) for dependency in dependencies]
+    if len(names) != len(set(names)) or set(names) != PROJECT_DEPENDENCIES[module]:
+        raise ValueError(f"Incorrect {module} project dependency graph: {names}")
+    for dependency in dependencies:
+        if dependency.findtext("m:version", namespaces=namespace) != release_version:
+            raise ValueError(f"{module} dependency differs from release version")
+        if dependency.findtext("m:scope", default="compile", namespaces=namespace) not in ("compile", "runtime"):
+            raise ValueError(f"{module} project dependency is not a runtime dependency")
+        if dependency.findtext("m:optional", default="false", namespaces=namespace) != "false":
+            raise ValueError(f"{module} project dependency must not be optional")
 
 
-def verify_cli_version(archive, release_version):
-    if CLI_VERSION_RESOURCE not in archive.namelist():
-        raise ValueError("Missing packaged CLI version")
-    if archive.read(CLI_VERSION_RESOURCE).decode("utf-8").strip() != release_version:
-        raise ValueError("Packaged CLI version differs from release version")
+def verify_module_metadata(directory, module, release_version):
+    path = directory / f"{module}-{release_version}.module"
+    if not path.is_file():
+        raise ValueError(f"Missing Gradle module metadata: {path}")
+    metadata = json.loads(path.read_text())
+    expected = {"group": "io.johnsonlee.graphfold", "module": module, "version": release_version}
+    if any(metadata.get("component", {}).get(key) != value for key, value in expected.items()):
+        raise ValueError(f"Incorrect Gradle module identity: {module}")
+    artifacts = [artifact for variant in metadata.get("variants", []) for artifact in variant.get("files", [])]
+    if not artifacts:
+        raise ValueError(f"Gradle module metadata has no artifacts: {module}")
+    for artifact in artifacts:
+        name, url = artifact.get("name"), artifact.get("url")
+        if not isinstance(name, str) or name != url or Path(name).name != name or not (directory / name).is_file():
+            raise ValueError(f"Invalid Gradle module artifact: {module}: {artifact}")
 
 
 def version(tag):
@@ -63,17 +76,21 @@ def version(tag):
 
 
 def verify(repository, release_version):
+    for obsolete in ("adapters", "inputs", "cli"):
+        if (repository / "io/johnsonlee/graphfold" / obsolete).exists():
+            raise ValueError(f"Obsolete module must not be published: {obsolete}")
     namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
-    for module in ("gfc", "engine", "cli", "gradle-plugin"):
+    for module in PROJECT_DEPENDENCIES:
         directory = repository / "io/johnsonlee/graphfold" / module / release_version
         stem = f"{module}-{release_version}"
         for suffix in (".pom", ".jar", "-sources.jar", "-javadoc.jar"):
             artifact = directory / (stem + suffix)
             if not artifact.is_file() or not artifact.stat().st_size:
                 raise ValueError(f"Missing or empty publication: {artifact}")
+        verify_module_metadata(directory, module, release_version)
         entry = {"gfc": "META-INF/services/com.sun.source.util.Plugin",
                  "engine": "io/johnsonlee/graphfold/engine/GraphFoldEngine.class",
-                 "cli": "io/johnsonlee/graphfold/cli/MainKt.class",
+                 "maven-plugin": "META-INF/maven/plugin.xml",
                  "gradle-plugin": "META-INF/gradle-plugins/io.johnsonlee.graphfold.properties"}[module]
         with zipfile.ZipFile(directory / (stem + ".jar")) as archive:
             if entry not in archive.namelist():
@@ -82,11 +99,31 @@ def verify(repository, release_version):
                 verify_compiler_plugin(archive)
             if module == "engine" and "engine/origin/compiler-plugin.jar" in archive.namelist():
                 raise ValueError("Engine still embeds the compiler plugin")
-            if module == "cli":
-                verify_cli_version(archive, release_version)
+            if module == "engine":
+                for required in ("engine/inputs/StaticInputSnapshots.class", "engine/inputs/archive/ArchiveInput.class"):
+                    if f"io/johnsonlee/graphfold/{required}" not in archive.namelist():
+                        raise ValueError(f"Missing engine input implementation: {required}")
+                if any(name.startswith(("io/johnsonlee/graphfold/gradle/", "io/johnsonlee/graphfold/maven/",
+                                        "io/johnsonlee/graphfold/engine/build/")) for name in archive.namelist()):
+                    raise ValueError("Engine must not contain build-tool integrations")
+            if module in ("gradle-plugin", "maven-plugin"):
+                if any(name.startswith(("io/johnsonlee/graphfold/engine/inputs/",
+                                        "io/johnsonlee/graphfold/integration/")) for name in archive.namelist()):
+                    raise ValueError("Plugins must not duplicate engine input implementations")
+            if module == "maven-plugin":
+                descriptor = ET.fromstring(archive.read("META-INF/maven/plugin.xml"))
+                if descriptor.findtext("version") != release_version:
+                    raise ValueError("Maven plugin descriptor differs from release version")
+                if {mojo.findtext("goal") for mojo in descriptor.findall("mojos/mojo")} != {"snapshot", "check"}:
+                    raise ValueError("Maven plugin descriptor must expose snapshot and check goals")
+                for mojo in descriptor.findall("mojos/mojo"):
+                    implementation = mojo.findtext("implementation", "").replace(".", "/") + ".class"
+                    if implementation not in archive.namelist():
+                        raise ValueError("Missing Maven goal implementation")
         pom = ET.parse(directory / (stem + ".pom"))
-        if module == "engine":
-            verify_engine_dependency(pom, release_version, namespace)
+        verify_project_dependencies(pom, module, release_version, namespace)
+        if module == "maven-plugin" and pom.findtext("m:packaging", namespaces=namespace) != "maven-plugin":
+            raise ValueError("Maven plugin publication must use maven-plugin packaging")
         for key, expected in (("groupId", "io.johnsonlee.graphfold"), ("artifactId", module), ("version", release_version)):
             if pom.findtext(f"m:{key}", namespaces=namespace) != expected:
                 raise ValueError(f"Incorrect POM {key}: {directory}")
@@ -122,34 +159,6 @@ def checksums(directory):
     (directory / "SHA256SUMS").write_text(output)
 
 
-def smoke(distributions, release_version):
-    for extension in ("zip", "tar"):
-        archive = distributions / f"graphfold-{release_version}.{extension}"
-        with tempfile.TemporaryDirectory() as temporary:
-            if extension == "zip":
-                with zipfile.ZipFile(archive) as stream:
-                    stream.extractall(temporary)
-            else:
-                with tarfile.open(archive) as stream:
-                    stream.extractall(temporary, filter="data")
-            installation = Path(temporary) / f"graphfold-{release_version}"
-            plugins = list((installation / "lib").glob("gfc-*.jar"))
-            if len(plugins) != 1 or plugins[0].name != f"gfc-{release_version}.jar":
-                raise ValueError("Packaged CLI must contain exactly the released compiler plugin")
-            with zipfile.ZipFile(plugins[0]) as plugin:
-                verify_compiler_plugin(plugin)
-            executable = installation / "bin/graphfold"
-            help_result = subprocess.run(["bash", str(executable), "--help"], capture_output=True, text=True, timeout=60)
-            if help_result.returncode != 0 or "--fold" not in help_result.stdout:
-                raise ValueError(f"Packaged CLI failed help smoke: {help_result.stderr}")
-            version_result = subprocess.run(["bash", str(executable), "--version"], capture_output=True, text=True, timeout=60)
-            if version_result.returncode != 0 or version_result.stdout.strip() != f"graphfold version {release_version}":
-                raise ValueError(f"Packaged CLI failed version smoke: {version_result.stdout} {version_result.stderr}")
-            invalid = subprocess.run(["bash", str(executable)], capture_output=True, text=True, timeout=60)
-            if invalid.returncode != 2:
-                raise ValueError(f"Packaged CLI failed input-error exit contract: {invalid.returncode}")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
@@ -161,9 +170,6 @@ if __name__ == "__main__":
     comparison.add_argument("expected", type=Path)
     comparison.add_argument("actual", type=Path)
     commands.add_parser("checksums").add_argument("directory", type=Path)
-    distribution = commands.add_parser("smoke")
-    distribution.add_argument("directory", type=Path)
-    distribution.add_argument("version")
     args = parser.parse_args()
     if args.command == "version":
         parsed, prerelease = version(args.tag)
@@ -172,7 +178,5 @@ if __name__ == "__main__":
         verify(args.repository, args.version)
     elif args.command == "compare":
         compare(args.expected, args.actual)
-    elif args.command == "smoke":
-        smoke(args.directory, args.version)
     else:
         checksums(args.directory)

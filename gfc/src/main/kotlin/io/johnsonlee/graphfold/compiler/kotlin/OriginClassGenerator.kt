@@ -3,10 +3,12 @@ package io.johnsonlee.graphfold.compiler.kotlin
 import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Kind
 import org.jetbrains.kotlin.backend.jvm.extensions.ClassGenerator
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.util.file
 import org.jetbrains.kotlin.ir.util.isAnonymousObject
 import org.jetbrains.org.objectweb.asm.AnnotationVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
+import org.jetbrains.org.objectweb.asm.MethodVisitor
 
 internal class OriginClassGenerator(
     private val generator: ClassGenerator,
@@ -40,6 +42,13 @@ internal class OriginClassGenerator(
                 visitEnd()
             }
         }
+    }
+
+    override fun newMethod(
+        declaration: IrFunction?, access: Int, name: String, desc: String, signature: String?, exceptions: Array<out String>?,
+    ): MethodVisitor {
+        collector.method(owner, declaration, name, desc)
+        return generator.newMethod(declaration, access, name, desc, signature, exceptions)
     }
 
     override fun visitAnnotation(desc: String, visible: Boolean): AnnotationVisitor {

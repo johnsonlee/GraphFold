@@ -7,6 +7,8 @@ import java.nio.file.StandardOpenOption.WRITE
 import java.nio.file.Files
 import java.nio.file.Path
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.dircache.DirCacheCheckout
+import org.mockito.Mockito
 import org.eclipse.jgit.lib.CommitBuilder
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
@@ -22,36 +24,6 @@ import kotlin.test.assertTrue
 
 class CheckoutFailureTest {
     @TempDir lateinit var directory: Path
-
-    @Test fun `index commit failure leaves HEAD unadvanced and releases index lock for retry`() = repository { repository ->
-        val revision = commit(repository, FileMode.REGULAR_FILE)
-        val destination = directory.resolve("checkout")
-        val error = assertFailsWith<IllegalStateException> {
-            checkout(repository, revision, destination, commitIndex = { false })
-        }
-        assertEquals("Cannot persist checkout index", error.message)
-        assertFalse(Files.exists(destination.resolve(".git/index.lock")))
-        assertTrue(Files.readString(destination.resolve(".git/HEAD")).startsWith("ref:"))
-        checkout(repository, revision, destination)
-        assertEquals(revision, Files.readString(destination.resolve(".git/HEAD")).trim())
-        assertEquals("payload", Files.readString(destination.resolve("file")))
-    }
-
-    @Test fun `executable permission failure rejects the checkout and releases lock for retry`() = repository { repository ->
-        val revision = commit(repository, FileMode.EXECUTABLE_FILE)
-        val destination = directory.resolve("checkout")
-        var attempted: Path? = null
-        val error = assertFailsWith<GitOperationException> {
-            checkout(repository, revision, destination, makeExecutable = { attempted = it; false })
-        }
-        assertEquals(destination.resolve("file"), attempted)
-        assertEquals("Cannot preserve executable file mode", error.message)
-        assertFalse(Files.exists(destination.resolve(".git/index.lock")))
-        assertTrue(Files.readString(destination.resolve(".git/HEAD")).startsWith("ref:"))
-        checkout(repository, revision, destination)
-        assertTrue(Files.isExecutable(destination.resolve("file")))
-        assertEquals(revision, Files.readString(destination.resolve(".git/HEAD")).trim())
-    }
 
     @Test fun `cancelled materialization cleanup preserves interrupt and releases the failed slot`() {
         val pool = directory.resolve("pool")
@@ -82,6 +54,28 @@ class CheckoutFailureTest {
         Files.delete(lock)
         checkout(repository, head, destination)
         assertEquals(head, Files.readString(destination.resolve(".git/HEAD")).trim())
+        assertTrue(Files.isExecutable(destination.resolve("file")))
+    }
+
+    @Test fun `incomplete native checkout cannot advance HEAD and releases index for retry`() = repository { repository ->
+        val base = commit(repository, FileMode.REGULAR_FILE)
+        val head = commit(repository, FileMode.EXECUTABLE_FILE)
+        val destination = directory.resolve("checkout")
+        checkout(repository, base, destination)
+        Mockito.mockConstruction(DirCacheCheckout::class.java) { operation, _ ->
+            Mockito.`when`(operation.checkout()).thenReturn(false)
+        }.use { intercepted ->
+            val failure = assertFailsWith<IllegalStateException> { checkout(repository, head, destination) }
+            assertEquals("Cannot restore every checkout path", failure.message)
+            assertEquals(1, intercepted.constructed().size)
+            Mockito.verify(intercepted.constructed().single()).checkout()
+            assertEquals(base, Files.readString(destination.resolve(".git/HEAD")).trim())
+            assertFalse(Files.exists(destination.resolve(".git/index.lock")))
+            assertEquals("payload", Files.readString(destination.resolve("file")))
+        }
+        checkout(repository, head, destination)
+        assertEquals(head, Files.readString(destination.resolve(".git/HEAD")).trim())
+        assertFalse(Files.exists(destination.resolve(".git/index.lock")))
         assertTrue(Files.isExecutable(destination.resolve("file")))
     }
 

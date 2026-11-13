@@ -1,6 +1,5 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.git.deleteDirectory
 import java.io.IOException
 import java.nio.file.Path
 import java.util.logging.Level

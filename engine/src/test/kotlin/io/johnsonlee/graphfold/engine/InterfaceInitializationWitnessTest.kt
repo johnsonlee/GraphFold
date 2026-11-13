@@ -1,8 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -24,8 +24,8 @@ class InterfaceInitializationWitnessTest {
         val empty = snapshot(emptySet(), emptySet())
         val activated = snapshot(setOf(method), setOf("Marker"))
         val comparison = if (removed) SnapshotComparison(activated, empty) else SnapshotComparison(empty, activated)
-        assertTrue(comparison.isUnreachable(obligation), "The default body is never invoked")
-        assertTrue(comparison.differences(obligation).single().contains("Class initialization dependencies"))
+        assertTrue(!comparison.isUnreachable(obligation), "An uninvoked added declaration remains production code")
+        assertTrue(comparison.differences(obligation).any { it.contains("Class initialization dependencies") })
         assertTrue(comparison.analysisGaps(obligation).isEmpty())
         assertEquals(listOf(gap.message), comparison.resourceAnalysisGaps())
         val unrelated = obligation.copy(identity = other)
@@ -54,9 +54,12 @@ class InterfaceInitializationWitnessTest {
             snapshot(emptySet(), setOf("Marker")) to activated,
             empty.copy(initializationDependencies = emptyMap()) to activated,
         )) {
-            assertEquals(listOf(gap.message), SnapshotComparison(before, after).analysisGaps(obligation))
+            val unobserved = "OtherMarker.uncontrolled()V"
+            val changed = after.copy(methods = after.methods + (unobserved to body(unobserved)))
+            assertEquals(listOf(gap.message), SnapshotComparison(before, changed).analysisGaps(obligation))
         }
-        val metadata = activated.copy(declarations = activated.declarations + (method to "changed method annotation"))
+        val metadata = activated.copy(declarations = activated.declarations + (method to "changed method annotation"),
+            methods = activated.methods + ("OtherMarker.uncontrolled()V" to body("OtherMarker.uncontrolled()V")))
         assertEquals(listOf(gap.message), SnapshotComparison(activated, metadata).analysisGaps(obligation))
     }
 
@@ -118,7 +121,6 @@ class InterfaceInitializationWitnessTest {
         assertEquals(listOf(bodyGap.message), SnapshotComparison(before, after).analysisGaps(obligation))
         val unverified = SnapshotComparison(before, activated, originsVerified = false).analysisGaps(obligation)
         assertTrue(gap.message in unverified)
-        assertTrue(unverified.any { "Compiler provenance" in it })
     }
 
     private fun snapshot(defaults: Set<String>, dependencies: Set<String>): ProgramSnapshot {

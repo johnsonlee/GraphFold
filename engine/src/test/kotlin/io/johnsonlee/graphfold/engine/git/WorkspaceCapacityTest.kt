@@ -1,6 +1,6 @@
 package io.johnsonlee.graphfold.engine.git
 
-import io.johnsonlee.graphfold.engine.EngineConfiguration
+import io.johnsonlee.graphfold.engine.RepositoryConfiguration
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -77,11 +77,11 @@ class WorkspaceCapacityTest {
         for (duration in listOf(Duration.ZERO, Duration.ofMillis(-1))) {
             assertFailsWith<IllegalArgumentException> { leaseWorkspace(temporary, 1, duration) }
             assertFailsWith<IllegalArgumentException> { GitWorkspaceManager(temporary, 1, duration) }
-            assertFailsWith<IllegalArgumentException> { EngineConfiguration(temporary, workspaceLeaseTimeout = duration) }
+            assertFailsWith<IllegalArgumentException> { RepositoryConfiguration(temporary, workspaceLeaseTimeout = duration) }
         }
         assertFailsWith<IllegalArgumentException> { leaseWorkspace(temporary, 0) }
         assertFailsWith<IllegalArgumentException> { GitWorkspaceManager(temporary, 0) }
-        assertFailsWith<IllegalArgumentException> { EngineConfiguration(temporary, maximumWorkspaceSlots = 0) }
+        assertFailsWith<IllegalArgumentException> { RepositoryConfiguration(temporary, maximumWorkspaceSlots = 0) }
         val pool = Files.createDirectory(temporary.resolve("pool"))
         val alias = Files.createSymbolicLink(temporary.resolve("alias"), pool)
         leaseWorkspace(pool, 1).use {

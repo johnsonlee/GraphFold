@@ -45,14 +45,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Exercise signed publication upload gate
         run: python3 .github/scripts/verify-publication-gate.py
-      - name: Verify and stage synchronized engine and compiler plugin publications
+      - name: Verify and stage synchronized engine, compiler and build plugin publications
         run: |
-          ./gradlew clean check :cli:installDist :cli:distZip :cli:distTar publishAllPublicationsToReleaseVerificationRepository --no-daemon --stacktrace -Pversion="$RELEASE_VERSION"
+          ./gradlew clean check publishAllPublicationsToReleaseVerificationRepository --no-daemon --stacktrace -Pversion="$RELEASE_VERSION"
           python3 .github/scripts/release.py verify build/repository "$RELEASE_VERSION"
-          cli/build/install/graphfold/bin/graphfold --help
-          python3 .github/scripts/release.py smoke cli/build/distributions "$RELEASE_VERSION"
           mkdir -p release-assets
-          cp cli/build/distributions/* release-assets/
           tar -czf release-assets/graphfold-maven-"$RELEASE_VERSION".tar.gz -C build repository
           python3 .github/scripts/release.py checksums release-assets
           (cd release-assets && sha256sum -c SHA256SUMS)

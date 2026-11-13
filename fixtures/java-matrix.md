@@ -7,7 +7,7 @@ Its `gated_` counterpart is a negative (controlled change): both revisions execu
 changed construct only when that same gate is true and return zero otherwise.
 The labels describe semantics; they must not be changed to accommodate analyzer output.
 
-The shared manifest contains 132 Java scenarios (61 positive, 71 negative), each with
+The shared manifest contains 134 Java scenarios (67 positive, 67 negative), each with
 a Kotlin counterpart. Kotlin adds 77 language-specific scenarios. These fixtures
 supplement the existing Stream positive/negative pairs. They run through
 the full Git diff, build, source location, Cypher fold, comparison, and verdict pipeline.
@@ -117,13 +117,13 @@ Additional internal types are relevant only when existing code triggers initiali
 | --- | --- | --- |
 | `static_block_effect` | FAIL | Existing class initializer changes emitted output |
 | `gated_static_block_effect` | PASS | Changed static-block effects are eliminated by the fold |
-| `new_unreferenced_static_block` | PASS | New type is never initialized by existing code |
+| `new_unreferenced_static_block` | FAIL | New production initializer has no selected control coverage, regardless of whether the type is initialized |
 | `new_referenced_static_block` | FAIL | Existing method initializes new type with an output effect |
 | `static_field_initializer_effect` | FAIL | Unread static field initializer changes output |
 | `gated_static_field_initializer_effect` | PASS | Static field helper changes only inside disabled gate |
 | `static_initializer_throws` | FAIL | Existing type starts failing initialization |
 | `gated_static_initializer_throws` | PASS | Changed exception detail exists only inside disabled gate |
-| `constant_reference_static_block` | PASS | Inlined compile-time constant read does not initialize its declaring type |
+| `constant_reference_static_block` | FAIL | Changed production initializer has no selected control coverage; constant inlining does not exempt it |
 
 Kotlin equivalents use companion initialization for existing class initialization and
 object initialization for additional types. `const val` models a JVM compile-time

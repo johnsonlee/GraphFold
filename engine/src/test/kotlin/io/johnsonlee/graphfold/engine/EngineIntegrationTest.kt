@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -16,18 +18,18 @@ class EngineIntegrationTest {
         val sha = commit(repository)
         val cache = temporary.resolve("capacity-cache")
         val request = AnalysisRequest(repository.toString(), sha, sha, rules())
-        val config = EngineConfiguration(cache, maximumWorkspaceSlots = 1,
+        val config = RepositoryConfiguration(cache, maximumWorkspaceSlots = 1,
             workspaceLeaseTimeout = java.time.Duration.ofMillis(1))
         io.johnsonlee.graphfold.engine.git.GitWorkspaceManager(cache.resolve("git"), 1)
             .open(repository.toString(), sha, sha).use {
-                val result = GraphFoldEngine(config).analyze(request)
+                val result = sourceAnalyzer(config).analyze(request)
                 assertEquals(Verdict.FAIL, result.verdict)
                 assertTrue(result.findings.isEmpty())
                 assertEquals(DiagnosticCode.WORKSPACE_CAPACITY_TIMEOUT, result.diagnostics.single().code)
                 assertEquals(AnalysisStage.GIT, result.diagnostics.single().stage)
                 assertTrue(result.diagnostics.single().message.contains("Retry"))
             }
-        assertEquals(Verdict.PASS, GraphFoldEngine(config).analyze(request).verdict)
+        assertEquals(Verdict.PASS, sourceAnalyzer(config).analyze(request).verdict)
     }
 
     @Test
@@ -76,7 +78,7 @@ class EngineIntegrationTest {
     fun `failed compilation blocks and still cleans detached worktrees`() {
         val result = analyze("return x;", "return thisDoesNotCompile;")
         assertEquals(Verdict.FAIL, result.verdict)
-        assertEquals(AnalysisStage.BUILD, result.diagnostics.single().stage)
+        assertEquals(AnalysisStage.INPUT, result.diagnostics.single().stage)
         assertTrue(result.ruleAudits.all { it.selectionStatus == RuleSelectionStatus.NOT_EXECUTED })
         assertTrue(result.ruleAudits.all { it.selectedCount == null && it.matchedCallCount == null })
         assertEquals(0, result.metadata.provedObligations)
@@ -144,7 +146,9 @@ class EngineIntegrationTest {
         val before = "return Example.class.getDeclaredMethods().length;"
         val result = analyze(before, "return Example.class.getDeclaredMethods().length + 1;")
         assertEquals(Verdict.FAIL, result.verdict)
-        assertTrue(result.diagnostics.any { it.code == DiagnosticCode.INCOMPLETE_GRAPH }, result.toString())
+        assertTrue(result.diagnostics.isEmpty(), result.toString())
+        assertTrue(result.findings.isNotEmpty(), result.toString())
+        assertTrue(result.reasons.any { it.code == ReasonCode.SURVIVING_DIFFERENCE }, result.toString())
     }
 
     @Test
@@ -293,7 +297,7 @@ class EngineIntegrationTest {
         return engine().analyze(AnalysisRequest(repository.toString(), base, head, rules(key)))
     }
 
-    private fun engine() = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache")))
+    private fun engine() = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache")))
 
     private fun repository(body: String): Path {
         val root = Files.createDirectory(temporary.resolve("repository"))

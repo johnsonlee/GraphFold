@@ -1,6 +1,9 @@
 package io.johnsonlee.graphfold.engine.graphite
 
-import io.johnsonlee.graphfold.engine.build.CompiledProject
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
 import io.johnsonlee.graphfold.engine.origin.OriginCatalog
 import io.johnsonlee.graphfold.engine.origin.OriginProject
 import io.johnsonlee.graphfold.engine.origin.normalizeOriginClasses
@@ -146,7 +149,7 @@ class OriginFoldSelectionTest {
         val normalized = normalizeOriginClasses(classes, temporary.resolve("normalized"),
             mapOf("Host\$1" to "Host\$left", "Host\$2" to "Host\$right"))
         assertTrue(normalized.diagnostics.isEmpty(), normalized.diagnostics.toString())
-        return OriginProject(CompiledProject(normalized.classes, listOf(temporary), emptyList()),
+        return OriginProject(StaticScope(normalized.classes, listOf(temporary), emptyList()),
             classes, OriginCatalog(emptyList(), emptyList()), normalized.owners)
     }
 }

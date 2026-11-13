@@ -1,6 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin
 
-import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
 import java.nio.file.Path
 import org.objectweb.asm.Type
 import org.objectweb.asm.Handle

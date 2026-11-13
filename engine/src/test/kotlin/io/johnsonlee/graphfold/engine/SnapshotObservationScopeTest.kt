@@ -1,8 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -61,7 +61,7 @@ class SnapshotObservationScopeTest {
         val callback = "Target.callback()V"
         val base = snapshot(method(TARGET), method(OBSERVER), method(callback, isPrivate = true))
         val comparison = SnapshotComparison(base, base)
-        assertTrue(comparison.isUnreachable(obligation(callback)))
+        assertTrue(!comparison.isUnreachable(obligation(callback)))
         assertEquals(listOf(GAP), comparison.analysisGaps(obligation(callback)))
     }
 

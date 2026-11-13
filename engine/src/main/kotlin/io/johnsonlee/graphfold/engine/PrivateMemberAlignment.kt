@@ -1,7 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
 import sootup.core.model.MethodModifier
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 
 /** Only uniquely equivalent removed/added private members are paired. Public API names stay observable. */
 internal class PrivateMemberAlignment(private val base: ProgramSnapshot, private val head: ProgramSnapshot) {
@@ -14,9 +14,13 @@ internal class PrivateMemberAlignment(private val base: ProgramSnapshot, private
             .mapValues { (_, fields) -> fields.map { it.identity } },
             newFields.groupBy { listOf(owner(it.identity), it.declaration, it.constant) }
                 .mapValues { (_, fields) -> fields.map { it.identity } })
-        val oldMethods = base.methods.values.filter { MethodModifier.PRIVATE in it.modifiers && it.identity !in head.methods }
+        val oldMethods = base.methods.values.filter {
+            MethodModifier.PRIVATE in it.modifiers && it.identity !in base.externalEntries && it.identity !in head.methods
+        }
             .associateBy { it.identity }.toMutableMap()
-        val newMethods = head.methods.values.filter { MethodModifier.PRIVATE in it.modifiers && it.identity !in base.methods }
+        val newMethods = head.methods.values.filter {
+            MethodModifier.PRIVATE in it.modifiers && it.identity !in head.externalEntries && it.identity !in base.methods
+        }
             .associateBy { it.identity }.toMutableMap()
         // A round indexes signatures once. Stop at the fixed point; ambiguous cycles stay unpaired.
         while (oldMethods.isNotEmpty() && newMethods.isNotEmpty()) {
@@ -40,10 +44,12 @@ internal class PrivateMemberAlignment(private val base: ProgramSnapshot, private
     )
 
     fun aligned(): ProgramSnapshot = head.copy(
+        controlRemovedMethods = head.controlRemovedMethods.map { names[it] ?: it }.toSet(),
         methods = head.methods.values.associate { method ->
             val identity = names[method.identity] ?: method.identity
             identity to method.copy(identity = identity, calls = method.calls.map { names[it] ?: it }.toSet(),
-                references = method.references.map { names[it] ?: it })
+                references = method.references.map { names[it] ?: it },
+                lambdaTargets = method.lambdaTargets.map { names[it] ?: it }.toSet())
         },
         declarations = head.declarations.mapKeys { names[it.key] ?: it.key },
         fields = head.fields.values.associate { field ->

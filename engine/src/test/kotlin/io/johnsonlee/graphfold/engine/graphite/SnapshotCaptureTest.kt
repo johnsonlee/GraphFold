@@ -1,5 +1,10 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.ResourceDeclarations
+import io.johnsonlee.graphfold.engine.bytecode.sootup.canonicalBody
+
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
+
 import io.johnsonlee.graphite.graph.AnalysisStatus
 import io.johnsonlee.graphite.graph.ArtifactRole
 import io.johnsonlee.graphite.input.BodyInterceptionEvidence
@@ -154,7 +159,7 @@ class SnapshotCaptureTest {
         assertTrue(sink.resourceCalls.isEmpty())
     }
 
-    @Test fun `ignored stores require the own initializer receiver and matching field ownership`() {
+    @Test fun `constant initializer stores remain production changes even without field readers`() {
         val classes = compile("stores", "App", """
             public class App {
                 private int own;
@@ -165,19 +170,18 @@ class SnapshotCaptureTest {
             }
             class Other { static int value; }
         """.trimIndent())
-        val ignored = setOf("App.own:I", "App.shared:I", "Other.value:I")
         val references = mutableMapOf<String, List<String>>()
         JavaProjectLoader().loadObserved(classes) { observed ->
             val body = observed.snapshot?.body
             if (body != null) {
                 val found = mutableListOf<String>()
-                canonicalBody(body, found, ignored, observed.evidence.method.identity)
+                canonicalBody(body, found)
                 references[observed.evidence.method.identity] = found
             }
         }
-        assertEquals(1, references.getValue("App.<init>(LApp;)V").count { it == "App.own:I" })
+        assertEquals(2, references.getValue("App.<init>(LApp;)V").count { it == "App.own:I" })
         assertTrue("App.shared:I" in references.getValue("App.<init>(LApp;)V"))
-        assertFalse("App.shared:I" in references.getValue("App.<clinit>()V"))
+        assertTrue("App.shared:I" in references.getValue("App.<clinit>()V"))
         assertTrue("Other.value:I" in references.getValue("App.<clinit>()V"))
         assertEquals(setOf("App.own:I", "App.shared:I"), references.getValue("App.update()V").toSet())
     }
@@ -198,7 +202,7 @@ class SnapshotCaptureTest {
                 builder.controlFlowGraph.removeEdge(store, successor)
                 assertTrue(body.controlFlowGraph.successors(store).isEmpty())
                 val references = mutableListOf<String>()
-                canonicalBody(body, references, setOf("App.value:I"), "App.<clinit>()V")
+                canonicalBody(body, references)
                 assertTrue("App.value:I" in references)
                 captured = true
             }
@@ -220,7 +224,7 @@ class SnapshotCaptureTest {
             val body = observed.snapshot?.body
             if (body != null) {
                 val found = mutableListOf<String>()
-                canonicalBody(body, found, setOf("App.value:I", "App.counter:I"), observed.evidence.method.identity)
+                canonicalBody(body, found)
                 references[observed.evidence.method.identity] = found
             }
         }

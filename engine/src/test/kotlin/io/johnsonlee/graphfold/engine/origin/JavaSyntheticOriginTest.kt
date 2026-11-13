@@ -2,8 +2,9 @@ package io.johnsonlee.graphfold.engine.origin
 
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.johnsonlee.graphfold.engine.build.CompiledProject
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
+import io.johnsonlee.graphfold.engine.inputs.archive.toStaticScope
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -57,7 +58,7 @@ class JavaSyntheticOriginTest {
         assertTrue(result.origins.none { it.owner == owner })
     }
 
-    private fun switchHolder(project: CompiledProject): ClassNode = Files.walk(project.classes).use { files ->
+    private fun switchHolder(project: StaticScope): ClassNode = Files.walk(project.classes).use { files ->
         files.filter { it.toString().endsWith(".class") }.map { file ->
             ClassNode().also { ClassReader(Files.readAllBytes(file)).accept(it, 0) }
         }.toList().single { node -> node.fields.any { it.name.startsWith("\$SwitchMap\$") } }
@@ -81,12 +82,13 @@ class JavaSyntheticOriginTest {
                 Object second = new Object() {};
             }
         """.trimIndent())
-        return Fixture(root, ProjectCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("output")))
+        return Fixture(root, SourceFixtureCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("output"))
+            .toStaticScope(Files.createTempDirectory(temporary, "static-")))
     }
 
-    private fun manifest(project: CompiledProject): Path = Files.list(requireNotNull(project.originDirectory)).use {
+    private fun manifest(project: StaticScope): Path = Files.list(requireNotNull(project.originDirectory)).use {
         it.filter { file -> file.toString().endsWith(".json") }.toList().single()
     }
 
-    private data class Fixture(val root: Path, val project: CompiledProject)
+    private data class Fixture(val root: Path, val project: StaticScope)
 }

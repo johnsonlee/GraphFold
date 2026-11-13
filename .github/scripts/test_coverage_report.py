@@ -13,6 +13,9 @@ def report(platform=PLATFORMS[0]):
 
 
 class CoverageReportTest(unittest.TestCase):
+    def test_module_inventory_matches_production_projects(self):
+        self.assertEqual({"engine", "gfc", "plugin/gradle", "plugin/maven"}, set(MODULES))
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -85,6 +88,6 @@ class CoverageReportTest(unittest.TestCase):
 
     def test_partial_platform_is_reported_missing(self):
         text = table({PLATFORMS[0]: report()})
-        self.assertEqual(8, text.count("Missing platform report"))
+        self.assertEqual(len(MODULES) * 2, text.count("Missing platform report"))
         for module in MODULES:
             self.assertIn(f"`{module}`", text)

@@ -10,8 +10,13 @@ import io.johnsonlee.graphite.input.FoldRule
 internal data class FoldScenario(val name: String, val rules: List<FoldRule>)
 
 /** Parse the actual Graphite rule schema; Cypher remains a query, never a pattern we interpret. */
-internal object FoldDocument {
-    fun parse(document: String, maximumScenarios: Int): List<FoldScenario> {
+object FoldDocument {
+    /** Validate controls before an entry adapter performs input preparation. */
+    fun validate(document: String, maximumScenarios: Int) {
+        parse(document, maximumScenarios)
+    }
+
+    internal fun parse(document: String, maximumScenarios: Int): List<FoldScenario> {
         require(maximumScenarios > 0) { "maximumScenarios must be positive" }
         val root = readDocument(document) as? Map<*, *>
             ?: throw IllegalArgumentException("fold document root must be an object containing folds or scenarios")

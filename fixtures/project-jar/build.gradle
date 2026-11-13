@@ -2,6 +2,8 @@ import org.gradle.api.attributes.LibraryElements
 
 subprojects { apply plugin: 'java-library' }
 project(':app') {
+    apply plugin: 'application'
+    application { mainClass = 'sample.App' }
     dependencies {
         implementation(project(':library')) {
             attributes {

@@ -3,7 +3,6 @@ package io.johnsonlee.graphfold.engine.git
 import org.eclipse.jgit.diff.DiffAlgorithm
 import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.diff.DiffFormatter
-import org.eclipse.jgit.diff.Edit
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.patch.FileHeader
 import org.eclipse.jgit.revwalk.RevWalk
@@ -31,31 +30,5 @@ private fun compare(repo: org.eclipse.jgit.lib.Repository, base: String, head: S
 private fun changed(entry: DiffEntry, formatter: DiffFormatter): ChangedFile {
     checkGitCancellation()
     val header = formatter.toFileHeader(entry)
-    val edits = header.toEditList()
-    return ChangedFile(
-        entry.oldPath.takeUnless { it == DiffEntry.DEV_NULL },
-        entry.newPath.takeUnless { it == DiffEntry.DEV_NULL },
-        edits.mapNotNull { range(it.beginA, it.endA) },
-        edits.mapNotNull { range(it.beginB, it.endB) },
-        header.patchType == FileHeader.PatchType.BINARY,
-        changeType(entry), edits.map(::hunk),
-        entry.score.takeIf { entry.changeType == DiffEntry.ChangeType.RENAME || entry.changeType == DiffEntry.ChangeType.COPY },
-    )
-}
-
-private fun range(begin: Int, end: Int): ChangedLineRange? =
-    if (begin == end) null else ChangedLineRange(begin + 1, end)
-
-private fun hunk(edit: Edit) = ChangedHunk(
-    if (edit.lengthA == 0) edit.beginA else edit.beginA + 1, edit.lengthA,
-    if (edit.lengthB == 0) edit.beginB else edit.beginB + 1, edit.lengthB,
-)
-
-private fun changeType(entry: DiffEntry): GitChangeType = when (entry.changeType) {
-    DiffEntry.ChangeType.ADD -> GitChangeType.ADD
-    DiffEntry.ChangeType.DELETE -> GitChangeType.DELETE
-    DiffEntry.ChangeType.RENAME -> GitChangeType.RENAME
-    DiffEntry.ChangeType.COPY -> GitChangeType.COPY
-    // RenameDetector represents different file types as DELETE + ADD, including identical blobs.
-    DiffEntry.ChangeType.MODIFY -> GitChangeType.MODIFY
+    return ChangedFile(entry, header.toEditList(), header.patchType == FileHeader.PatchType.BINARY)
 }

@@ -6,6 +6,19 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 object AnalysisReports {
     private val mapper = jacksonObjectMapper()
 
+    /** Report unavailable prepared inputs without running analysis or inventing rule selections. */
+    fun preparationFailure(
+        base: String, head: String, fold: String, maximumScenarios: Int, diagnostic: Diagnostic,
+    ): AnalysisResult = try {
+        val scenarios = FoldDocument.parse(fold, maximumScenarios)
+        AnalysisResult(emptyList(), listOf(diagnostic),
+            AnalysisMetadata(base, head, scenarios.map { it.name }, 0, 0),
+            ruleAudits = scenarios.flatMap { scenario -> Revision.entries.flatMap { initialAudits(scenario, it) } })
+    } catch (failure: IllegalArgumentException) {
+        AnalysisResult(emptyList(), listOf(analysisFailureDiagnostic(AnalysisStage.INPUT, failure)),
+            AnalysisMetadata(base, head, emptyList(), 0, 0))
+    }
+
     /**
      * Encodes [result] as indented JSON under the versioned [schema] contract.
      *

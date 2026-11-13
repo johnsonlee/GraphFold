@@ -1,6 +1,79 @@
 # Validation record
 
-## Graphite 2.15.0 release integration (2026-11-11)
+## Native integration verification
+
+Focused working-tree verification now includes actual Maven 3.9.9 packaging and
+published-plugin invocation for library JARs, Spring Boot 3.5.7 JARs and WARs on
+JDK 17. All three controlled cases passed and all three uncontrolled cases failed
+with exact source findings, matched controls and no analysis diagnostics. No
+application or container was started. The reproducible harness is documented in
+[verification tooling](../tools/verification/README.md).
+
+This run reused six unchanged Graphite 2.15.0 JAR/POM files from the existing Gradle
+cache after fresh GitHub Packages access returned 401. Their hashes and raw Maven
+logs remain outside the repository. It exposed and verified the fix for an ASM
+publication mismatch: declared dependencies now match ASM 9.10.1 already selected
+by the Gradle build.
+
+The Git-owned diff API, WAR provided API export, safe and unsafe Boot/WAR exposure
+predicates, and current-build-JDK MR selection have focused regression coverage.
+These results do not replace final-head full tests, exact coverage, publication
+or hosted PR checks. Performance acceptance is deferred while correctness and
+paired positive/negative coverage take priority.
+
+## Requested golden contracts
+
+This matrix inventories assertions in the tests; it is not an execution report.
+Current-head full test and coverage reports establish execution evidence. Paired
+cases provide bounded evidence for these mechanisms, not a universal precision/recall guarantee.
+Expected verdicts follow static control coverage, independently of observed output.
+
+| Requested scenario | Expected contract | Tests and fixtures |
+| --- | --- | --- |
+| Spring Boot 3.5.7 JAR and nested business library | Treatment change with the selected control folded off: PASS; folded on: FAIL with the nested-library source finding. Both require no diagnostics and actual archive checks. | [SpringBootArchiveGoldenTest](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/SpringBootArchiveGoldenTest.kt) |
+| WAR and nested business library | Treatment-only change: PASS; added fallback change: FAIL with a precise finding and `SURVIVING_DIFFERENCE`. Both require a matched control, no diagnostics and actual WAR checks. Native Maven Boot/WAR cases also assert both fold states. | [ServletWarGoldenTest](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/ServletWarGoldenTest.kt), [PackagedMavenGoldenTest](../plugin/maven/src/test/kotlin/io/johnsonlee/graphfold/maven/PackagedMavenGoldenTest.kt) |
+| Platform and region exposure | Each of the nine combinations below covers a newly added safe predicate and a treatment edit behind an existing predicate. Fold off: PASS with all obligations proved; fold on: FAIL with exactly the changed source set. Both Boot and WAR require no diagnostics and 18 matched calls. | [ExposureFlagrControlGoldenTest](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/ExposureFlagrControlGoldenTest.kt), [ExposureFlagrBusinessProject](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/ExposureFlagrBusinessProject.kt) |
+| Treatment versus fallback edits | A change in the branch removed by the selected control: PASS; a change in the retained branch: FAIL. Tests cross both branch mutations, both fold values and both archive formats, with source findings and no diagnostics. | [FlagrControlGoldenTest](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/FlagrControlGoldenTest.kt) |
+| Six advanced Java forms | Captured lambda through a functional interface; bound method reference; unbound method reference; static method handle with `invokeExact`; bound virtual handle with `invoke`; Stream `filter`/`map`/`collect`/`reduce`. Every form participates in the same treatment/fallback PASS/FAIL pairs in Boot and WAR. FAIL must identify all six changed sources, with no diagnostics. Packaged bytecode checks confirm the intended instructions exist. | [AdvancedFlagrControlGoldenTest](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/AdvancedFlagrControlGoldenTest.kt), [AdvancedFlagrBusinessProject](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/AdvancedFlagrBusinessProject.kt), [AdvancedBusinessBytecode](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/AdvancedBusinessBytecode.kt) |
+| Unsafe exposure predicates | Effectful counter increment, potentially throwing division, and a predicate result reused outside the control all remain FAIL with precise findings after folding off. The safe predicate in the same fixture has no finding when folded off. Folding on finds all four changes. Both archive formats require no diagnostics. | [UnsafeExposureFlagrGoldenTest](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/UnsafeExposureFlagrGoldenTest.kt) |
+| Unconsumed and uninvoked callbacks | Changing an unconsumed Stream callback without control coverage: FAIL with the exact source finding in Boot and WAR. Core cases also require FAIL for an uninvoked `IntSupplier` and an unconsumed Stream; source-corpus gated/ungated callback and Stream pairs supply the corresponding control-coverage checks. | [LazyFlagrProductionChangeGoldenTest](../plugin/gradle/src/test/kotlin/io/johnsonlee/graphfold/gradle/LazyFlagrProductionChangeGoldenTest.kt), [PreparedInputGoldenTest](../engine/src/test/kotlin/io/johnsonlee/graphfold/engine/PreparedInputGoldenTest.kt), [corpus labels](../fixtures/manifest.json), [DetectionCorpusTest](../engine/src/test/kotlin/io/johnsonlee/graphfold/engine/DetectionCorpusTest.kt) |
+
+The exposure fixture uses platform sets **all**, **Android**, **Android + iOS** and
+region sets **all**, **KR**, **KR + US**, crossing them as follows:
+
+| Platform \ Region | All | KR | KR + US |
+| --- | --- | --- | --- |
+| All | AllAll | AllSingle | AllMultiple |
+| Android | SingleAll | SingleSingle | SingleMultiple |
+| Android + iOS | MultipleAll | MultipleSingle | MultipleMultiple |
+
+There are 17 changed source files: nine existing-exposure treatment edits and
+eight newly added predicates. The all/all new-predicate case has no predicate to
+add and therefore no source edit; its control call remains in the 18-call audit.
+
+## Static input and control-coverage changes
+
+The prepared-input engine is checked independently from repository/build adapters.
+Golden cases assert static verdicts for packaged JAR/WAR inputs, selected controls,
+uncalled callbacks, lambdas, Stream pipelines and safe exposure predicates. Missing
+source mappings limit verdict precision without preventing graph construction.
+Focused results do not replace final-head CI and exact per-module coverage gates.
+
+The last measured implementation (`c73ae68`) compared all twelve application scopes
+in each request (24 BASE/HEAD graphs), using a shared 600-class dependency, JDK 17
+and `-Xmx2g`. One warm-up per implementation was discarded, followed by three
+alternating pairs against `a8b3aa5`. Median elapsed time was 9.128 s versus 9.974 s
+(+9.26%); median sampled peak used heap was 626.5 MiB versus 627.3 MiB (+0.13%).
+Both met the historical 10% time / 15% heap regression limits with identical proof
+results. This synthetic workload is preserved as historical data only; it is not
+performance acceptance evidence under the current representative-load requirement.
+Heap sampling excludes build subprocesses and is a lower bound, not minimum Xmx.
+No current performance acceptance is claimed.
+
+Raw measurements are kept outside the source tree; CI runs should retain them as
+artifacts. Historical single-graph results are not performance acceptance evidence.
+
+## Historical Graphite 2.15.0 release integration (2026-11-11)
 
 The dependency catalog and verdict metadata target the official `2.15.0` release,
 tag commit `58215b986f8c1be68b0480bc209e00311bc80dc1`. The observer API is unchanged
@@ -17,7 +90,7 @@ Local credentials use user Gradle properties `graphitePackagesUsername` and
 token with package read permission; upstream package access is also required.
 No local source-built replacement or temporary repository is configured.
 
-The release acceptance command is the normal CI `./gradlew check :cli:installDist
+At that revision, release acceptance used `./gradlew check :cli:installDist
 --no-daemon --stacktrace`, followed by the exact-count coverage collector on both
 Ubuntu and macOS. The [PR checks](https://github.com/johnsonlee/GraphFold/pull/2/checks)
 and their attached coverage/test reports record the outcome for each revision;
@@ -550,11 +623,8 @@ lock cleanup and fallback, packaged CLI version consistency, the derived 25-minu
 default, explicit overrides, CLI and Gradle option validation and propagation, additive environment names, real held-slot
 contention and recovery, and retryable CLI exit code 3 with other error precedence.
 The lease timeout measures slot acquisition only. It does not bound checkout,
-inactivity, or the total analysis duration. Nine Python release-helper tests passed,
-including rejection of a missing or mismatched packaged CLI version. Release ZIP/TAR
-version smoke checks and development SHA version checks also passed; their snapshot
-and source-archive limitation are recorded in [version validation](research/release/cli-version-validation-2026-10-31.json). The earlier publication reproducibility and compiler compatibility
-matrices below were not rerun for these changes.
+inactivity, or the total analysis duration. The historical CLI release validation records
+have been removed with the CLI; current publication verification covers engine, GFC and the native plugins.
 
 ## PR review regressions (2026-10-31)
 
@@ -587,12 +657,6 @@ are accepted, GPG verifies every uploaded payload, and modified JAR/POM/module f
 rejected before the implementation publication uploads. This regression runs in release
 preparation and never publishes remotely.
 
-Two clean, build-cache-disabled publication builds of the same review working-tree snapshot
-at `0.1.0-review.20261031.1` produced 18 byte-identical JAR/POM/module payloads. Both passed
-`release.py verify`; no test-fixtures artifacts or variants were published. Checksums are
-recorded in [the rehearsal record](research/release/review-release-rebuild-2026-10-31.json).
-This is local release verification, not evidence of remote publication or production
-performance. No single-graph timing is used as performance acceptance.
 
 
 ## Incremental builds and object flow: previous baseline (2026-10-31)

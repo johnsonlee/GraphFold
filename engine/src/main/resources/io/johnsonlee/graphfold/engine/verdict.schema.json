@@ -361,7 +361,7 @@
             "SURVIVING_DIFFERENCE",
             "ANALYSIS_INCOMPLETE"
           ],
-          "description": "FOLDED_EQUIVALENT means no analyzed folded difference survives; UNREACHABLE means the change is unreachable under the entry model and assumptions; SURVIVING_DIFFERENCE means a difference remains; ANALYSIS_INCOMPLETE means a gap prevents a safety conclusion."
+          "description": "FOLDED_EQUIVALENT means no analyzed folded difference survives; UNREACHABLE means selected controls removed every static path to the change from the same input before folding; SURVIVING_DIFFERENCE means a difference remains; ANALYSIS_INCOMPLETE means a gap prevents a safety conclusion."
         },
         "message": {
           "type": "string",

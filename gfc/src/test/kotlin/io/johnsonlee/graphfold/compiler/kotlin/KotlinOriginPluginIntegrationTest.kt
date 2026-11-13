@@ -63,7 +63,10 @@ class KotlinOriginPluginIntegrationTest {
             val end = record["declaration"]["end"].asInt()
             assertTrue(start >= 0 && end >= start && end <= Files.readString(physical).length)
             val bytecode = temporary.resolve("classes").resolve(record["owner"].asText().replace('.', '/') + ".class")
-            val node = ClassNode().also { ClassReader(Files.readAllBytes(bytecode)).accept(it, 0) }
+            val emittedBytes = Files.readAllBytes(bytecode)
+            assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(emittedBytes)),
+                record["classHash"].asText())
+            val node = ClassNode().also { ClassReader(emittedBytes).accept(it, 0) }
             assertTrue(node.invisibleAnnotations.orEmpty().any { it.desc == KotlinOriginCollector.MARKER })
         }
         val copied = records.filter { it["provenance"].asText() == "INLINE_COPY" }
@@ -245,6 +248,42 @@ class KotlinOriginPluginIntegrationTest {
             assertEquals(listOf("a", "bb", "ccc"),
                 type.getMethod("order", List::class.java).invoke(type.getDeclaredConstructor().newInstance(), listOf("ccc", "a", "bb")))
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["1.9", "2.1"])
+    fun `inline copy evidence binds actual emitted methods source identities and instruction ranges`(language: String) {
+        val physical = source("Inline.kt", """
+            package sample
+            class InlineExample {
+                private inline fun helper(): Int = 7
+                private inline val score: Int get() = 9
+                private inline fun unused(): Int = 11
+                fun run(enabled: Boolean): Int = if (enabled) helper() + score else 0
+            }
+        """.trimIndent())
+        val result = compile(listOf(physical), language)
+        assertEquals(ExitCode.OK, result.exit, result.log)
+        val document = Files.list(temporary.resolve("origins")).use { paths ->
+            jacksonObjectMapper().readTree(paths.filter { it.toString().endsWith(".json") }.toList().single().toFile())
+        }
+        val evidence = document["inlineEvidence"]
+        val declarations = evidence["declarations"].associateBy { it["method"].asText() }
+        assertEquals(setOf("sample.InlineExample.helper()I", "sample.InlineExample.getScore()I", "sample.InlineExample.unused()I"),
+            declarations.keys, evidence.toString())
+        assertTrue(declarations.values.all { it["complete"].asBoolean() }, evidence.toString())
+        assertTrue(declarations.values.all { it["source"].asText() == physical.toRealPath().toString() })
+        val bytes = Files.readAllBytes(temporary.resolve("classes/sample/InlineExample.class"))
+        val hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+        assertEquals(setOf("sample.InlineExample.helper()I", "sample.InlineExample.getScore()I"),
+            evidence["copies"].map { it["target"].asText() }.toSet(), evidence.toString())
+        assertEquals(2, evidence["copies"].size())
+        evidence["copies"].forEach { copy ->
+            assertEquals("sample.InlineExample.run(Z)I", copy["caller"].asText())
+            assertEquals(hash, copy["classHash"].asText())
+            assertTrue(copy["startOpcode"].asInt() < copy["endOpcode"].asInt())
+        }
+        assertEquals(hash, evidence["classes"].single { it["owner"].asText() == "sample.InlineExample" }["classHash"].asText())
     }
 
     private fun source(name: String, contents: String): Path = temporary.resolve(name).also { Files.writeString(it, contents) }

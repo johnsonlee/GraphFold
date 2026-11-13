@@ -1,5 +1,6 @@
 package io.johnsonlee.graphfold.engine.git
 
+import org.eclipse.jgit.diff.Edit
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.Path
@@ -70,8 +71,7 @@ class GitRemoteTransportTest {
             val change = it.changes().single()
             assertEquals("Example.java", change.basePath)
             assertEquals("Example.java", change.headPath)
-            assertEquals(listOf(ChangedLineRange(1, 1)), change.baseLines)
-            assertEquals(listOf(ChangedLineRange(1, 1)), change.headLines)
+            assertEquals(listOf(Edit(0, 1, 0, 1)), change.edits)
             assertFalse(change.binary)
         }
         assertTrue(Files.exists(workspace.baseDirectory))

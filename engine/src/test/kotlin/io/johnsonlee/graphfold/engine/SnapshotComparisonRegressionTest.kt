@@ -1,9 +1,9 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.FieldSnapshot
-import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.FieldSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -79,7 +79,7 @@ class SnapshotComparisonRegressionTest {
     }
 
     @Test
-    fun `whole program compares method contracts while ignoring explicitly unobserved field churn`() {
+    fun `whole program compares method contracts and unobserved field changes`() {
         val root = method("Example.run()V")
         val field = FieldSnapshot("Example.unused:I", "private int", "0", renameSafe = true)
         val base = snapshot(root).copy(declarations = mapOf("Example" to "class", root.identity to "old method contract"),
@@ -87,12 +87,12 @@ class SnapshotComparisonRegressionTest {
             ignoredFields = setOf(field.identity))
         val head = base.copy(declarations = base.declarations + (root.identity to "new method contract"), fields = emptyMap())
         val comparison = SnapshotComparison(base, head)
-        assertEquals(listOf(root.identity), comparison.wholeProgramDifferences())
+        assertEquals(listOf("Example", root.identity), comparison.wholeProgramDifferences())
         assertEquals(legacyClassUnion(base, head, comparison), comparison.wholeProgramDifferences())
     }
 
     @Test
-    fun `whole program does not invent a path by stitching edges from different revisions`() {
+    fun `whole program compares uncalled changes without stitching hypothetical execution paths`() {
         val entry = method("Example.run()V", calls = setOf("Helper.work()V"))
         val helper = method("Helper.work()V", isPrivate = true)
         val dead = method("Dead.work()V", "old", isPrivate = true)
@@ -100,7 +100,7 @@ class SnapshotComparisonRegressionTest {
         val head = snapshot(entry.copy(referenceCanonical = "entry no longer calls helper", calls = emptySet()),
             helper.copy(referenceCanonical = "helper now calls dead", calls = setOf(dead.identity)),
             dead.copy(referenceCanonical = "new"))
-        assertEquals(listOf(entry.identity, helper.identity), SnapshotComparison(base, head).wholeProgramDifferences())
+        assertEquals(listOf(dead.identity, entry.identity, helper.identity), SnapshotComparison(base, head).wholeProgramDifferences())
     }
 
     private fun legacyClassUnion(base: ProgramSnapshot, head: ProgramSnapshot, comparison: SnapshotComparison): List<String> =
