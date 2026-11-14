@@ -18,6 +18,30 @@ class StructuralClassInventoryTest {
     private var sequence = 0
 
     @Test
+    fun `inner class table order is irrelevant but membership and flags remain evidence`() {
+        fun ordered(names: List<String>, access: Int = Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC): BytecodeInventory {
+            val directory = Files.createDirectory(temporary.resolve("ordered-${sequence++}"))
+            val writer = ClassWriter(0)
+            writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "sample/Example", null, "java/lang/Object", null)
+            names.forEach { writer.visitInnerClass("sample/Example\$$it", "sample/Example", it, access) }
+            writer.visitEnd()
+            Files.write(directory.resolve("Example.class"), writer.toByteArray())
+            return BytecodeInventory().also { it.read(directory) }
+        }
+        val before = ordered(listOf("Context", "Device"))
+        val reordered = ordered(listOf("Device", "Context"))
+        assertEquals(before.declarations, reordered.declarations)
+        assertEquals(before.classShapes, reordered.classShapes)
+        assertEquals(before.structuralClassShapes, reordered.structuralClassShapes)
+        listOf(ordered(listOf("Context")), ordered(listOf("Context", "Device"), Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC))
+            .forEach { changed ->
+                assertNotEquals(before.declarations, changed.declarations)
+                assertNotEquals(before.classShapes, changed.classShapes)
+                assertNotEquals(before.structuralClassShapes, changed.structuralClassShapes)
+            }
+    }
+
+    @Test
     fun `Kotlin metadata nesting remains evidence when JVM inner class rows are identical`() {
         val before = inventory(listOf("Nested"))
         val after = inventory(listOf("Nested", "OnlyInMetadata"))

@@ -1,6 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
 import io.johnsonlee.graphfold.engine.inputs.StaticScope
+import io.johnsonlee.graphfold.engine.bytecode.asm.StaticSafetyAnalysis
 import io.johnsonlee.graphfold.engine.inputs.PreparedRevision
 import io.johnsonlee.graphfold.engine.inputs.ContentInventory
 import io.johnsonlee.graphfold.engine.git.ChangedFile
@@ -344,28 +345,26 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         val analysisGaps = if (resourcesProved) comparison.resourceAnalysisGaps() else comparison.analysisGaps()
         analysisGaps.forEach { state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it) }
         val differences = comparison.wholeProgramDifferences()
-        return if (proof.attributedSourceDifference(differences, analysisGaps, confirmedDifferences)) {
+        val assessment = comparison.safetyAssessment(differences, analysisGaps)
+        val survivingAssessment = assessment ?: ReasonCode.SURVIVING_DIFFERENCE.defaultAssessment()
+        return if (assessment?.decision == AcceptanceDecision.ACCEPTED) {
+            state.reasons += proof.reasons(ReasonCode.STATIC_SAFETY_PROVEN, scenario,
+                "Every surviving production difference has a complete static equivalence proof; the change remains uncontrolled",
+                assessment)
+            true
+        } else if (proof.attributedSourceDifference(differences, analysisGaps, confirmedDifferences)) {
             state.reasons += proof.reasons(ReasonCode.SURVIVING_DIFFERENCE, scenario,
-                "Actual production differences are covered by verified source findings: ${differences.joinToString()}")
+                "Actual production differences are covered by verified source findings: ${differences.joinToString()}",
+                survivingAssessment)
             false
         } else if (differences.isNotEmpty() && analysisGaps.isEmpty()) {
             // Complete original JVM differences need no source identity or compiler-origin attribution.
             val message = "Production class differences survive selected control folding: ${differences.joinToString()}"
-            state.reasons += proof.reasons(ReasonCode.SURVIVING_DIFFERENCE, scenario, message)
+            state.reasons += proof.reasons(ReasonCode.SURVIVING_DIFFERENCE, scenario, message,
+                survivingAssessment)
             state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.PRODUCTION_OUTPUT_CHANGED, message)
             false
-        } else {
-            val proved = differences.isEmpty() && analysisGaps.isEmpty()
-            val message = if (proved) "Production outputs are unchanged or changed resource keys have no surviving reader; " +
-                "the entire analyzed production program is equivalent after folding"
-            else "Folded production program has differences or gaps; build input effects cannot be independently attributed: " +
-                (differences + analysisGaps).joinToString()
-            state.reasons += proof.reasons(
-                if (proved) ReasonCode.FOLDED_EQUIVALENT else ReasonCode.ANALYSIS_INCOMPLETE, scenario, message,
-            )
-            if (!proved) state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNVERIFIED_BUILD_INPUT, message)
-            proved
-        }
+        } else recordInputEquivalence(proof, comparison, scenario, state, InputComparison(differences, analysisGaps, assessment))
     }
 
     private fun compareScenario(
@@ -386,7 +385,19 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
             }
         }
         state.stage = AnalysisStage.COMPARE
-        return SnapshotComparison(old, new, originsVerified)
+        return SnapshotComparison(old, new, originsVerified,
+            safety = {
+                WholeChangeSafety(
+                    StaticSafetyAnalysis(base.compiled.classes, base.compiled.dependencies).use { it.summaries() },
+                    StaticSafetyAnalysis(head.compiled.classes, head.compiled.dependencies).use { it.summaries() },
+                )
+            }, selectedControls = scenario.rules.isNotEmpty(),
+            unfolded = if (scenario.rules.isEmpty()) null else {
+                {
+                    SnapshotComparison(GraphiteAnalyzer().analyzeOriginProject(base, emptyList(), dependencyResources),
+                        GraphiteAnalyzer().analyzeOriginProject(head, emptyList(), dependencyResources), originsVerified)
+                }
+            })
     }
 
     private fun checkObligation(
@@ -396,9 +407,12 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         val gaps = comparison.analysisGaps(obligation)
         gaps.forEach { state.diagnostics += Diagnostic(AnalysisStage.GRAPH, DiagnosticCode.INCOMPLETE_GRAPH, it) }
         val differences = comparison.differences(obligation)
-        val proved = differences.isEmpty() && gaps.isEmpty()
+        val assessment = comparison.safetyAssessment(differences, gaps)
+        val safe = assessment?.decision == AcceptanceDecision.ACCEPTED
+        val proved = differences.isEmpty() && gaps.isEmpty() || safe
         val reason = when {
             gaps.isNotEmpty() -> ReasonCode.ANALYSIS_INCOMPLETE
+            safe -> ReasonCode.STATIC_SAFETY_PROVEN
             !proved -> ReasonCode.SURVIVING_DIFFERENCE
             comparison.isUnreachable(obligation) -> ReasonCode.UNREACHABLE
             else -> ReasonCode.FOLDED_EQUIVALENT
@@ -406,24 +420,52 @@ class GraphFoldEngine(private val configuration: EngineConfiguration) {
         state.reasons += VerdictReason(
             obligation.changes, reason, if (gaps.isEmpty()) reasonMessage(reason, differences) else gaps.joinToString(),
             obligation.locations, scenario, obligation.basePath, obligation.headPath,
+            assessment ?: if (proved) comparison.equivalenceAssessment(obligation) else reason.defaultAssessment(),
         )
-        if (differences.isNotEmpty() && obligation.locations.isEmpty()) {
-            state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNLOCATED_MOVE_DIFFERENCE,
-                "Moving ${diagnosticLabel(obligation.basePath)} to ${diagnosticLabel(obligation.headPath)} " +
-                    "changes JVM representation: ${differences.joinToString()}")
-        } else if (differences.isNotEmpty()) {
-            val prefix = if (comparison.originsVerified) "Surviving program representation differs" else
-                "Surviving bytecode differs under original JVM identity; compiler-origin mappings are unverified"
-            val message = "$prefix: ${differences.joinToString()}"
-            state.findings += Finding(
-                digest("$scenario|${obligation.locations}|$message"), FindingKind.UNVERIFIABLE_CHANGE,
-                "folded-program-equivalence", message, obligation.locations,
-                differences.map { Evidence("Remaining difference in $it") }, listOf(scenario),
-            )
-            if (comparison.originsVerified && gaps.isEmpty()) confirmedDifferences.addAll(differences)
-        }
+        if (!proved && differences.isNotEmpty()) recordSurvivingDifference(
+            obligation, comparison, scenario, state, differences, confirmedDifferences,
+        )
         return proved
     }
+}
+
+private fun recordSurvivingDifference(
+    obligation: ProofObligation, comparison: SnapshotComparison, scenario: String, state: RunState,
+    differences: List<String>, confirmedDifferences: MutableSet<String>,
+) {
+    if (obligation.locations.isEmpty()) {
+        state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNLOCATED_MOVE_DIFFERENCE,
+            "Moving ${diagnosticLabel(obligation.basePath)} to ${diagnosticLabel(obligation.headPath)} " +
+                "changes JVM representation: ${differences.joinToString()}")
+    } else {
+        val prefix = if (comparison.originsVerified) "Surviving program representation differs" else
+            "Surviving bytecode differs under original JVM identity; compiler-origin mappings are unverified"
+        val message = "$prefix: ${differences.joinToString()}"
+        state.findings += Finding(
+            digest("$scenario|${obligation.locations}|$message"), FindingKind.UNVERIFIABLE_CHANGE,
+            "folded-program-equivalence", message, obligation.locations,
+            differences.map { Evidence("Remaining difference in $it") }, listOf(scenario),
+        )
+        if (comparison.originsVerified && comparison.analysisGaps(obligation).isEmpty()) confirmedDifferences.addAll(differences)
+    }
+}
+
+private data class InputComparison(val differences: List<String>, val gaps: List<String>, val assessment: ChangeAssessment?)
+
+private fun recordInputEquivalence(
+    proof: InputChangeProof, comparison: SnapshotComparison, scenario: String, state: RunState, result: InputComparison,
+): Boolean {
+    val proved = result.differences.isEmpty() && result.gaps.isEmpty()
+    val message = if (proved) "Production outputs are unchanged or changed resource keys have no surviving reader; " +
+        "the entire analyzed production program is equivalent after folding"
+    else "Folded production program has differences or gaps; build input effects cannot be independently attributed: " +
+        (result.differences + result.gaps).joinToString()
+    state.reasons += proof.reasons(
+        if (proved) ReasonCode.FOLDED_EQUIVALENT else ReasonCode.ANALYSIS_INCOMPLETE, scenario, message,
+        result.assessment ?: if (proved) comparison.equivalenceAssessment() else ReasonCode.ANALYSIS_INCOMPLETE.defaultAssessment(),
+    )
+    if (!proved) state.diagnostics += Diagnostic(AnalysisStage.COMPARE, DiagnosticCode.UNVERIFIED_BUILD_INPUT, message)
+    return proved
 }
 
 private fun recordUnchangedInputs(proof: InputChangeProof, scenarios: List<FoldScenario>, state: RunState, message: String) {
@@ -474,6 +516,7 @@ private fun source(root: Path, path: String?, revision: Revision, project: Origi
 private fun reasonMessage(reason: ReasonCode, differences: List<String>): String = when (reason) {
     ReasonCode.UNREACHABLE -> "Selected controls removed every static path to this change from the same input before folding"
     ReasonCode.FOLDED_EQUIVALENT -> "No surviving difference in the analyzed representation"
+    ReasonCode.STATIC_SAFETY_PROVEN -> "Every remaining difference has a complete static equivalence proof; the change remains uncontrolled"
     else -> "Surviving differences: ${differences.joinToString()}"
 }
 

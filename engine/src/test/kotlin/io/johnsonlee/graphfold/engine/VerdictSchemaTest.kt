@@ -19,8 +19,8 @@ class VerdictSchemaTest {
     fun `packaged schema identifies the versioned draft 2020-12 contract`() {
         val document = mapper.readTree(AnalysisReports.schema())
         assertEquals("https://json-schema.org/draft/2020-12/schema", document["\$schema"].asText())
-        assertEquals("urn:io.johnsonlee.graphfold:verdict:1", document["\$id"].asText())
-        assertEquals(1, report(passing())["schemaVersion"].asInt())
+        assertEquals("urn:io.johnsonlee.graphfold:verdict:2", document["\$id"].asText())
+        assertEquals(2, report(passing())["schemaVersion"].asInt())
     }
 
     @Test
@@ -52,6 +52,11 @@ class VerdictSchemaTest {
             "$definitions/diagnostic/properties/code/enum" to DiagnosticCode.entries,
             "$definitions/reason/properties/changes/items/enum" to ChangeKind.entries,
             "$definitions/reason/properties/code/enum" to ReasonCode.entries,
+            "$definitions/changeAssessment/properties/control/enum" to ControlClassification.entries,
+            "$definitions/changeAssessment/properties/decision/enum" to AcceptanceDecision.entries,
+            "$definitions/changeAssessment/properties/basis/enum" to AcceptanceBasis.entries,
+            "$definitions/safetyEvidence/properties/claim/enum" to SafetyClaim.entries,
+            "$definitions/safetyEvidence/properties/status/enum" to SafetyStatus.entries,
             "$definitions/selector/properties/kind/enum" to RuleSelectorKind.entries,
             "$definitions/ruleAudit/properties/selectionStatus/enum" to RuleSelectionStatus.entries,
         )
@@ -110,7 +115,9 @@ class VerdictSchemaTest {
             "/metadata" to "provedObligations", "/findings/0" to "locations",
             "/findings/0/evidence/0" to "location", "/findings/0/locations/0" to "revision",
             "/findings/0/locations/0/line" to "start", "/diagnostics/0" to "blocking",
-            "/reasons/0" to "changes", "/ruleAudits/0" to "selectionStatus",
+            "/reasons/0" to "assessment", "/reasons/0/assessment" to "control",
+            "/reasons/0/assessment" to "safety", "/reasons/0/assessment" to "decision",
+            "/reasons/0/assessment" to "basis", "/reasons/0" to "changes", "/ruleAudits/0" to "selectionStatus",
             "/ruleAudits/0" to "selectedCount", "/ruleAudits/0" to "matchedCallCount",
             "/ruleAudits/0/selector" to "query", "/ruleAudits/0/selectedNodes/0" to "nodeId",
             "/ruleAudits/0/selectedNodes/0/caller" to "descriptor",
@@ -125,7 +132,7 @@ class VerdictSchemaTest {
     @Test
     fun `schema rejects invalid enums ranges types and nullable count states`() {
         val mutations = listOf(
-            "/schemaVersion" to "2", "/schemaVersion" to "\"1\"", "/verdict" to "\"UNKNOWN\"",
+            "/schemaVersion" to "1", "/schemaVersion" to "\"1\"", "/verdict" to "\"UNKNOWN\"",
             "/metadata/obligations" to "-1", "/metadata/provedObligations" to "1.5",
             "/findings/0/kind" to "\"OTHER\"", "/findings/0/id" to "\"  \"",
             "/findings/0/locations" to "[]", "/findings/0/locations/0/revision" to "\"WORKTREE\"",

@@ -36,7 +36,7 @@ class PreparationFailureReportTest {
     }
 
     @Test fun `invalid control document takes precedence over preparation failure`() {
-        val invalid = "folds: []"
+        val invalid = "folds: [null]"
         assertFailsWith<IllegalArgumentException> { FoldDocument.validate(invalid, 1) }
         val result = AnalysisReports.preparationFailure("base", "head", invalid, 1, unavailable)
         assertEquals(Verdict.FAIL, result.verdict)

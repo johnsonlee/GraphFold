@@ -19,6 +19,7 @@ import sootup.core.model.Body
 /** Erase only dead total computations after folding makes both conditional successors identical. */
 internal fun disposableExposureStatements(
     body: Body, identity: String, primitiveMethods: Set<String>, authorized: Set<ExposureBranchKey>,
+    totalMethods: Set<String> = emptySet(),
 ): Set<Stmt> {
     val removed = linkedSetOf<Stmt>()
     val producers = mutableSetOf<Local>()
@@ -36,7 +37,7 @@ internal fun disposableExposureStatements(
             val redundant = exposureBranchKey(statement) in allowed && successors.size == 1 &&
                 totalExposureCondition(statement.asJIfStmt().condition)
             val assignment = unusedExposureAssignment(statement, retained, producers)
-            val disposable = assignment != null && disposableValue(assignment.rightOp, identity, primitiveMethods, body)
+            val disposable = assignment != null && disposableValue(assignment.rightOp, identity, primitiveMethods, totalMethods, body)
             val dispensable = redundant || disposable
             if (noException && successors.size == 1 && dispensable) {
                 producers.addAll(statement.uses.filterIsInstance<Local>())
@@ -55,19 +56,24 @@ private fun unusedExposureAssignment(statement: Stmt, retained: List<Stmt>, prod
     return assignment.takeIf { it.leftOp is Local && it.leftOp in producers && !used }
 }
 
-private fun disposableValue(value: Value, caller: String, primitiveMethods: Set<String>, body: Body): Boolean {
+private fun disposableValue(
+    value: Value, caller: String, primitiveMethods: Set<String>, totalMethods: Set<String>, body: Body,
+): Boolean {
     val localValue = value is Local || value is StringConstant || value is NullConstant
     return localValue || totalPrimitive(value) || literalStringPredicate(value, body) ||
-        disposablePrimitiveCall(value, caller, primitiveMethods)
+        disposableCall(value, caller, primitiveMethods, totalMethods)
 }
 
-private fun disposablePrimitiveCall(value: Value, caller: String, primitiveMethods: Set<String>): Boolean {
+private fun disposableCall(value: Value, caller: String, primitiveMethods: Set<String>, totalMethods: Set<String>): Boolean {
     val call = value as? JStaticInvokeExpr ?: return false
     val signature = call.methodSignature
     val owner = caller.substringBefore('(').substringBeforeLast('.')
     val method = "${signature.declClassType.fullyQualifiedName}.${signature.name}" +
         jvmMethodDescriptor(signature.parameterTypes.map { it.toString() }, signature.type.toString())
-    return signature.declClassType.fullyQualifiedName == owner && method in primitiveMethods && call.args.all(::totalPrimitive)
+    // Same-owner static calls introduce neither receiver dereferences nor a new class initialization.
+    val totalArguments = call.args.all { it is Local || it is StringConstant || it is NullConstant || totalPrimitive(it) }
+    val total = method in primitiveMethods && call.args.all(::totalPrimitive) || method in totalMethods && totalArguments
+    return signature.declClassType.fullyQualifiedName == owner && total
 }
 
 /** JVM reference identity tests neither dereference operands nor dispatch application equality methods. */
