@@ -12,9 +12,16 @@ import io.johnsonlee.graphfold.engine.source.SymbolKind
 /** Conservative structural proof over each obligation's dependencies. Unknown frontend edges block upstream. */
 internal class SnapshotComparison(
     private val base: ProgramSnapshot, originalHead: ProgramSnapshot, val originsVerified: Boolean = true,
+    private val safety: (() -> WholeChangeSafety)? = null,
+    private val selectedControls: Boolean? = null,
+    private val unfolded: (() -> SnapshotComparison)? = null,
 ) {
     private val alignment = PrivateMemberAlignment(if (originsVerified) base else originalHead, originalHead)
     private val head = alignment.aligned()
+    val assessments = ComparisonAssessments(base, originalHead, alignment.names, safety, selectedControls, unfolded,
+        ::isUnreachable, ::foldedBodies)
+
+    internal val revisionMethods get() = listOf(base.methods, head.methods)
     val resourceDependenciesAnalyzed: Boolean get() = base.resourceDependenciesAnalyzed && head.resourceDependenciesAnalyzed
     private val entryPoints = base.methods.values.filter {
         MethodModifier.PRIVATE !in it.modifiers && !it.identity.substringBefore('(').endsWith(".<clinit>") &&

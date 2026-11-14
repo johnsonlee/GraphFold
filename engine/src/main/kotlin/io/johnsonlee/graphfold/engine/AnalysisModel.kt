@@ -195,12 +195,14 @@ data class AnalysisResult(
     val ruleAudits: List<RuleAudit> = emptyList(),
 ) {
     /** Version of the serialized report contract described by [AnalysisReports.schema]. */
-    val schemaVersion: Int = 1
-    /** Passes only with no findings, no blocking diagnostics, and all obligations proved. */
+    val schemaVersion: Int = 2
+    /** Passes only with no findings, blocking diagnostics, rejected assessments, or unproved obligations. */
     val verdict: Verdict
-        get() = if (findings.isEmpty() && diagnostics.none { it.blocking } &&
-            metadata.obligations == metadata.provedObligations
-        ) Verdict.PASS else Verdict.FAIL
+        get() {
+            val proofsComplete = metadata.obligations == metadata.provedObligations &&
+                reasons.none { it.assessment.decision == AcceptanceDecision.REJECTED }
+            return if (findings.isEmpty() && diagnostics.none { it.blocking } && proofsComplete) Verdict.PASS else Verdict.FAIL
+        }
 }
 
 /** Working storage and scenario limit for static analysis; no build or repository configuration. */
@@ -263,6 +265,8 @@ enum class ReasonCode {
     FOLDED_EQUIVALENT,
     /** Validated same-input evidence ties removal of all static paths to the explicitly selected controls. */
     UNREACHABLE,
+    /** A complete, explicitly cited static whole-change proof supports acceptance without control coverage. */
+    STATIC_SAFETY_PROVEN,
     /** The folded representations still differ for this obligation. */
     SURVIVING_DIFFERENCE,
     /** An analysis gap prevents a safety conclusion. */
@@ -279,6 +283,7 @@ enum class ReasonCode {
  * @property scenario Name of the folding scenario used for this proof.
  * @property basePath Repository-relative old path, or null if absent or unspecified.
  * @property headPath Repository-relative new path, or null if absent or unspecified.
+ * @property assessment Independent control classification, safety evidence, and acceptance decision.
  */
 data class VerdictReason(
     val changes: Set<ChangeKind>,
@@ -288,4 +293,11 @@ data class VerdictReason(
     val scenario: String,
     val basePath: String? = null,
     val headPath: String? = null,
-)
+    val assessment: ChangeAssessment = code.defaultAssessment(),
+) {
+    init {
+        if (code == ReasonCode.STATIC_SAFETY_PROVEN && assessment.decision == AcceptanceDecision.ACCEPTED) {
+            require(assessment.basis == AcceptanceBasis.STATIC_SAFETY) { "static proof requires static safety evidence" }
+        }
+    }
+}

@@ -2,9 +2,9 @@
 
 Detect uncontrolled code changes through conditional folding.
 
-GraphFold compares two Git commits under the same explicit folding assumptions. The diff establishes what must be proved; Graphite selects call sites with Cypher and folds JVM code; the engine compares the remaining representation and reports changes that could not be proved controlled. AB tests are one use case, not an engine-specific concept.
+GraphFold compares two Git commits under the same explicit folding assumptions. The diff establishes what must be proved; Graphite selects call sites with Cypher and folds JVM code; the engine reports control coverage, static safety evidence and an acceptance decision. AB tests are one use case, not an engine-specific concept.
 
-The gate is fail-closed: both surviving changes and analysis failures produce `FAIL`. Surviving structural differences are reported as unverified changes; build, Git, and incomplete-analysis errors are diagnostics rather than invented source locations.
+An uncontrolled change can pass with a complete static equivalence proof while remaining classified as uncontrolled. Surviving differences without sufficient proof and analysis failures produce `FAIL`. Build, Git, and incomplete-analysis errors are diagnostics rather than invented source locations.
 
 See [the design](docs/design.md) for the proof model, gaps, and trade-offs, and [validation results](docs/validation.md) for the executed checks.
 
@@ -98,6 +98,10 @@ scenarios:
 
 Queries express caller-authorized assumptions; an overly broad rule is an overly broad assumption. GraphFold does not infer the intended feature ID from the source. The default scenario limit is 32; exceeding it fails rather than sampling scenarios.
 
+Use an explicit `folds: []` to compare without selecting any controls. This permits
+independent static safety proofs; it does not make uncontrolled changes controlled.
+Omitting the `folds` field remains invalid.
+
 Fold input must be one YAML document with an object root. Syntax, duplicate keys,
 unknown fields and rule structure are validated before Git checkout or compilation;
 named scenarios use the `scenarios` form. Cypher syntax and result shape are checked
@@ -150,12 +154,37 @@ outcomes; a rename label is a candidate, not an equivalence proof.
 JSON preserves the existing code names. Other finite statuses and protocol kinds also
 use enums internally, with strings decoded and encoded at external boundaries.
 
-Reports declare `schemaVersion: 1` and follow the packaged
+Reports declare `schemaVersion: 2` and follow the packaged
 [verdict JSON Schema](engine/src/main/resources/io/johnsonlee/graphfold/engine/verdict.schema.json)
 (draft 2020-12), also available through `AnalysisReports.schema()`. The schema applies
 to the serialized result regardless of whether its filename is `verdict.json` or
 the Gradle default `report.json`. Structural schema validation complements the
 engine's cross-field and proof checks; it does not establish that a verdict is correct.
+
+Each reason includes an `assessment` with independent `control`, `safety`,
+`decision`, and `basis` fields. `CONTROLLED` requires proof connecting the change
+to the selected controls. `UNCONTROLLED` can still be `ACCEPTED` on a complete
+static whole-change equivalence proof; acceptance never relabels it controlled.
+`UNPROVEN` records missing evidence, while `REFUTED` records a disproved safety
+claim. A rejected assessment prevents the overall report from passing.
+
+Safety evidence identifies its claim, status, subject, supporting evidence, and
+assumptions. `EFFECT_FREE`, `NONTHROWING`, and `TERMINATING` method proofs alone
+cannot justify acceptance: changing `return price` to `return 0` can satisfy all
+three and still change the result. `STATIC_SAFETY` acceptance requires a cited,
+`PROVEN` `WHOLE_CHANGE_EQUIVALENT` certificate. Representation equivalence and
+input identity have separate acceptance bases; neither implies control coverage.
+The schema validates the certificate structure, not the truth of its proof.
+
+The safety analysis uses packaged method bodies, flow-sensitive null facts and
+resolved callee summaries. Its supported equivalence proof compares total,
+effect-free return expressions in both revisions and preserves untraversed
+production instructions. Every surviving difference must be covered; changed
+declarations, resources, dependencies or unresolved graph obligations cannot be
+discharged by proving one helper safe. Original-bytecode proofs cannot override
+selected folds in a method or its callees. Unsupported operations remain unproven.
+The [safety golden manifest](engine/src/test/resources/safety/manifest.json) records
+control, safety claims and acceptance separately for packaged Java/Kotlin cases.
 
 `ruleAudits` records each scenario, revision and zero-based rule index. Each entry
 contains the selector, `selectionStatus`, all unique raw `selectedNodes`, nullable

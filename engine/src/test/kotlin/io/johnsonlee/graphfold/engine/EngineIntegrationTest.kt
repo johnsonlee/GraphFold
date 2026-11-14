@@ -69,7 +69,7 @@ class EngineIntegrationTest {
 
     @Test
     fun `invalid fold is input failure rather than empty successful report`() {
-        val result = engine().analyze(AnalysisRequest("missing", "a", "b", "folds: []"))
+        val result = engine().analyze(AnalysisRequest("missing", "a", "b", "folds: [null]"))
         assertEquals(Verdict.FAIL, result.verdict)
         assertEquals(AnalysisStage.INPUT, result.diagnostics.single().stage)
     }
