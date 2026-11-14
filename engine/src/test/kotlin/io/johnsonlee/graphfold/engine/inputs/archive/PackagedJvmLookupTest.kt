@@ -11,7 +11,6 @@ import org.junit.jupiter.api.io.TempDir
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.test.assertFailsWith
 
 class PackagedJvmLookupTest {
     @TempDir lateinit var temporary: Path
@@ -46,7 +45,7 @@ class PackagedJvmLookupTest {
         }
     }
 
-    @Test fun `conflicting archive definitions cannot hide behind classpath order`() {
+    @Test fun `explicit archive order selects bytes while shadowed production definitions remain inventoried`() {
         val external = compile("external", mapOf("sample/Value.java" to value("external-first")))
         val externalJar = archive("external.jar", classEntries(external))
         val app = compile("app", mapOf("sample/Value.java" to value("application-later"),
@@ -55,11 +54,11 @@ class PackagedJvmLookupTest {
                 public class Main { public static void main(String[] a) { System.out.print(Value.text()); } }
             """.trimIndent()))
         val appJar = archive("app.jar", classEntries(app))
-        val failure = assertFailsWith<InputFailure> {
-            prepareArchiveInput(ArchiveInput("app", listOf(ArchiveEntryInput(externalJar),
-                ArchiveEntryInput(appJar, listOf(app)))), provenance(app), temporary.resolve("projection"))
-        }
-        assertTrue(failure.message.contains("Ambiguous static class definition"))
+        val result = prepareArchiveInput(ArchiveInput("app", listOf(ArchiveEntryInput(externalJar),
+            ArchiveEntryInput(appJar, listOf(app)))), provenance(app), temporary.resolve("projection"))
+        assertContentEquals(Files.readAllBytes(external.resolve("sample/Value.class")),
+            Files.readAllBytes(result.classes.resolve("sample/Value.class")))
+        assertTrue("artifact/1/sample/Value.class" in result.production!!.nonClassEntries)
     }
 
     @Test fun `manifest dependencies resolve beside the physical archive target`() {

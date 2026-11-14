@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine.inputs.archive
 
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarEntry
@@ -18,8 +20,8 @@ internal fun isSpringBootArchive(path: Path): Boolean = JarFile(path.toFile()).u
     }
 }
 
-/** Project actual packaged class bytes and libraries in stable archive-name order. */
-internal fun springBootArchiveInput(input: ArchiveInput, output: Path): ArchiveInput? {
+/** Project actual packaged classes and preserve the dependency order declared by a complete packaged index. */
+internal fun springBootArchiveInput(input: ArchiveInput, output: Path): ArchiveProjection? {
     val entry = input.classpath.singleOrNull()
     if (entry == null || !isSpringBootArchive(entry.artifact)) return null
     Files.createDirectories(output)
@@ -30,7 +32,10 @@ internal fun springBootArchiveInput(input: ArchiveInput, output: Path): ArchiveI
         val rootEntries = entries.filterNot { it.name.startsWith(BOOT_CLASSES) || it.name.startsWith(BOOT_LIBRARIES) }
         val root = bootProjection(jar, rootEntries, "", output.resolve("loader.jar"))
         val classpath = mutableListOf(ArchiveEntryInput(root))
-        val nestedEntries = entries.filter(::bootClasspathEntry).sortedBy { it.name }.toMutableList()
+        val packaged = entries.filter(::bootClasspathEntry)
+        val libraries = packaged.filter { it.name != BOOT_CLASSES }
+        val indexed = bootClasspathIndex(jar, libraries)
+        val nestedEntries = (packaged.filter { it.name == BOOT_CLASSES } + (indexed ?: libraries)).toMutableList()
         if (nestedEntries.none { it.name == BOOT_CLASSES } && entries.any { it.name.startsWith(BOOT_CLASSES) }) {
             nestedEntries.add(0, JarEntry(BOOT_CLASSES))
         }
@@ -46,10 +51,24 @@ internal fun springBootArchiveInput(input: ArchiveInput, output: Path): ArchiveI
                     application = input.ownsApplicationArchive(path))
             }
         }
-        input.copy(classpath = classpath + input.staticDependencies.map { ArchiveEntryInput(it) },
-            archiveMetadata = input.archiveMetadata + mapOf("kind" to "spring-boot"))
+        ArchiveProjection(input.copy(classpath = classpath + input.staticDependencies.map { ArchiveEntryInput(it) },
+            archiveMetadata = input.archiveMetadata + mapOf("kind" to "spring-boot")),
+            if (indexed == null) StaticClassOrder.UNAMBIGUOUS else StaticClassOrder.EXPLICIT_ORDER)
     }
 }
+
+/** An absent or incomplete index leaves ordinary unambiguous archives analyzable. */
+private fun bootClasspathIndex(jar: JarFile, libraries: List<JarEntry>): List<JarEntry>? {
+    val index = jar.getJarEntry("BOOT-INF/classpath.idx") ?: return null
+    val lines = BufferedReader(InputStreamReader(jar.getInputStream(index), Charsets.UTF_8))
+        .use { it.readLines() }.filter { it.isNotBlank() }
+    val names = lines.mapNotNull { BOOT_INDEX_ENTRY.matchEntire(it)?.groupValues?.get(1) }
+    val available = libraries.associateBy { it.name }
+    return if (names.size == lines.size && names.size == available.size && names.toSet() == available.keys)
+        names.map(available::getValue) else null
+}
+
+private val BOOT_INDEX_ENTRY = Regex("""- "([^"]+)"""")
 
 private fun bootClasspathEntry(entry: JarEntry): Boolean =
     entry.isDirectory && entry.name == BOOT_CLASSES ||

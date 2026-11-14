@@ -8,14 +8,16 @@ import java.util.jar.JarFile
 /** Per-analysis reuse only: content, prior class definitions and application copies all participate in the key. */
 internal class DependencyInputCache {
     private data class Input(val path: Path, val digest: String, val variant: Int)
-    private data class Key(val input: Input, val shadowed: Map<String, String>, val application: Map<String, String>)
+    private data class Key(
+        val input: Input, val shadowed: Map<String, String>, val application: Map<String, String>, val classOrder: StaticClassOrder,
+    )
     private data class Projection(val path: Path, val introduced: Map<String, String>)
     private val names = mutableMapOf<Input, Set<String>>()
     private val projections = mutableMapOf<Key, Projection>()
 
     fun materialize(
         dependency: Path, variantThreshold: Int, application: Path?, selected: MutableMap<String, String>,
-        produce: () -> Path,
+        classOrder: StaticClassOrder, produce: () -> Path,
     ): Path {
         val path = dependency.toAbsolutePath().normalize()
         val input = Input(path, digest(path), variantThreshold)
@@ -25,7 +27,7 @@ internal class DependencyInputCache {
             root?.resolve(name)?.normalize()?.takeIf { it.startsWith(root) && Files.isRegularFile(it) }
                 ?.let { name to digest(it) }
         }.toMap()
-        val key = Key(input, selected.filterKeys { it in classes }, copies)
+        val key = Key(input, selected.filterKeys { it in classes }, copies, classOrder)
         val projection = projections.getOrPut(key) {
             val before = selected.keys.toSet()
             Projection(produce(), selected.filterKeys { it !in before })
