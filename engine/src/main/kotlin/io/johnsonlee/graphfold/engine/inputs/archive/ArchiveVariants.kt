@@ -24,7 +24,10 @@ internal fun archiveVariant(name: String): Pair<Int, String>? = VERSIONED_ENTRY.
 
 private val VERSIONED_ENTRY = Regex("""META-INF/versions/([1-9][0-9]*)/(.+)""")
 
-/** Inventory and graphs see the same build-selected MR contents, including effective resource entries. */
+/**
+ * Inventory retains original metadata alongside build-selected contents. This is an evidence ZIP, not a signed JAR:
+ * consumers must use ZIP readers; graph normalization independently reads the original signed archive.
+ */
 internal fun selectedArchiveInventory(archive: Path, javaVersion: Int, output: Path): Path =
     JarFile(archive.toFile()).use { jar ->
         val multiRelease = jar.manifest?.mainAttributes?.getValue(Attributes.Name.MULTI_RELEASE)
@@ -42,4 +45,12 @@ internal fun selectedArchiveInventory(archive: Path, javaVersion: Int, output: P
 
 private fun copyArchiveEntry(jar: JarFile, entry: JarEntry, target: JarOutputStream) {
     jar.getInputStream(entry).use { it.copyTo(target) }
+}
+
+/** Signing blocks authenticate the original archive, never an analysis projection with rewritten entries. */
+internal fun archiveSignature(name: String): Boolean {
+    val normalized = name.uppercase(java.util.Locale.ROOT)
+    if (!normalized.startsWith("META-INF/")) return false
+    val file = normalized.removePrefix("META-INF/")
+    return '/' !in file && (file.startsWith("SIG-") || file.substringAfterLast('.') in setOf("SF", "RSA", "DSA", "EC"))
 }
