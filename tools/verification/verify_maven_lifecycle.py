@@ -317,7 +317,7 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     publication = args.publication_repository.resolve()
-    for artifact in ['gfc', 'engine', 'maven-plugin']:
+    for artifact in ['gfc', 'engine', 'graphfold-maven-plugin']:
         if not (publication / GROUP.replace('.', '/') / artifact / args.version / f'{artifact}-{args.version}.pom').is_file():
             parser.error(f'Missing locally published {artifact} POM under {publication}')
     java = Path(os.environ['JAVA_HOME']) / 'bin/java'
@@ -342,7 +342,7 @@ def main():
     executable = maven(output)
     common = ['--batch-mode', '--no-transfer-progress', '--settings', str(settings),
               '-Dmaven.repo.local=' + str(output / 'maven-cache'), '-Dstyle.color=never']
-    coordinate = f'{GROUP}:maven-plugin:{args.version}'
+    coordinate = f'{GROUP}:graphfold-maven-plugin:{args.version}'
     results = {layout: verify_layout(layout, output, executable, common, coordinate, publication.as_uri()) for layout in LAYOUTS}
     summary = dict(mavenVersion=MAVEN_VERSION, javaVersion=version.strip(), pluginVersion=args.version,
                    fixtureResults=results, reactorResults=verify_reactor(output, executable, common, coordinate, publication.as_uri()),
