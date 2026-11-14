@@ -219,17 +219,17 @@ cannot replace BASE's saved bytes.
 
 ## Maven plugin
 
-The `io.johnsonlee.graphfold:maven-plugin:<version>` artifact provides `snapshot`
+The `io.johnsonlee.graphfold:graphfold-maven-plugin:<version>` artifact provides `snapshot`
 and `check` goals. Invoke them after the normal `verify` lifecycle so the current
 MavenProject has its packaged artifact and resolved dependencies. Produce both BASE
 and HEAD snapshots through trusted builds; see [Snapshot trust boundary](#snapshot-trust-boundary).
 
 ```sh
 # BASE checkout:
-mvn verify io.johnsonlee.graphfold:maven-plugin:<version>:snapshot \
+mvn verify io.johnsonlee.graphfold:graphfold-maven-plugin:<version>:snapshot \
   -Dgraphfold.snapshotDirectory=/tmp/graphfold-base
 # HEAD checkout:
-mvn verify io.johnsonlee.graphfold:maven-plugin:<version>:check \
+mvn verify io.johnsonlee.graphfold:graphfold-maven-plugin:<version>:check \
   -Dgraphfold.snapshotDirectory=/tmp/graphfold-head \
   -Dgraphfold.baseSnapshot=/tmp/graphfold-base \
   -Dgraphfold.rules=rules.yml

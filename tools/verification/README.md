@@ -32,7 +32,7 @@ protected artifact storage. Do not substitute bundles supplied with a PR: hashes
 stored in their own manifest detect corruption, not an attacker replacing both
 the assets and their hashes. See the [snapshot trust boundary](../../README.md#snapshot-trust-boundary).
 
-Publish `gfc`, `engine` and `maven-plugin` to a local file repository first, using one shared
+Publish `gfc`, `engine` and `graphfold-maven-plugin` to a local file repository first, using one shared
 version. For the repository's `releaseVerification` publication repository:
 
 ```sh

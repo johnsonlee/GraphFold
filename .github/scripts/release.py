@@ -32,7 +32,7 @@ def verify_compiler_plugin(archive):
 
 PROJECT_DEPENDENCIES = {
     "engine": {"gfc"}, "gfc": set(),
-    "gradle-plugin": {"engine"}, "maven-plugin": {"engine"},
+    "gradle-plugin": {"engine"}, "graphfold-maven-plugin": {"engine"},
 }
 
 
@@ -90,7 +90,7 @@ def verify(repository, release_version):
         verify_module_metadata(directory, module, release_version)
         entry = {"gfc": "META-INF/services/com.sun.source.util.Plugin",
                  "engine": "io/johnsonlee/graphfold/engine/GraphFoldEngine.class",
-                 "maven-plugin": "META-INF/maven/plugin.xml",
+                 "graphfold-maven-plugin": "META-INF/maven/plugin.xml",
                  "gradle-plugin": "META-INF/gradle-plugins/io.johnsonlee.graphfold.properties"}[module]
         with zipfile.ZipFile(directory / (stem + ".jar")) as archive:
             if entry not in archive.namelist():
@@ -106,12 +106,15 @@ def verify(repository, release_version):
                 if any(name.startswith(("io/johnsonlee/graphfold/gradle/", "io/johnsonlee/graphfold/maven/",
                                         "io/johnsonlee/graphfold/engine/build/")) for name in archive.namelist()):
                     raise ValueError("Engine must not contain build-tool integrations")
-            if module in ("gradle-plugin", "maven-plugin"):
+            if module in ("gradle-plugin", "graphfold-maven-plugin"):
                 if any(name.startswith(("io/johnsonlee/graphfold/engine/inputs/",
                                         "io/johnsonlee/graphfold/integration/")) for name in archive.namelist()):
                     raise ValueError("Plugins must not duplicate engine input implementations")
-            if module == "maven-plugin":
+            if module == "graphfold-maven-plugin":
                 descriptor = ET.fromstring(archive.read("META-INF/maven/plugin.xml"))
+                for key, expected in (("groupId", "io.johnsonlee.graphfold"), ("artifactId", module)):
+                    if descriptor.findtext(key) != expected:
+                        raise ValueError(f"Incorrect Maven plugin descriptor {key}")
                 if descriptor.findtext("version") != release_version:
                     raise ValueError("Maven plugin descriptor differs from release version")
                 if {mojo.findtext("goal") for mojo in descriptor.findall("mojos/mojo")} != {"snapshot", "check"}:
@@ -122,7 +125,7 @@ def verify(repository, release_version):
                         raise ValueError("Missing Maven goal implementation")
         pom = ET.parse(directory / (stem + ".pom"))
         verify_project_dependencies(pom, module, release_version, namespace)
-        if module == "maven-plugin" and pom.findtext("m:packaging", namespaces=namespace) != "maven-plugin":
+        if module == "graphfold-maven-plugin" and pom.findtext("m:packaging", namespaces=namespace) != "maven-plugin":
             raise ValueError("Maven plugin publication must use maven-plugin packaging")
         for key, expected in (("groupId", "io.johnsonlee.graphfold"), ("artifactId", module), ("version", release_version)):
             if pom.findtext(f"m:{key}", namespaces=namespace) != expected:

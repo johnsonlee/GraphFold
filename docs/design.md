@@ -96,7 +96,7 @@ manifest 的损坏或修改；攻击者同时替换 assets 和摘要仍会通过
 或授权忽略没有 control 覆盖的修改。缺失映射降低归因精度，不阻止建图和折叠。
 
 所有模块同版本发布。engine 不依赖 Gradle/Maven API 或编译器 provider。
-插件源码位于 `plugin/gradle`、`plugin/maven`，Gradle 项目路径为 `:plugin:gradle`、`:plugin:maven`；发布 artifact ID 仍为 `gradle-plugin`、`maven-plugin`。
+插件源码位于 `plugin/gradle`、`plugin/maven`，Gradle 项目路径为 `:plugin:gradle`、`:plugin:maven`；发布 artifact ID 为 `gradle-plugin`、`graphfold-maven-plugin`。
 gfc 的 compiler hooks 使用宿主编译器 API。测试中的 fixture 编译器不属于 engine 生产实现。
 
 GFC 在真实编译完成后记录 emitted class 的 SHA-256。Kotlin 使用编译器输出回调提供的实际 class 路径；

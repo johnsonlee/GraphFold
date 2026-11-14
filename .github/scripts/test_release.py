@@ -85,7 +85,7 @@ class PublicationsTest(unittest.TestCase):
             "gfc": self.plugin_entries,
             "engine": self.engine_entries,
             "gradle-plugin": {"META-INF/gradle-plugins/io.johnsonlee.graphfold.properties": b"plugin"},
-            "maven-plugin": self.maven_entries(),
+            "graphfold-maven-plugin": self.maven_entries(),
         }
         for module, contents in entries.items():
             directory = self.directory(module)
@@ -99,7 +99,7 @@ class PublicationsTest(unittest.TestCase):
                 with zipfile.ZipFile(directory / f"{module}-{self.VERSION}-{classifier}.jar", "w") as archive:
                     archive.writestr("entry", "fixture")
             graph = {"engine": ("gfc",), "gfc": (),
-                     "gradle-plugin": ("engine",), "maven-plugin": ("engine",)}
+                     "gradle-plugin": ("engine",), "graphfold-maven-plugin": ("engine",)}
             dependency = "".join(self.dependency(name) for name in graph[module])
             self.write_pom(module, dependency)
         marker = "io.johnsonlee.graphfold.gradle.plugin"
@@ -117,7 +117,7 @@ class PublicationsTest(unittest.TestCase):
         (self.directory(module) / f"{module}-{self.VERSION}.pom").write_text(
             '<project xmlns="http://maven.apache.org/POM/4.0.0">'
             f"<groupId>{self.GROUP}</groupId><artifactId>{module}</artifactId><version>{self.VERSION}</version>"
-            f"<packaging>{'maven-plugin' if module == 'maven-plugin' else 'jar'}</packaging>"
+            f"<packaging>{'maven-plugin' if module == 'graphfold-maven-plugin' else 'jar'}</packaging>"
             f"<dependencies>{dependencies}</dependencies></project>")
 
     def write_jar(self, module, entries):
@@ -129,7 +129,7 @@ class PublicationsTest(unittest.TestCase):
         verify(self.repository, self.VERSION)
 
     def test_relocated_module_metadata_keeps_published_identity_and_artifacts(self):
-        for module, wrong_name in (("gradle-plugin", "gradle"), ("maven-plugin", "maven")):
+        for module, wrong_name in (("gradle-plugin", "gradle"), ("graphfold-maven-plugin", "maven")):
             path = self.directory(module) / f"{module}-{self.VERSION}.module"
             original = path.read_text()
             metadata = json.loads(original)
@@ -155,19 +155,32 @@ class PublicationsTest(unittest.TestCase):
             entries[implementation.replace(".", "/") + ".class"] = b"mojo"
             mojos += f"<mojo><goal>{goal}</goal><implementation>{implementation}</implementation></mojo>"
         entries["META-INF/maven/plugin.xml"] = (
-            f"<plugin><version>{version or self.VERSION}</version><mojos>{mojos}</mojos></plugin>").encode()
+            f"<plugin><groupId>{self.GROUP}</groupId><artifactId>graphfold-maven-plugin</artifactId>"
+            f"<version>{version or self.VERSION}</version><mojos>{mojos}</mojos></plugin>").encode()
         return entries
 
     def test_maven_plugin_descriptor_and_goals_must_be_published(self):
         for contents in (self.maven_entries(version="1.2.2"), self.maven_entries(goals=("snapshot",)),
                          {"META-INF/maven/plugin.xml": self.maven_entries()["META-INF/maven/plugin.xml"]}):
             with self.subTest(contents=contents):
-                self.write_jar("maven-plugin", contents)
+                self.write_jar("graphfold-maven-plugin", contents)
                 with self.assertRaisesRegex(ValueError, "Maven"):
                     verify(self.repository, self.VERSION)
 
+    def test_maven_descriptor_identity_must_match_publication(self):
+        for field, correct, wrong in (("groupId", self.GROUP, "other.group"),
+                                      ("artifactId", "graphfold-maven-plugin", "maven-plugin")):
+            for replacement in (f"<{field}>{wrong}</{field}>", ""):
+                with self.subTest(field=field, replacement=replacement):
+                    entries = self.maven_entries()
+                    entries["META-INF/maven/plugin.xml"] = entries["META-INF/maven/plugin.xml"].replace(
+                        f"<{field}>{correct}</{field}>".encode(), replacement.encode())
+                    self.write_jar("graphfold-maven-plugin", entries)
+                    with self.assertRaisesRegex(ValueError, f"Maven plugin descriptor {field}"):
+                        verify(self.repository, self.VERSION)
+
     def test_maven_plugin_packaging_is_required(self):
-        pom = self.directory("maven-plugin") / f"maven-plugin-{self.VERSION}.pom"
+        pom = self.directory("graphfold-maven-plugin") / f"graphfold-maven-plugin-{self.VERSION}.pom"
         pom.write_text(pom.read_text().replace("<packaging>maven-plugin</packaging>", "<packaging>jar</packaging>"))
         with self.assertRaisesRegex(ValueError, "packaging"):
             verify(self.repository, self.VERSION)
@@ -189,8 +202,8 @@ class PublicationsTest(unittest.TestCase):
                     verify(self.repository, self.VERSION)
 
     def test_plugins_cannot_duplicate_input_implementation(self):
-        for module in ("gradle-plugin", "maven-plugin"):
-            entries = (self.maven_entries() if module == "maven-plugin" else
+        for module in ("gradle-plugin", "graphfold-maven-plugin"):
+            entries = (self.maven_entries() if module == "graphfold-maven-plugin" else
                        {"META-INF/gradle-plugins/io.johnsonlee.graphfold.properties": b"plugin"})
             for prefix in ("engine/inputs", "integration"):
                 with self.subTest(module=module, prefix=prefix):
@@ -236,12 +249,12 @@ class PublicationsTest(unittest.TestCase):
             verify(self.repository, self.VERSION)
 
     def test_entrypoints_cannot_depend_on_each_other(self):
-        self.write_pom("maven-plugin", self.dependency("gradle-plugin"))
-        with self.assertRaisesRegex(ValueError, "Incorrect maven-plugin project dependency graph"):
+        self.write_pom("graphfold-maven-plugin", self.dependency("gradle-plugin"))
+        with self.assertRaisesRegex(ValueError, "Incorrect graphfold-maven-plugin project dependency graph"):
             verify(self.repository, self.VERSION)
 
     def test_missing_maven_plugin_publication_fails(self):
-        shutil.rmtree(self.directory("maven-plugin"))
+        shutil.rmtree(self.directory("graphfold-maven-plugin"))
         with self.assertRaisesRegex(ValueError, "Missing or empty publication"):
             verify(self.repository, self.VERSION)
 
