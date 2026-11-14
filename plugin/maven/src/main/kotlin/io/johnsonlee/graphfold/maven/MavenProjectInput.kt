@@ -11,8 +11,8 @@ import org.apache.maven.project.MavenProject
 internal fun MavenProject.staticInput(javaVersion: Int, reactor: List<MavenProject> = emptyList()): ArchiveScopeInput {
     val archive = requireNotNull(artifact?.file) { "Package the Maven project before exporting GraphFold inputs" }.toPath()
     require(Files.isRegularFile(archive)) { "Packaged Maven artifact is missing: $archive" }
-    val selected = artifacts.filter { it.scope in INPUT_SCOPES }
-    val resolved = selected.associateWith { dependency ->
+    val (runtime, supplemental) = artifacts.filter { it.isClasspathInput() }.partition { it.scope in RUNTIME_SCOPES }
+    val resolved = (runtime + supplemental).associateWith { dependency ->
         val file = requireNotNull(dependency.file) { "Maven dependency has no resolved artifact: ${dependency.id}" }.toPath()
         require(Files.isRegularFile(file)) { "Resolved Maven dependency is missing: $file" }
         file.toRealPath()
@@ -30,7 +30,7 @@ internal fun MavenProject.staticInput(javaVersion: Int, reactor: List<MavenProje
             }
     }
     val classpaths = producers.values.flatMap { producer ->
-        val dependencies = producer.artifacts.filter { it.scope in INPUT_SCOPES }.mapNotNull { it.file?.toPath() }
+        val dependencies = producer.artifacts.filter { it.isClasspathInput() }.mapNotNull { it.file?.toPath() }
         producer.compileSourceRoots.map { Path.of(it).toAbsolutePath().normalize() to dependencies }
     }.toMap()
     return ArchiveScopeInput(identity(), archive.toRealPath(), resolved.values.distinct(), sourceOutputs.keys.toList(),
@@ -38,7 +38,10 @@ internal fun MavenProject.staticInput(javaVersion: Int, reactor: List<MavenProje
         projectArtifacts = producers.mapValues { (_, producer) -> listOf(producer.classes()) }, javaVersion = javaVersion)
 }
 
+private fun Artifact.isClasspathInput() = scope in INPUT_SCOPES && artifactHandler.isAddedToClasspath
+
 private fun MavenProject.identity() = "$groupId:$artifactId"
 private fun MavenProject.classes(): Path = Path.of(build.outputDirectory).toAbsolutePath().normalize()
 
-private val INPUT_SCOPES = setOf(Artifact.SCOPE_COMPILE, Artifact.SCOPE_RUNTIME, Artifact.SCOPE_PROVIDED, Artifact.SCOPE_SYSTEM)
+private val RUNTIME_SCOPES = setOf(Artifact.SCOPE_COMPILE, Artifact.SCOPE_RUNTIME)
+private val INPUT_SCOPES = RUNTIME_SCOPES + setOf(Artifact.SCOPE_PROVIDED, Artifact.SCOPE_SYSTEM)

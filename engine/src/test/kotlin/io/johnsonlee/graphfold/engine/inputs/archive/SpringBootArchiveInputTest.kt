@@ -29,7 +29,7 @@ class SpringBootArchiveInputTest {
         val archive = projectionArchive(root.resolve("app.jar"), entries, attributes())
         val selected = ArchiveInput("boot", listOf(ArchiveEntryInput(archive, listOf(source))),
             producerArchives = mapOf(library to listOf(librarySource), unrelated to listOf(root.resolve("unused"))))
-        val actual = requireNotNull(springBootArchiveInput(selected, root.resolve("projection")))
+        val actual = requireNotNull(springBootArchiveInput(selected, root.resolve("projection"))).input
         assertEquals(listOf(emptyList(), listOf(source), listOf(librarySource)), actual.classpath.map { it.producerOutputs })
         assertEquals(mapOf("kind" to "spring-boot"), actual.archiveMetadata)
         val classes = readWarArchive(actual.classpath[1].artifact)
@@ -51,7 +51,7 @@ class SpringBootArchiveInputTest {
             if (mapped) mapOf(library to listOf(librarySource)) else emptyMap()
         val selected = requireNotNull(springBootArchiveInput(ArchiveInput("boot",
             listOf(ArchiveEntryInput(archive, listOf(root.resolve("classes")))), producerArchives = producers),
-            root.resolve("out")))
+            root.resolve("out"))).input
         val projectedLibrary = selected.classpath.last()
         assertContentEquals(Files.readAllBytes(library), Files.readAllBytes(projectedLibrary.artifact))
         assertEquals(if (mapped) listOf(librarySource) else emptyList(), projectedLibrary.producerOutputs)
@@ -101,7 +101,7 @@ class SpringBootArchiveInputTest {
         val archive = projectionArchive(root.resolve("layout.jar"),
             mapOf("BOOT-INF/classes/sample/App.class" to bytecode("sample/App")), attributes)
         val selected = requireNotNull(springBootArchiveInput(ArchiveInput("boot",
-            listOf(ArchiveEntryInput(archive, listOf(root.resolve("classes"))))), root.resolve("out")))
+            listOf(ArchiveEntryInput(archive, listOf(root.resolve("classes"))))), root.resolve("out"))).input
         assertEquals(setOf("kind"), selected.archiveMetadata.keys)
         assertEquals("spring-boot", selected.archiveMetadata["kind"])
         val classes = selected.classpath.single { it.producerOutputs.isNotEmpty() }

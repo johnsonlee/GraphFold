@@ -11,15 +11,17 @@ import org.apache.maven.model.Build
 import org.apache.maven.project.MavenProject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class MavenProjectInputTest {
     @TempDir lateinit var temporary: Path
 
-    @Test fun `packaged input follows current project resolved artifacts and source roots`() {
+    @Test fun `packaged input prioritizes runtime artifacts while compiler mappings retain model order`() {
         val project = project()
-        val included = listOf(Artifact.SCOPE_COMPILE, Artifact.SCOPE_RUNTIME, Artifact.SCOPE_PROVIDED, Artifact.SCOPE_SYSTEM)
+        val included = listOf(Artifact.SCOPE_PROVIDED, Artifact.SCOPE_RUNTIME, Artifact.SCOPE_SYSTEM, Artifact.SCOPE_COMPILE)
             .map { dependency(it, it) }
         project.artifacts = (included + dependency("tests", Artifact.SCOPE_TEST)).toSet()
         project.addCompileSourceRoot(temporary.resolve("generated").toString())
@@ -29,7 +31,8 @@ class MavenProjectInputTest {
         assertEquals("fixture:library", input.id)
         assertEquals(17, input.javaVersion)
         assertEquals(project.artifact.file.toPath().toRealPath(), input.archive)
-        assertEquals(included.map { it.file.toPath().toRealPath() }, input.dependencies)
+        assertEquals(listOf(included[1], included[3], included[0], included[2]).map { it.file.toPath().toRealPath() },
+            input.dependencies)
         assertEquals(listOf(temporary.resolve("generated")), input.sourceRoots)
         assertEquals(mapOf(temporary.resolve("generated") to listOf(temporary.resolve("classes"))), input.sourceOutputs)
         assertEquals(listOf(
@@ -82,6 +85,26 @@ class MavenProjectInputTest {
             input.projectArtifacts.getValue(selected.artifact.file.toPath().toRealPath()))
     }
 
+    @ParameterizedTest
+    @CsvSource("compile,true", "runtime,true", "provided,true", "system,true", "test,true",
+        "compile,false", "runtime,false", "provided,false", "system,false", "test,false")
+    fun `classpath membership follows Maven artifact handler and scope`(scope: String, added: Boolean) {
+        val project = project()
+        (requireNotNull(project.artifact.artifactHandler) as DefaultArtifactHandler).isAddedToClasspath = false
+        val source = temporary.resolve("source")
+        project.addCompileSourceRoot(source.toString())
+        val selected = dependency("candidate", scope).apply {
+            (requireNotNull(artifactHandler) as DefaultArtifactHandler).isAddedToClasspath = added
+        }
+        project.artifacts = setOf(selected)
+        val input = project.staticInput(17)
+        val nativeClasspath = (project.compileClasspathElements + project.runtimeClasspathElements)
+            .map { Path.of(it) }.filter { it == selected.file.toPath() }.distinct()
+        assertEquals(nativeClasspath.map { it.toRealPath() }, input.dependencies)
+        assertEquals(nativeClasspath, input.sourceClasspaths.getValue(source))
+        assertEquals(project.artifact.file.toPath().toRealPath(), input.archive)
+    }
+
     private fun project(): MavenProject = MavenProject(Model().apply {
         groupId = "fixture"
         artifactId = "library"
@@ -90,7 +113,7 @@ class MavenProjectInputTest {
     }).apply { artifact = dependency("library", Artifact.SCOPE_COMPILE) }
 
     private fun dependency(name: String, scope: String): Artifact =
-        DefaultArtifact("fixture", name, "1", scope, "jar", null, DefaultArtifactHandler("jar")).apply {
+        DefaultArtifact("fixture", name, "1", scope, "jar", null, DefaultArtifactHandler("jar").apply { isAddedToClasspath = true }).apply {
             file = Files.write(temporary.resolve("$name.jar"), byteArrayOf()).toFile()
         }
 }
