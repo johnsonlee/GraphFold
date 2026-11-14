@@ -17,7 +17,9 @@ internal class MethodSnapshots(
     private val dependencyResources: Boolean,
     private val trustedIntrinsics: Boolean,
     private val primitiveMethods: Set<String>,
+    totalMethods: () -> Set<String>,
 ) {
+    private val disposableMethods by lazy(totalMethods)
     val methods = linkedMapOf<String, MethodSnapshot>()
     val discardedCalls = linkedMapOf<String, Set<String>>()
     val resourceCalls = linkedMapOf<String, Set<String>>()
@@ -32,7 +34,8 @@ internal class MethodSnapshots(
             resourceInitializers[identity] = body?.let(::dependencyResourceInitializers).orEmpty()
         }
         val disposable = body?.let {
-            disposableExposureStatements(it, identity, primitiveMethods, authorized)
+            disposableExposureStatements(it, identity, primitiveMethods, authorized,
+                if (authorized.isEmpty()) emptySet() else disposableMethods)
         }.orEmpty()
         val calls = body?.stmts.orEmpty().filterNot { it in disposable }.mapNotNull(::invokedIdentity).toSet()
         discardedCalls[identity] = disposable.mapNotNull(::invokedIdentity).toSet() - calls

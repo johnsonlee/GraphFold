@@ -15,8 +15,10 @@ internal data class RuleAuditUpdate(
 /** Publish progress immediately, so later query/frontend failures cannot erase earlier selection evidence. */
 internal class RuleAuditCapture(private val publish: (Int, RuleAuditUpdate) -> Unit) {
     private val records = mutableMapOf<Int, RuleAuditUpdate>()
+    val selectedCallees = mutableSetOf<String>()
 
     fun selected(index: Int, sites: List<CallSiteNode>) {
+        selectedCallees.addAll(sites.map { it.callee.identity })
         update(index, RuleAuditUpdate(RuleSelectionStatus.SELECTED, sites.distinctBy { it.id }.sortedBy { it.id.value }.map {
             SelectedCallSite(it.id.value, SelectedMethod(it.caller.signature, it.caller.descriptor),
                 SelectedMethod(it.callee.signature, it.callee.descriptor), it.ordinal, it.origin?.value, it.lineNumber)

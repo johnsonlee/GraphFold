@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:io.johnsonlee.graphfold:verdict:1",
-  "title": "GraphFold analysis verdict (version 1)",
-  "description": "The AnalysisReports.json serialization contract, independent of output filename (verdict.json or report.json). Verdict is derived by the engine: PASS requires no findings, no blocking diagnostics, and all obligations proved. Cross-field verdict and count equality are enforced by the engine, not this structural schema.",
+  "$id": "urn:io.johnsonlee.graphfold:verdict:2",
+  "title": "GraphFold analysis verdict (version 2)",
+  "description": "The AnalysisReports.json serialization contract, independent of output filename (verdict.json or report.json). Verdict is derived by the engine: PASS requires no findings, no blocking diagnostics, no rejected assessments, and all obligations proved. Cross-field verdict and count equality are enforced by the engine, not this structural schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,8 +17,8 @@
   "properties": {
     "schemaVersion": {
       "type": "integer",
-      "const": 1,
-      "description": "Version of the serialized verdict contract; version 1 corresponds to this schema. This is independent of the GraphFold release version."
+      "const": 2,
+      "description": "Version of the serialized verdict contract; version 2 corresponds to this schema. This is independent of the GraphFold release version."
     },
     "verdict": {
       "type": "string",
@@ -26,7 +26,7 @@
         "PASS",
         "FAIL"
       ],
-      "description": "Engine-derived gate decision: PASS requires no findings, no blocking diagnostics, and equality of obligations and provedObligations; otherwise FAIL."
+      "description": "Engine-derived gate decision: PASS requires no findings, no blocking diagnostics, no rejected assessments, and equality of obligations and provedObligations; otherwise FAIL."
     },
     "findings": {
       "type": "array",
@@ -319,7 +319,8 @@
         "locations",
         "scenario",
         "basePath",
-        "headPath"
+        "headPath",
+        "assessment"
       ],
       "properties": {
         "changes": {
@@ -358,10 +359,11 @@
             "BUILD_OUTPUT_UNCHANGED",
             "FOLDED_EQUIVALENT",
             "UNREACHABLE",
+            "STATIC_SAFETY_PROVEN",
             "SURVIVING_DIFFERENCE",
             "ANALYSIS_INCOMPLETE"
           ],
-          "description": "FOLDED_EQUIVALENT means no analyzed folded difference survives; UNREACHABLE means selected controls removed every static path to the change from the same input before folding; SURVIVING_DIFFERENCE means a difference remains; ANALYSIS_INCOMPLETE means a gap prevents a safety conclusion."
+          "description": "FOLDED_EQUIVALENT means no analyzed folded difference survives; UNREACHABLE means selected controls removed every static path to the change from the same input before folding; SURVIVING_DIFFERENCE means a difference remains; ANALYSIS_INCOMPLETE means a gap prevents a safety conclusion. STATIC_SAFETY_PROVEN requires an explicit whole-change proof for static acceptance; absence of evidence is not proof."
         },
         "message": {
           "type": "string",
@@ -391,9 +393,48 @@
             "null"
           ],
           "description": "Repository-relative new file path, or null when the head path is absent or unspecified."
+        },
+        "assessment": {
+          "$ref": "#/$defs/changeAssessment"
         }
       },
-      "description": "Explanation of a change obligation outcome under one folding scenario, independent of whether it produces a finding."
+      "description": "Explanation of a change obligation outcome under one folding scenario, independent of whether it produces a finding.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "STATIC_SAFETY_PROVEN"
+              },
+              "assessment": {
+                "properties": {
+                  "decision": {
+                    "const": "ACCEPTED"
+                  }
+                },
+                "required": [
+                  "decision"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "assessment"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessment": {
+                "properties": {
+                  "basis": {
+                    "const": "STATIC_SAFETY"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "selector": {
       "type": "object",
@@ -605,6 +646,150 @@
               "selectedCount": {
                 "type": "null",
                 "description": "The selected-node count is unavailable unless selection completed successfully."
+              }
+            }
+          }
+        }
+      ]
+    },
+    "safetyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim",
+        "status",
+        "subject",
+        "evidence",
+        "assumptions"
+      ],
+      "properties": {
+        "claim": {
+          "type": "string",
+          "enum": [
+            "EFFECT_FREE",
+            "NONTHROWING",
+            "TERMINATING",
+            "WHOLE_CHANGE_EQUIVALENT"
+          ],
+          "description": "Whole-change equivalence is separate from individual method safety properties."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PROVEN",
+            "REFUTED",
+            "UNPROVEN"
+          ],
+          "description": "UNPROVEN does not assert a demonstrated hazard."
+        },
+        "subject": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        }
+      },
+      "description": "Cited static proof evidence and explicit assumptions for a particular subject."
+    },
+    "changeAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control",
+        "safety",
+        "decision",
+        "basis"
+      ],
+      "properties": {
+        "control": {
+          "type": "string",
+          "enum": [
+            "CONTROLLED",
+            "UNCONTROLLED",
+            "UNPROVEN"
+          ],
+          "description": "Control coverage is independent of acceptance; static safety does not establish control coverage."
+        },
+        "safety": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/safetyEvidence"
+          }
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "ACCEPTED",
+            "REJECTED"
+          ],
+          "description": "Per-obligation acceptance decision, independent of control classification."
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "CONTROL_COVERAGE",
+            "STATIC_SAFETY",
+            "REPRESENTATION_EQUIVALENCE",
+            "INPUT_IDENTITY",
+            "INCOMPLETE_PROOF",
+            "SURVIVING_DIFFERENCE"
+          ],
+          "description": "Specific proof or unresolved difference supporting this decision."
+        }
+      },
+      "description": "Independent control classification, safety evidence, and acceptance.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "basis": {
+                "const": "STATIC_SAFETY"
+              },
+              "decision": {
+                "const": "ACCEPTED"
+              }
+            },
+            "required": [
+              "basis",
+              "decision"
+            ]
+          },
+          "then": {
+            "properties": {
+              "control": {
+                "const": "UNCONTROLLED"
+              },
+              "safety": {
+                "contains": {
+                  "properties": {
+                    "claim": {
+                      "const": "WHOLE_CHANGE_EQUIVALENT"
+                    },
+                    "status": {
+                      "const": "PROVEN"
+                    },
+                    "evidence": {
+                      "minItems": 1
+                    }
+                  },
+                  "required": [
+                    "claim",
+                    "status",
+                    "evidence"
+                  ]
+                }
               }
             }
           }

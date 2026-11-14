@@ -27,7 +27,7 @@ fold(head, A_PR) ≡ fold(base, A_PR)
 | Verdict | 条件 |
 | --- | --- |
 | `PASS` | 分析成功完成，本次所有相关变化均被证明消除或等价 |
-| `FAIL` | 确认 uncontrolled change，或存在阻止完成证明的错误、缺口或定位失败 |
+| `FAIL` | 存在缺乏充分安全证明的 uncontrolled change，或存在阻止完成证明的错误、缺口或定位失败 |
 
 `FAIL` 区分未受 control 约束的静态生产代码差异、证据不足的变更和分析过程错误；它不声称已经发生运行时业务行为差异。
 
@@ -190,7 +190,7 @@ data class AnalysisResult(
     val metadata: AnalysisMetadata,
     val reasons: List<VerdictReason> = emptyList(),
     val ruleAudits: List<RuleAudit> = emptyList(),
-) // schemaVersion 固定为 1；verdict 由 findings、blocking diagnostics 与证明完成情况派生，不由调用者赋值。
+) // schemaVersion 固定为 2；verdict 由 findings、blocking diagnostics 与证明完成情况派生，不由调用者赋值。
 ```
 
 `Evidence`、`Diagnostic`、`AnalysisMetadata` 和 `VerdictReason` 已在 engine 定义。`Finding.locations` 至少一项，可跨文件和 revision，且都是本次 diff 的归属位置；调用链等未修改位置放入 evidence。纯移动的 `VerdictReason.locations` 可为空，此时以旧/新路径描述变化，不制造字符 diff。
@@ -215,7 +215,7 @@ Finding 分类：
 
 当前 Metadata 记录解析后的 SHA、Graphite 版本、场景和 obligation/证明完成数量。编译器版本、规则摘要、构建产物身份与完整 provenance 仍是待补的审计信息，不能声称已经输出。Finding ID 使用内容摘要，不依赖图节点编号。
 
-JSON 报告包含 `schemaVersion: 1`，规范为 [verdict.schema.json](../engine/src/main/resources/io/johnsonlee/graphfold/engine/verdict.schema.json)，采用 JSON Schema draft 2020-12，标识为 `urn:io.johnsonlee.graphfold:verdict:1`。同一资源随 engine 打包，可通过 `AnalysisReports.schema()` 读取。Schema 校验序列化结构、必需字段、枚举、空值与数值边界，不代替引擎的语义证明。它适用于任意报告文件名；Gradle 默认仍输出 `report.json`。
+JSON 报告包含 `schemaVersion: 2`，规范为 [verdict.schema.json](../engine/src/main/resources/io/johnsonlee/graphfold/engine/verdict.schema.json)，采用 JSON Schema draft 2020-12，标识为 `urn:io.johnsonlee.graphfold:verdict:2`。同一资源随 engine 打包，可通过 `AnalysisReports.schema()` 读取。Schema 校验序列化结构、必需字段、枚举、空值与数值边界，不代替引擎的语义证明。它适用于任意报告文件名；Gradle 默认仍输出 `report.json`。
 
 ## 4. 仓库获取与共享对象 checkout
 
@@ -903,6 +903,12 @@ P0 表示上线门禁前必须解决，或必须可靠识别并阻断；不意�
 ### 18.1 变更分类与判定原因
 
 `reasons` 对 PASS 和 FAIL 都提供解释，包括 AST 识别的 `changes`、证明结论 `code`、文字说明、场景、diff 位置和 base/head 路径。分类包括字段初始化值变化、条件增删、调用变化、成员增删、字段/方法重命名候选、文件移动/改名与类初始化变化。JavaParser/Kotlin PSI 只负责描述变化；分类本身不决定 verdict。
+
+报告 v2 为每个 reason 增加 `assessment`，将 `control`（CONTROLLED / UNCONTROLLED / UNPROVEN）、`safety` 证据、`decision`（ACCEPTED / REJECTED）及 `basis` 分开。受控性必须来自选定 control 的静态证明，接受不等于受控：完整的整体变更等价证明可以接受 UNCONTROLLED 变化，但不能把它改标 CONTROLLED。显式 REJECTED assessment 阻止整体 PASS；没有 reason 的早期或空 diff 报告仍由 findings、blocking diagnostics 和证明计数判定。
+
+每项 safety 证据包含 claim、status、subject、evidence 和 assumptions。PROVEN、REFUTED、UNPROVEN 分别表示已证明、已反证、未证明；未知不等于危险。EFFECT_FREE、NONTHROWING、TERMINATING 只是方法性质，例如将 `return price` 改成 `return 0` 仍可能满足这三项，不能据此接受变更。STATIC_SAFETY 接受要求 UNCONTROLLED 分类及带实际引用证据的 PROVEN WHOLE_CHANGE_EQUIVALENT 证明。INPUT_IDENTITY、REPRESENTATION_EQUIVALENCE 和 CONTROL_COVERAGE 是独立的接受依据；缺口和存活差异分别使用 INCOMPLETE_PROOF、SURVIVING_DIFFERENCE。Schema 验证这些字段及证书结构，不验证证明真实性。
+
+显式 `folds: []` 请求独立的静态比较，不提供控制覆盖。一般安全分析从实际 class 和声明依赖读取方法体，传播空值事实、参数、返回值、异常、效果与终止证据。整体等价证明要求所有剩余差异都获得证明，方法声明一致，且不存在未解决的图义务；未遍历的生产指令也必须保留在比较证据中。原始字节码摘要不能覆盖选定折叠对当前方法或其传递依赖的修改。新增曝光条件仍独立要求与选定 control 关联、结果没有其他用途且折叠后冗余；原实现对 control 返回值的计算不能代替用户选定的值。
 
 `FOLDED_EQUIVALENT` 表示受支持的表示中未留下差异；`UNREACHABLE` 表示同一输入内有静态证据证明，选定 control 的折叠消除了通往该变更的路径；未调用或没有流量本身不能得到该结论；`SURVIVING_DIFFERENCE` 表示仍有未证明一致的表示差异。分析完整性缺口由 blocking diagnostic 表达，不能伪装成已定位 violation。`METHOD_RENAMED`/`FIELD_RENAMED` 是一对一结构候选，正文或值同时变化时不能只凭名称相似进行配对。
 

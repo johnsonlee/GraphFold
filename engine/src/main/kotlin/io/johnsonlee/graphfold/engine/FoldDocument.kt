@@ -58,7 +58,6 @@ object FoldDocument {
         val name = requireNotNull(scenario["name"] as? String) { "$path.name must be a string" }
         require(name.isNotBlank()) { "$path.name must not be blank" }
         val folds = requireNotNull(scenario["folds"] as? List<*>) { "$path.folds must be a list" }
-        require(folds.isNotEmpty()) { "$path.folds requires at least one fold rule" }
         return FoldScenario(name, folds.mapIndexed { index, rule -> parseRule(rule, "$path.folds[$index]") })
     }
 

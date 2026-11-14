@@ -18,10 +18,11 @@ internal class SnapshotSink(
     private val trustedIntrinsics: Boolean = false,
     private val primitiveMethods: Set<String> = emptySet(),
     private val exposure: ExposureProvenance? = null,
+    totalMethods: () -> Set<String> = { emptySet() },
 ) {
     val observations = linkedMapOf<String, MethodObservationEvidence>()
     val appliedRules = linkedMapOf<String, Map<Int, Int>>()
-    private val bodies = MethodSnapshots(applicationOwners, dependencyResources, trustedIntrinsics, primitiveMethods)
+    private val bodies = MethodSnapshots(applicationOwners, dependencyResources, trustedIntrinsics, primitiveMethods, totalMethods)
     val methods get() = bodies.methods
     val discardedCalls get() = bodies.discardedCalls
     val resourceCalls get() = bodies.resourceCalls

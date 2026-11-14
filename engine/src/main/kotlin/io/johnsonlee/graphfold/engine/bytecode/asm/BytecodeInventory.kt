@@ -60,6 +60,9 @@ internal class BytecodeInventory(
         val node = ClassNode()
         val flags = ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES
         ClassReader(bytes).accept(node, flags)
+        // javac may reorder these ownership records when a method starts referencing a nested class.
+        // Preserve every record and its flags; table order is not a declaration change.
+        node.innerClasses.sortBy { it.name }
         disposablePrimitiveMethods.addAll(disposablePrimitiveMethods(node))
         initialization.add(node)
         val name = node.name.replace('/', '.')
