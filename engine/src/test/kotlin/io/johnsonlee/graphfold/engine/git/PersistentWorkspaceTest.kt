@@ -23,16 +23,17 @@ class PersistentWorkspaceTest {
     @TempDir lateinit var temporary: Path
 
     @Test
-    fun `repeated revisions retain build state stable paths and unchanged source timestamps`() = repository { git, source ->
+    fun `repeated revisions retain explicitly ignored state stable paths and source timestamps`() = repository { git, source ->
         Files.writeString(source.resolve("Example.java"), "class Example {}")
+        Files.writeString(source.resolve(".gitignore"), "cached/\nmetadata/\n")
         val base = commit(git)
         val manager = GitWorkspaceManager(temporary.resolve("cache"))
         val first = manager.open(source.toString(), base, base)
         val timestamp = FileTime.fromMillis(SOURCE_TIMESTAMP)
         Files.setLastModifiedTime(first.headDirectory.resolve("Example.java"), timestamp)
-        val state = Files.createDirectories(first.headDirectory.resolve("build/classes")).resolve("state")
+        val state = Files.createDirectories(first.headDirectory.resolve("cached/classes")).resolve("state")
         Files.writeString(state, "cached compilation")
-        val gradleState = Files.createDirectories(first.headDirectory.resolve(".gradle/graphfold")).resolve("state")
+        val gradleState = Files.createDirectories(first.headDirectory.resolve("metadata/graphfold")).resolve("state")
         Files.writeString(gradleState, "compiler provenance")
         first.close()
         Files.writeString(source.resolve("Added.java"), "class Added {}")

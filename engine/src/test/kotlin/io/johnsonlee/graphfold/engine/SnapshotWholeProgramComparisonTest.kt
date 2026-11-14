@@ -1,8 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.FieldSnapshot
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.FieldSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import org.junit.jupiter.api.Test
 import sootup.core.model.MethodModifier
 import kotlin.test.assertEquals
@@ -18,7 +18,7 @@ class SnapshotWholeProgramComparisonTest {
         val head = snapshot(root, generated.copy(canonical = "return 2", referenceCanonical = "return 2"),
             other.copy(canonical = "return 2", referenceCanonical = "return 2"))
             .let { it.copy(declarations = it.declarations + ("Generated" to "changed generated metadata")) }
-        assertEquals(listOf("Generated", "Generated.value()I"), SnapshotComparison(base, head).wholeProgramDifferences())
+        assertEquals(listOf("Generated", "Generated.value()I", "Other.run()I"), SnapshotComparison(base, head).wholeProgramDifferences())
     }
 
     @Test
@@ -44,14 +44,15 @@ class SnapshotWholeProgramComparisonTest {
     }
 
     @Test
-    fun `whole program proof ignores new unreachable classes including constructors and static initialization`() {
+    fun `whole program proof includes uncontrolled uncalled bodies and new classes`() {
         val root = method("Example.run()I")
         val unused = method("Example.unused()I", "return 1", isPrivate = true)
         val base = snapshot(root, unused)
         val head = snapshot(root, unused.copy(canonical = "return 2", referenceCanonical = "return 2"),
             method("Unused.<init>()V"), method("Unused.<clinit>()V", "side effect"), method("Unused.run()I", "return 2"))
-        assertTrue(SnapshotComparison(base, head).wholeProgramDifferences().isEmpty())
-        assertTrue(SnapshotComparison(head, base).wholeProgramDifferences().isEmpty())
+        val expected = listOf("Example.unused()I", "Unused", "Unused.<clinit>()V", "Unused.<init>()V", "Unused.run()I")
+        assertEquals(expected, SnapshotComparison(base, head).wholeProgramDifferences())
+        assertEquals(expected, SnapshotComparison(head, base).wholeProgramDifferences())
     }
 
     @Test

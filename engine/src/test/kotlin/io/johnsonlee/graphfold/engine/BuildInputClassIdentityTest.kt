@@ -1,6 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.build.ProductionInventory
+import io.johnsonlee.graphfold.engine.inputs.ContentInventory
 import io.johnsonlee.graphfold.engine.origin.ORIGIN_MARKER
 import java.nio.file.Files
 import java.nio.file.Path
@@ -72,18 +72,18 @@ class BuildInputClassIdentityTest {
     @Test
     fun `class equality cannot bypass missing inventory resources or packaging membership gaps`() {
         val absent = temporary.resolve("not-read-when-inventory-blocks")
-        val inventory = ProductionInventory(emptyMap(), emptyMap())
-        assertFalse(BuildInputProof(emptyList(), null, inventory).unchangedClasses(absent, absent))
+        val inventory = ContentInventory(emptyMap(), emptyMap())
+        assertFalse(InputChangeProof(emptyList(), null, inventory).unchangedClasses(absent, absent))
         val resourceChanged = inventory.copy(nonClassEntries = mapOf("resource/0/config" to "changed"))
-        assertFalse(BuildInputProof(emptyList(), inventory, resourceChanged).unchangedClasses(absent, absent))
+        assertFalse(InputChangeProof(emptyList(), inventory, resourceChanged).unchangedClasses(absent, absent))
         val base = inventory.copy(classPlacements = mapOf("Example.class" to setOf("artifact/0/Example.class")))
         val head = inventory.copy(classPlacements = mapOf("Example.class" to emptySet()))
-        assertFalse(BuildInputProof(emptyList(), base, head).unchangedClasses(absent, absent))
+        assertFalse(InputChangeProof(emptyList(), base, head).unchangedClasses(absent, absent))
     }
 
-    private fun proof(): BuildInputProof {
-        val inventory = ProductionInventory(emptyMap(), emptyMap())
-        return BuildInputProof(emptyList(), inventory, inventory)
+    private fun proof(): InputChangeProof {
+        val inventory = ContentInventory(emptyMap(), emptyMap())
+        return InputChangeProof(emptyList(), inventory, inventory)
     }
 
     private fun write(

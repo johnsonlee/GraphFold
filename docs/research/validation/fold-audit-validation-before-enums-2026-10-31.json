@@ -186,12 +186,6 @@
     "lockBeforeRead": true,
     "performanceAcceptance": "Not performed; representative multi-graph load required"
   },
-  "cliVersion": {
-    "development": "configured baseVersion plus 12-character Git HEAD via JGit",
-    "release": "explicit -Pversion",
-    "packagedResourceAndExecutableChecked": true,
-    "versionEvidence": "cli-version-validation-2026-10-31.json"
-  },
   "foldAudit": {
     "schemaVersion": 1,
     "schemaId": "urn:io.johnsonlee.graphfold:verdict:1",

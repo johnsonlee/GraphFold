@@ -51,7 +51,8 @@ class GraphFoldOriginsTest {
         assertEquals(11, records.map { it["owner"].asText() }.toSet().size)
         records.forEach { record ->
             val binary = record["owner"].asText()
-            assertTrue(Files.isRegularFile(compilation.classes.resolve(binary.replace('.', '/') + ".class")), binary)
+            val bytes = Files.readAllBytes(compilation.classes.resolve(binary.replace('.', '/') + ".class"))
+            assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)), record["classHash"].asText())
             assertEquals(compilation.source.toRealPath().toString(), record["source"].asText())
             assertEquals(hash(source), record["sourceHash"].asText())
             listOf("declaration", "allocation").forEach { range ->
@@ -192,6 +193,24 @@ class GraphFoldOriginsTest {
         }
     }
 
+    @Test fun `legacy javac attachment remains explicitly unsealed`() {
+        listOf(false, true).forEach { plugin ->
+            val result = compile("class Example { Object field = new Object() {}; }", plugin = plugin,
+                options = Options(sealClasses = false))
+            assertTrue(result.success, result.diagnostics)
+            assertTrue(manifest(result.maps)["records"].all { !it.has("classHash") })
+        }
+    }
+
+    @Test fun `missing declared class output cannot produce a sealed complete manifest`() {
+        val maps = temporary.resolve("failed-sealing")
+        assertFailsWith<RuntimeException> {
+            compile("class Example { Object field = new Object() {}; }", plugin = true, output = maps,
+                options = Options(classOutput = temporary.resolve("not-the-compiler-output")))
+        }
+        assertFalse(Files.exists(maps), "No complete sidecar may be emitted without the declared output bytes")
+    }
+
     private fun Throwable.causes(): String = generateSequence(this) { it.cause }.joinToString("\n") { it.toString() }
 
     private fun compile(
@@ -208,16 +227,24 @@ class GraphFoldOriginsTest {
             val task = assertIs<JavacTask>(compiler.getTask(null, manager, diagnostics,
                 listOf("-g:none", "-proc:none", "--release", "17", "-d", classes.toString()), null,
                 manager.getJavaFileObjectsFromPaths(listOf(file))))
-            if (options.pluginArguments != null) {
-                GraphFoldOrigins().init(task, *options.pluginArguments.toTypedArray())
-            } else if (plugin) {
-                fun encoded(path: Path) = Base64.getUrlEncoder().withoutPadding().encodeToString(path.toString().toByteArray())
-                GraphFoldOrigins().init(task, encoded(maps), encoded(directory), encoded(Path.of("test-run")))
-            } else if (options.runId != null) GraphFoldOrigins.attach(task, maps, options.root ?: directory, options.runId)
-            else GraphFoldOrigins.attach(task, maps, options.root ?: directory)
+            attachOrigins(task, maps, directory, classes, plugin, options)
             task.call()
         }
         return Compilation(file, classes, maps, success, diagnostics.diagnostics.joinToString("\n"))
+    }
+
+    private fun attachOrigins(task: JavacTask, maps: Path, directory: Path, classes: Path, plugin: Boolean, options: Options) {
+    if (options.pluginArguments != null) {
+        GraphFoldOrigins().init(task, *options.pluginArguments.toTypedArray())
+    } else if (plugin) {
+        fun encoded(path: Path) = Base64.getUrlEncoder().withoutPadding().encodeToString(path.toString().toByteArray())
+        val arguments = listOf(encoded(maps), encoded(directory), encoded(Path.of("test-run"))) +
+            if (options.sealClasses) listOf(encoded(options.classOutput ?: classes)) else emptyList()
+        GraphFoldOrigins().init(task, *arguments.toTypedArray())
+    } else if (options.sealClasses) GraphFoldOrigins.attach(task, maps, options.root ?: directory,
+        options.runId ?: java.util.UUID.randomUUID().toString(), options.classOutput ?: classes)
+    else if (options.runId != null) GraphFoldOrigins.attach(task, maps, options.root ?: directory, options.runId)
+    else GraphFoldOrigins.attach(task, maps, options.root ?: directory)
     }
 
     private fun manifest(directory: Path): JsonNode {
@@ -229,7 +256,7 @@ class GraphFoldOriginsTest {
 
     private data class Options(
         val root: Path? = null, val charset: Charset = Charsets.UTF_8, val pluginArguments: List<String>? = null,
-        val sourceRoot: Path? = null, val runId: String? = null,
+        val sourceRoot: Path? = null, val runId: String? = null, val sealClasses: Boolean = true, val classOutput: Path? = null,
     )
 
     private data class Compilation(val source: Path, val classes: Path, val maps: Path, val success: Boolean, val diagnostics: String)

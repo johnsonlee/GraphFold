@@ -1,6 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.build.KotlinBuildAdapter
+import io.johnsonlee.graphfold.engine.testing.KotlinFixtureCompiler
 import io.johnsonlee.graphfold.engine.graphite.GraphiteAnalyzer
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
@@ -27,6 +27,81 @@ class ReflectiveDependencyIntegrationTest {
     @Test
     fun `private Kotlin field escaping to reflective dependency cannot be silently normalized away`() {
         verifyLanguage("kotlin")
+    }
+
+    @Test
+    fun `zero argument dependency can observe private application changes through reflection`() {
+        val librarySource = Files.createDirectories(temporary.resolve("hidden-library-source"))
+        Files.writeString(librarySource.resolve("Probe.java"), """
+            package dependency;
+            public final class Probe {
+                public static String invoke() throws Exception {
+                    var method = Class.forName("sample.Example").getDeclaredMethod("hidden");
+                    method.setAccessible(true);
+                    return (String) method.invoke(null);
+                }
+            }
+        """.trimIndent())
+        val library = compile(librarySource, temporary.resolve("hidden-library"))
+        val applications = listOf("before", "after").map { value ->
+            val source = Files.createDirectories(temporary.resolve("hidden-$value-source"))
+            Files.writeString(source.resolve("Example.java"), """
+                package sample;
+                public class Example {
+                    public String run() throws Exception { return dependency.Probe.invoke(); }
+                    private static String hidden() { return "$value"; }
+                }
+            """.trimIndent())
+            compile(source, temporary.resolve("hidden-$value"), library)
+        }
+        assertEquals("before", runtimeOutput(applications[0], listOf(library)))
+        assertEquals("after", runtimeOutput(applications[1], listOf(library)))
+        val snapshots = applications.map { GraphiteAnalyzer().analyze(it, emptyList(), listOf(library)) }
+        val comparison = SnapshotComparison(snapshots[0], snapshots[1])
+        val obligation = ProofObligation("sample.Example.hidden()Ljava/lang/String;", SymbolKind.METHOD,
+            "sample.Example", emptyList())
+        assertEquals(listOf(obligation.identity), comparison.differences(obligation),
+            "The changed private declaration survives without selected control coverage")
+        assertTrue(snapshots.all { snapshot -> snapshot.methodDiagnostics.values.flatten().any {
+            it.externalObservationOnly && "dependency observation" in it.message && "Probe.invoke" in it.message
+        } }, "The supplied reflective dependency must retain its independent observation evidence")
+        assertTrue(comparison.analysisGaps(obligation).isEmpty(),
+            "Literal application body comparison establishes this difference without predicting reflective execution")
+    }
+
+    @Test
+    fun `pure dependency does not exempt an uncontrolled uncalled private change`() {
+        val librarySource = Files.createDirectories(temporary.resolve("pure-library-source"))
+        Files.writeString(librarySource.resolve("Probe.java"), """
+            package dependency;
+            public final class Probe {
+                private static String value() { return "stable"; }
+                public static String invoke() { return value(); }
+            }
+        """.trimIndent())
+        val library = compile(librarySource, temporary.resolve("pure-library"))
+        val applications = listOf("before", "after").map { value ->
+            val source = Files.createDirectories(temporary.resolve("pure-$value-source"))
+            Files.writeString(source.resolve("Example.java"), """
+                package sample;
+                public class Example {
+                    public String run() { return dependency.Probe.invoke(); }
+                    private static String hidden() { return "$value"; }
+                }
+            """.trimIndent())
+            compile(source, temporary.resolve("pure-$value"), library)
+        }
+        applications.forEach { assertEquals("stable", runtimeOutput(it, listOf(library))) }
+        val snapshots = applications.map { GraphiteAnalyzer().analyze(it, emptyList(), listOf(library)) }
+        val comparison = SnapshotComparison(snapshots[0], snapshots[1])
+        val obligation = ProofObligation("sample.Example.hidden()Ljava/lang/String;", SymbolKind.METHOD,
+            "sample.Example", emptyList())
+        assertEquals(listOf(obligation.identity), comparison.differences(obligation),
+            "Equal observed output and no caller do not establish selected control coverage")
+        assertTrue(snapshots.all { snapshot -> snapshot.methodDiagnostics.values.flatten().none {
+            "dependency observation" in it.message && "Probe.invoke" in it.message
+        } }, "The closed dependency body must not fabricate a reflective observation gap")
+        assertTrue(comparison.analysisGaps(obligation).isEmpty(), "A closed bytecode effect proof must avoid the global guard")
     }
 
     private fun verifyLanguage(language: String) {
@@ -63,7 +138,7 @@ class ReflectiveDependencyIntegrationTest {
             fixtures.resolve("kotlin/$revision/sample/Example.kt"),
             fixtures.resolve("library/dependency/Encoder.java"),
         )
-        val dependencies = KotlinBuildAdapter(Duration.ofMinutes(2)).compile(fixtures, output, classes, sources)
+        val dependencies = KotlinFixtureCompiler(Duration.ofMinutes(2)).compile(fixtures, output, classes, sources)
         return Application(classes, dependencies + listOf(jar))
     }
 

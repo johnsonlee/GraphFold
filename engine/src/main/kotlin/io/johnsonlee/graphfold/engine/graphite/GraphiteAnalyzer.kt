@@ -1,5 +1,15 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.LeafApplicationDispatch
+import io.johnsonlee.graphfold.engine.bytecode.asm.BytecodeInventory
+import io.johnsonlee.graphfold.engine.bytecode.asm.ResourceDeclarations
+import io.johnsonlee.graphfold.engine.bytecode.asm.inlineControlRemovedMethods
+
+import io.johnsonlee.graphfold.engine.FoldReachability
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
+
 import io.johnsonlee.graphfold.engine.origin.OriginProject
 import io.johnsonlee.graphite.core.CallSiteNode
 import io.johnsonlee.graphite.core.NodeId
@@ -13,6 +23,7 @@ import io.johnsonlee.graphite.input.FoldRule
 import io.johnsonlee.graphite.input.FoldSites
 import io.johnsonlee.graphite.input.LoaderConfig
 import io.johnsonlee.graphite.sootup.JavaProjectLoader
+import io.johnsonlee.graphite.sootup.FoldedMethodObservation
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -28,25 +39,33 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
      * Resolves [rules] against this artifact and captures the resulting folded application snapshot.
      * Selection is evaluated for this invocation; matches from another revision are not reused.
      *
-     * @param artifact Application class directory or archive to load.
+     * @param artifact Prepared application class directory to load.
      * @param rules Fold rules in application order; an empty list captures the program without folding.
      * @param dependencies Resolved dependency JARs and class directories used to complete the frontend's classpath.
      * @param dependencyResources Expand folded dependency bodies to account for indirect resource reads. This is only
      * needed for resource proofs; dependency methods remain excluded from application entry points and structural comparison.
      * @return Structural evidence and any recoverable omissions reported by inventory or frontend analysis.
-     * @throws IllegalArgumentException if the input is an APK, or a fold selection has an invalid shape or cannot be applied safely.
+     * @throws IllegalArgumentException if the input is not a prepared class directory, or a fold selection has an invalid shape
+     * or cannot be applied safely.
      * @throws IllegalStateException if selection or snapshot capture fails, including missing method observations.
      */
     fun analyze(
         artifact: Path, rules: List<FoldRule>, dependencies: List<Path> = emptyList(), dependencyResources: Boolean = false,
+    ): ProgramSnapshot = analyzeArtifact(artifact, rules, dependencies, dependencyResources)
+
+    private fun analyzeArtifact(
+        artifact: Path, rules: List<FoldRule>, dependencies: List<Path>, dependencyResources: Boolean,
     ): ProgramSnapshot {
-        requireJvmArtifact(artifact)
+        requirePreparedClasses(artifact)
         val inventory = BytecodeInventory().also { it.read(artifact) }
-        inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics, inventory.methodDiagnostics)
+        inventory.overrides = inventory.inheritedEntries.resolve(
+            dependencies, inventory.diagnostics, inventory.methodDiagnostics)
         inventory.missingReferences(dependencies).forEach { inventory.diagnostics.add("Unresolved class reference: $it") }
         val resources = if (dependencyResources) ResourceDeclarations(listOf(artifact) + dependencies) else null
         return AnalysisInputs(artifact, dependencies).use { inputs ->
-            analyzeInputs(inputs.path, rules, inventory, RuleAuditCapture(onAudit), resources)
+            val snapshot = analyzeInputs(inputs.path, rules, inventory, RuleAuditCapture(onAudit), resources,
+                AnalysisContext())
+            snapshot
         }
     }
 
@@ -54,18 +73,21 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         project: OriginProject, rules: List<FoldRule>, dependencyResources: Boolean = false,
     ): ProgramSnapshot {
         val compiled = project.compiled
-        requireJvmArtifact(compiled.classes)
-        requireJvmArtifact(project.sourceClasses)
+        requirePreparedClasses(compiled.classes)
+        requirePreparedClasses(project.sourceClasses)
         val dependencies = (compiled.dependencies +
             if (dependencyResources) compiled.production?.resourceDependencies.orEmpty() else emptyList()).distinct()
-        if (project.owners.isEmpty() && project.methodDiagnostics.isEmpty()) {
-            return analyze(compiled.classes, rules, dependencies, dependencyResources)
+        if (!project.requiresOriginAnalysis()) {
+            return analyzeArtifact(compiled.classes, rules, dependencies, dependencyResources)
         }
         val inventory = originInventory(project, dependencies)
         val audit = RuleAuditCapture(onAudit)
+        val exposure = ExposureProvenance()
+        val reachability = FoldReachability()
+        val unchangedOwners = project.owners.all { it.key == it.value }
         val resources = if (dependencyResources) ResourceDeclarations(listOf(compiled.classes) + dependencies) else null
         val resolveSelection = { graph: Graph, rule: FoldSites, index: Int ->
-            resolve(graph, rule) { audit.selected(index, it) }
+            resolve(graph, rule) { audit.selected(index, it); exposure.select(index, it) }
         }
         val selected = if (rules.isEmpty()) emptyList() else {
             val original = BytecodeInventory().also { it.read(project.sourceClasses) }
@@ -75,21 +97,30 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
                     includePackages = original.classes.toList(), includeLibraries = true,
                     dependencyBodies = dependencyBodyScope(dependencyResources),
                     verbose = artifactDiagnosticCollector(inventory.diagnostics),
-                ))
-                val completeness = GraphiteCompleteness(graph,
-                    metadataOnlyMultiRelease = { metadataOnlyMultiRelease(inputs.path, it) })
+                )) { if (unchangedOwners) exposure.capture(it) }
+                val completeness = GraphiteCompleteness(graph)
+                if (unchangedOwners) captureReachability(reachability, graph, completeness)
+                rules.forEachIndexed { index, rule ->
+                    if (rule is ConstantFold) exposure.select(index, constantSelection(graph, rule))
+                }
                 originFoldSelection(graph, rules, project.owners, resolveSelection, audit) {
                     requireCompleteSelection(graph, it, completeness)
                 }
             }
         }
         return AnalysisInputs(compiled.classes, dependencies).use { inputs ->
-            analyzeInputs(inputs.path, selected, inventory, audit, resources, selectionResolved = true)
+            val snapshot = analyzeInputs(inputs.path, selected, inventory, audit, resources,
+                AnalysisContext(exposure, reachability,
+                    if (unchangedOwners && project.catalog.diagnostics.isEmpty()) project.catalog.inlineEvidence else emptyList(),
+                    project.sourceClasses))
                 .copy(originalOwners = project.owners.entries.associate { (original, normalized) -> normalized to original })
+            snapshot
         }
     }
 
-    private fun originInventory(project: OriginProject, dependencies: List<Path>): BytecodeInventory {
+    private fun originInventory(
+        project: OriginProject, dependencies: List<Path>,
+    ): BytecodeInventory {
         // Class names remain observable when anonymous owners were normalized for structural alignment.
         val inventory = BytecodeInventory(normalizedRuntimeNames = project.owners.any { it.key != it.value })
             .also { it.read(project.compiled.classes) }
@@ -99,7 +130,8 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
             }
             inventory.methodDiagnostics[identity] = inventory.methodDiagnostics[identity].orEmpty() + gaps
         }
-        inventory.overrides = inventory.inheritedEntries.resolve(dependencies, inventory.diagnostics, inventory.methodDiagnostics)
+        inventory.overrides = inventory.inheritedEntries.resolve(
+            dependencies, inventory.diagnostics, inventory.methodDiagnostics)
         inventory.missingReferences(dependencies).forEach {
             inventory.diagnostics.add("Unresolved class reference: $it")
         }
@@ -109,17 +141,20 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
     private fun analyzeInputs(
         artifact: Path, rules: List<FoldRule>, inventory: BytecodeInventory, audit: RuleAuditCapture,
         resources: ResourceDeclarations?,
-        selectionResolved: Boolean = false,
+        context: AnalysisContext,
     ): ProgramSnapshot {
         val diagnostics = mutableListOf<String>()
         diagnostics.addAll(inventory.diagnostics)
         diagnostics.addAll(resources?.diagnostics.orEmpty())
         val log = artifactDiagnosticCollector(diagnostics)
-        val resolved = if (!selectionResolved && rules.isNotEmpty()) {
-            selectInputs(artifact, rules, inventory.classes, log, audit, resources != null)
+        val exposure = context.selection ?: ExposureProvenance()
+        val reachability = context.reachability
+        val resolved = if (context.selection == null && rules.isNotEmpty()) {
+            selectInputs(artifact, rules, selectionConfig(inventory.classes, log, resources != null), audit, exposure, reachability)
         } else rules
-        val sink = SnapshotSink(inventory.ignoredFields, if (resources == null) inventory.classes else resources.classes,
-            resources != null, resources != null && resources.trustedIntrinsics)
+        val sink = SnapshotSink(if (resources == null) inventory.classes else resources.classes,
+            resources != null, resources != null && resources.trustedIntrinsics,
+            inventory.disposablePrimitiveMethods, exposure)
         val config = LoaderConfig(
             folding = resolved.takeIf { it.isNotEmpty() }?.let { FoldPlan(it) },
             verbose = log,
@@ -135,7 +170,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         val report = observed.foldReport
         val dispatch = LeafApplicationDispatch(artifact, inventory.classes)
         val completeness = GraphiteCompleteness(folded, sink.observations, inventory.classes,
-            metadataOnlyMultiRelease = { metadataOnlyMultiRelease(artifact, it) }, modeledResourceCall = sink::modelsResourceCall,
+            modeledResourceCall = sink::modelsResourceCall,
             provenDispatch = { dispatch.proves(it, sink.methods) })
         diagnostics.addAll(completeness.diagnostics)
         val incompleteResources = completeness.incompleteResourceMethods(sink::modelsResourceCall)
@@ -144,16 +179,16 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         }
         val resourceAnalysis = resourceAnalysis(resources, inventory, sink, folded)
         val methods = foldedMethods(inventory, sink, folded, resourceAnalysis)
-        // JVM recovery is reconciled through method receipts above; the pinned loader's aggregate
-        // bodyInterceptionFallbackCount is APK-only, and APK inputs are rejected before either load.
+        // JVM recovery is reconciled through the method receipts above.
         report?.outcomes?.forEachIndexed { index, outcome ->
             audit.applied(index, outcome.matched)
             outcome.unsupported.forEach { diagnostics.add("${it.method}: ${it.reason}") }
-            outcome.hints.filter { it.contains("every caller") }.forEach(diagnostics::add)
+            // A bare selection intentionally applies to every caller. Graphite's scope hint is not
+            // incomplete analysis; unresolved argument constraints remain in unsupported above.
         }
         (inventory.methods - sink.methods.keys).forEach { diagnostics.add("Frontend omitted declared method: $it") }
         (resources?.methods.orEmpty() - sink.methods.keys).forEach { diagnostics.add("Frontend omitted resource dependency method: $it") }
-        return ProgramSnapshot(methods, inventory.declarations, diagnostics.distinct(),
+        val snapshot = ProgramSnapshot(methods, inventory.declarations, diagnostics.distinct(),
             report?.outcomes?.map { it.matched }.orEmpty(), inventory.fields, inventory.classShapes,
             inventory.ignoredFields, inventory.entryClasses, inventory.externalEntries,
             inventory.initialization.dependencies(), inventory.overrides, inventory.enclosingClasses,
@@ -162,7 +197,10 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
             },
             resourceDependenciesAnalyzed = resources != null && diagnostics.isEmpty(),
             resourceEntryReads = resourceEntries(inventory.classes, resourceAnalysis),
-            initializationTriggerMethods = inventory.initialization.initializationTriggerMethods())
+            initializationTriggerMethods = inventory.initialization.initializationTriggerMethods(),
+            structuralClassShapes = inventory.structuralClassShapes)
+        val inlineRemoved = context.removedInlineMethods(snapshot, resolved, sink.appliedRules)
+        return snapshot.copy(controlRemovedMethods = reachability.witnessed(snapshot) + inlineRemoved)
     }
 
     private fun foldedMethods(
@@ -170,7 +208,8 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
     ): Map<String, MethodSnapshot> {
         val dispatch = folded.nodes(CallSiteNode::class.java).groupBy { it.caller.identity }
         return sink.methods.filterKeys { it in inventory.methods }.mapValues { (identity, method) ->
-            method.copy(calls = method.calls + dispatch[identity].orEmpty().map { it.callee.identity },
+            method.copy(calls = method.calls + dispatch[identity].orEmpty().map { it.callee.identity }
+                .filterNot { it in sink.discardedCalls.getValue(identity) },
                 resourceReads = if (resourceAnalysis == null) method.resourceReads else resourceAnalysis.reads(identity))
         }
     }
@@ -187,21 +226,22 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         analysis?.let { owners.associateWith(it::entryReads) }.orEmpty()
 
     private fun selectInputs(
-        artifact: Path, rules: List<FoldRule>, owners: Set<String>, log: (String) -> Unit, audit: RuleAuditCapture,
-        dependencyResources: Boolean,
+        artifact: Path, rules: List<FoldRule>, config: LoaderConfig, audit: RuleAuditCapture, exposure: ExposureProvenance,
+        reachability: FoldReachability,
     ): List<FoldRule> {
-        val plain = selectionGraph(artifact, LoaderConfig(
-            interproceduralDataflow = true, verbose = log,
-            includePackages = owners.toList(), includeLibraries = true,
-            dependencyBodies = dependencyBodyScope(dependencyResources),
-        ))
-        val completeness = GraphiteCompleteness(plain, metadataOnlyMultiRelease = { metadataOnlyMultiRelease(artifact, it) })
+        val plain = selectionGraph(artifact, config, exposure::capture)
+        val completeness = GraphiteCompleteness(plain)
+        captureReachability(reachability, plain, completeness)
         return rules.mapIndexed { index, rule ->
             runCatching {
                 requireCompleteSelection(plain, rule, completeness)
                 when (rule) {
-                    is FoldSites -> resolve(plain, rule) { audit.selected(index, it) }
-                    is ConstantFold -> rule.also { audit.selected(index, constantSelection(plain, it)) }
+                    is FoldSites -> resolve(plain, rule) { audit.selected(index, it); exposure.select(index, it) }
+                    is ConstantFold -> rule.also {
+                        val sites = constantSelection(plain, it)
+                        audit.selected(index, sites)
+                        exposure.select(index, sites)
+                    }
                 }
             }.onFailure { audit.failed(index, it) }.getOrThrow()
         }
@@ -265,10 +305,15 @@ private fun requireCompleteSelection(graph: Graph, rule: FoldRule, completeness:
     require(failures.isEmpty()) { failures.joinToString("\n") }
 }
 
-private fun selectionGraph(artifact: Path, config: LoaderConfig): Graph {
+private fun selectionGraph(artifact: Path, config: LoaderConfig, observer: (FoldedMethodObservation) -> Unit): Graph {
     val loader = JavaProjectLoader(config, false)
-    return loader.load(artifact)
+    return loader.loadObserved(artifact, observer).graph
 }
+
+private fun selectionConfig(owners: Set<String>, log: (String) -> Unit, resources: Boolean): LoaderConfig = LoaderConfig(
+    interproceduralDataflow = true, verbose = log, includePackages = owners.toList(), includeLibraries = true,
+    dependencyBodies = dependencyBodyScope(resources),
+)
 
 /** Eager declared bodies retain inherited APIs and exposed field entries without ordinary application call sites. */
 private fun dependencyBodyScope(resources: Boolean): DependencyBodyScope =
@@ -282,9 +327,31 @@ private fun completeDispatch(graph: Graph, origin: CallSiteNode, children: Map<N
     return complete(origin)
 }
 
-/** GraphFold compares JVM class files; the APK frontend and its recovery paths are outside this contract. */
-private fun requireJvmArtifact(artifact: Path) {
-    require(Files.isDirectory(artifact) || !artifact.fileName.toString().endsWith(".apk", ignoreCase = true)) {
-        "APK analysis is unsupported; supply JVM classes or a JVM archive"
-    }
+/** Archive selection and expansion must finish in the adapter before graph construction. */
+private fun requirePreparedClasses(classes: Path) {
+    require(Files.isDirectory(classes)) { "Application input must be a prepared class directory: $classes" }
+}
+
+/** Selection provenance and dispatch assumptions belong to the same selected archive analysis. */
+private data class AnalysisContext(
+    val selection: ExposureProvenance? = null, val reachability: FoldReachability = FoldReachability(),
+    val inlineEvidence: List<io.johnsonlee.graphfold.engine.inputs.InlineEvidence> = emptyList(), val inlineClasses: Path? = null,
+) {
+    fun removedInlineMethods(snapshot: ProgramSnapshot, rules: List<FoldRule>, applied: Map<String, Map<Int, Int>>): Set<String> =
+        if (inlineClasses != null && snapshot.diagnostics.isEmpty() && snapshot.methodDiagnostics.values.all { it.isEmpty() }) {
+            inlineControlRemovedMethods(inlineClasses, inlineEvidence, rules, applied)
+        } else emptySet()
+}
+
+private fun OriginProject.requiresOriginAnalysis(): Boolean =
+    owners.isNotEmpty() || methodDiagnostics.isNotEmpty() || catalog.inlineEvidence.isNotEmpty()
+
+/** Translate Graphite selection evidence into the engine's same-input control proof. */
+internal fun captureReachability(proof: FoldReachability, graph: Graph, completeness: GraphiteCompleteness) {
+    val complete = completeness.diagnostics.isEmpty() && completeness.methodDiagnostics.isEmpty()
+    val calls = if (complete) graph.nodes(CallSiteNode::class.java)
+        .filter { it.origin == null && (it.ordinal ?: -1) >= 0 }
+        .groupBy { it.caller.identity }.mapValues { (_, sites) -> sites.map { it.callee.identity }.toSet() }
+    else emptyMap()
+    proof.capture(calls, complete)
 }

@@ -1,7 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import sootup.core.model.MethodModifier
 
 /** Current-thread captures require a surviving renamed frame below them in this revision's folded call graph. */

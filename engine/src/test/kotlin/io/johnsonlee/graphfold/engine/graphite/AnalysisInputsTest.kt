@@ -1,6 +1,5 @@
 package io.johnsonlee.graphfold.engine.graphite
 
-import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
@@ -108,12 +107,16 @@ class AnalysisInputsTest {
         }
     }
 
-    @Test fun `reserved archive collision cannot overwrite an application file`() {
+    @Test fun `embedded resources cannot become staged dependencies or overwrite the originals`() {
         val application = Files.createDirectory(directory.resolve("application"))
         val dependency = Files.createDirectory(directory.resolve("dependency"))
         write(application, "dependency-0.jar", "application-owned content")
         write(dependency, "library/Type.class", "dependency")
-        assertFailsWith<FileAlreadyExistsException> { AnalysisInputs(application, listOf(dependency)) }
+        AnalysisInputs(application, listOf(dependency)).use { inputs ->
+            ZipFile(inputs.path.resolve("dependency-0.jar").toFile()).use { zip ->
+                assertEquals("dependency", contents(zip, "library/Type.class"))
+            }
+        }
         assertEquals("application-owned content", Files.readString(application.resolve("dependency-0.jar")))
         assertEquals("dependency", Files.readString(dependency.resolve("library/Type.class")))
     }
@@ -130,6 +133,13 @@ class AnalysisInputsTest {
         }
         assertFalse(Files.exists(inputs.path))
         assertTrue(Files.exists(dependency))
+    }
+
+    @Test fun `class only application directories do not require staging`() {
+        val application = Files.createDirectory(directory.resolve("classes"))
+        write(application, "Type.class", "prepared class")
+        AnalysisInputs(application, emptyList()).use { inputs -> assertEquals(application, inputs.path) }
+        assertTrue(Files.isRegularFile(application.resolve("Type.class")))
     }
 
     private fun write(root: Path, path: String, content: String) {

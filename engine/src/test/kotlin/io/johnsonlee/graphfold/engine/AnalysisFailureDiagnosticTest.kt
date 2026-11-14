@@ -1,7 +1,10 @@
 package io.johnsonlee.graphfold.engine
 
+import java.io.IOException
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class AnalysisFailureDiagnosticTest {
@@ -22,7 +25,29 @@ class AnalysisFailureDiagnosticTest {
         assertTrue(sourceDiagnostics(null, null).isEmpty())
     }
 
-    @Test fun `failed adapters retain stage and message or exception type without claiming success`() {
+    @Test fun `missing source evidence is diagnosed but cancellation reaches the analysis boundary`() {
+        val missing = sourceFailureDiagnostic(Revision.HEAD, "src/App.java", IOException("source unavailable"))
+        assertEquals(DiagnosticCode.SOURCE_RESOLUTION_FAILED, missing.code)
+        assertEquals(AnalysisStage.SOURCE, missing.stage)
+        assertTrue(missing.blocking)
+        assertTrue("HEAD source src/App.java" in missing.message && "source unavailable" in missing.message)
+        val interruption = InterruptedException("caller cancelled")
+        val propagated = assertFailsWith<InterruptedException> {
+            sourceFailureDiagnostic(Revision.HEAD, "src/App.java", interruption)
+        }
+        assertSame(interruption, propagated)
+        try {
+            val cancelled = analysisFailureDiagnostic(AnalysisStage.SOURCE, propagated)
+            assertEquals(DiagnosticCode.ANALYSIS_CANCELLED, cancelled.code)
+            assertEquals(AnalysisStage.SOURCE, cancelled.stage)
+            assertTrue(cancelled.blocking)
+            assertTrue(Thread.currentThread().isInterrupted)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test fun `analysis failures retain stage and message or exception type without claiming success`() {
         for ((failure, message) in listOf(IllegalStateException("broken") to "broken",
             IllegalStateException() to "IllegalStateException")) {
             val diagnostic = analysisFailureDiagnostic(AnalysisStage.GRAPH, failure)

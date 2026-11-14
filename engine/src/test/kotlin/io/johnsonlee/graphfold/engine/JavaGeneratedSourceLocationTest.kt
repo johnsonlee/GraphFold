@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -33,7 +35,7 @@ class JavaGeneratedSourceLocationTest {
                     .setCommitter("Fixture", "fixture@example.invalid").call().name
             }
         }
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), commits[0], commits[1], Files.readString(Path.of("../fixtures/fold.yml"))),
         )
         assertTrue(result.diagnostics.none { it.blocking }, result.toString())

@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-MODULES = ("engine", "cli", "gfc", "gradle-plugin")
+MODULES = ("engine", "gfc", "plugin/gradle", "plugin/maven")
 PLATFORMS = ("ubuntu-latest", "macos-latest")
 METRICS = ("LINE", "BRANCH")
 MAX_COUNT = 1_000_000_000

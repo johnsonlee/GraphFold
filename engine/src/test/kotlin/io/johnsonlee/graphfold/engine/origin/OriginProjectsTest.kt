@@ -1,10 +1,11 @@
 package io.johnsonlee.graphfold.engine.origin
 
-import io.johnsonlee.graphfold.engine.build.CompiledProject
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
+import io.johnsonlee.graphfold.engine.inputs.archive.toStaticScope
 import io.johnsonlee.graphfold.engine.graphite.GraphiteAnalyzer
-import io.johnsonlee.graphfold.engine.git.ChangedFile
-import io.johnsonlee.graphfold.engine.git.GitChangeType
+import io.johnsonlee.graphfold.engine.git.changedFile
+import org.eclipse.jgit.diff.DiffEntry.ChangeType
 import io.johnsonlee.graphite.input.FoldSites
 import java.nio.file.Files
 import java.nio.file.Path
@@ -39,6 +40,8 @@ class OriginProjectsTest {
         val head = assertNotNull(projects.head)
         val originalOwners = nodes(after.project.classes).map { it.name }.toSet()
         val selectionNodes = nodes(head.sourceClasses)
+        assertEquals(listOf(head.sourceClasses), head.sourceIndexClasses(after.root.resolve("src/main/kotlin/Example.kt")),
+            "Source-only indexing retains original JVM names, not normalized graph owner identities")
         assertEquals(originalOwners, selectionNodes.map { it.name }.toSet())
         assertTrue(selectionNodes.none(::hasMarker), "Selection must not expose private compiler instrumentation")
         val origins = head.catalog.origins.sortedBy { it.syntax.range.start }
@@ -106,13 +109,14 @@ class OriginProjectsTest {
         val headRoot = Files.createDirectories(temporary.resolve("head/src/main/java/moved"))
         Files.writeString(headRoot.resolve("Example.java"), text)
         val root = temporary.resolve("head")
-        val after = ProjectCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("head-output"))
+        val after = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("head-output"))
+            .toStaticScope(Files.createTempDirectory(temporary, "static-"))
         val changes = listOf(
-            ChangedFile("src/main/java/Example.java", "src/main/java/moved/Example.java", emptyList(), emptyList(),
-                changeType = GitChangeType.RENAME, similarityScore = 100),
-            ChangedFile(null, "README.md", emptyList(), emptyList(), changeType = GitChangeType.ADD),
-            ChangedFile("old.md", null, emptyList(), emptyList(), changeType = GitChangeType.DELETE),
-            ChangedFile("build.gradle.kts", "build.gradle.kts", emptyList(), emptyList()),
+            changedFile("src/main/java/Example.java", "src/main/java/moved/Example.java",
+                changeType = ChangeType.RENAME, similarityScore = 100),
+            changedFile(null, "README.md", changeType = ChangeType.ADD),
+            changedFile("old.md", null, changeType = ChangeType.DELETE),
+            changedFile("build.gradle.kts", "build.gradle.kts"),
         )
         val projects = prepareOrigins(before.project, after, before.root, root, changes, temporary.resolve("prepared"))
         assertTrue(projects.diagnostics.isEmpty(), projects.diagnostics.toString())
@@ -136,7 +140,8 @@ class OriginProjectsTest {
         val language = if (extension == "kt") "kotlin" else "java"
         val sources = Files.createDirectories(root.resolve("src/main/$language"))
         Files.writeString(sources.resolve("Example.$extension"), text)
-        return Fixture(root, ProjectCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("$name-output")))
+        return Fixture(root, SourceFixtureCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("$name-output"))
+            .toStaticScope(Files.createTempDirectory(temporary, "static-")))
     }
 
     private fun nodes(classes: Path): List<ClassNode> = Files.walk(classes).use { files ->
@@ -148,5 +153,5 @@ class OriginProjectsTest {
     private fun hasMarker(node: ClassNode): Boolean =
         (node.visibleAnnotations.orEmpty() + node.invisibleAnnotations.orEmpty()).any { it.desc == ORIGIN_MARKER }
 
-    private data class Fixture(val root: Path, val project: CompiledProject)
+    private data class Fixture(val root: Path, val project: StaticScope)
 }

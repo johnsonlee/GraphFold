@@ -1,9 +1,12 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.snapshot.FieldSnapshot
+
 import sootup.core.model.MethodModifier
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ResourceRead
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -11,6 +14,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SnapshotComparisonTest {
+    @Test fun `inline property obligations retain uncalled accessor declarations`() {
+        val root = method("Example.run()I")
+        val getter = method("Example.getBump()I", "return 1", isPrivate = true)
+        val setter = method("Example.setBump(I)V", "state = input", isPrivate = true)
+        val base = snapshot(root, getter, setter)
+        val head = snapshot(root, getter.copy(canonical = "return 2", referenceCanonical = "return 2"),
+            setter.copy(canonical = "state = input + 1", referenceCanonical = "state = input + 1"))
+        val obligation = ProofObligation("Example", SymbolKind.CLASS, "Example", emptyList(), inlined = true)
+        assertEquals(listOf(getter.identity, setter.identity), SnapshotComparison(base, head).differences(obligation))
+    }
+
     @Test
     fun `resource entry effects include existing inherited APIs but not new unused public types`() {
         val oldRead = ResourceRead("messages", "old")
@@ -69,8 +83,8 @@ class SnapshotComparisonTest {
     fun `folded-away private helper remains excluded including its generated dependencies`() {
         val root = method("Example.run()I")
         val helper = method("Example.helper()I", calls = setOf("Generated.value()I"), isPrivate = true)
-        val base = snapshot(root, helper, method("Generated.value()I", "old"))
-        val head = snapshot(root, helper, method("Generated.value()I", "new"))
+        val base = snapshot(root, helper, method("Generated.value()I", "old")).copy(controlRemovedMethods = setOf(helper.identity))
+        val head = snapshot(root, helper, method("Generated.value()I", "new")).copy(controlRemovedMethods = setOf(helper.identity))
         assertTrue(SnapshotComparison(base, head).differences(obligation(helper.identity)).isEmpty())
         assertTrue(differences(base, head).isEmpty())
     }
@@ -178,15 +192,15 @@ class SnapshotComparisonTest {
     }
 
     @Test
-    fun `new override on an unused new class is not an entry point`() {
+    fun `new override remains a production change without an inferred invocation`() {
         val base = snapshot(method("Example.run()I")).copy(entryClasses = setOf("Example"))
         val added = method("Unused.isEmpty()Z", "return true")
         val head = base.copy(methods = base.methods + (added.identity to added),
             declarations = base.declarations + ("Unused" to "class"), overrides = setOf(added.identity))
         val comparison = SnapshotComparison(base, head)
-        assertTrue(comparison.isUnreachable(obligation(added.identity)))
-        assertTrue(comparison.differences(obligation(added.identity)).isEmpty())
-        assertTrue(comparison.isUnreachable(ProofObligation("Unused", SymbolKind.CLASS, "Unused", emptyList())))
+        assertTrue(!comparison.isUnreachable(obligation(added.identity)))
+        assertEquals(listOf("Unused", added.identity), comparison.differences(obligation(added.identity)))
+        assertTrue(!comparison.isUnreachable(ProofObligation("Unused", SymbolKind.CLASS, "Unused", emptyList())))
     }
 
     @Test
@@ -211,7 +225,7 @@ class SnapshotComparisonTest {
     }
 
     @Test
-    fun `allocating an object does not make its uncalled private helper observable`() {
+    fun `caller closure stays bounded while an uncalled private source edit remains uncontrolled`() {
         val root = method("Example.run()I", calls = setOf("Generated.<init>()V"))
         val constructor = method("Generated.<init>()V")
         val helper = method("Generated.unused()I", "return 1", isPrivate = true)
@@ -219,7 +233,7 @@ class SnapshotComparisonTest {
         val head = snapshot(root, constructor, helper.copy(canonical = "return 2", referenceCanonical = "return 2"))
             .copy(entryClasses = setOf("Example"))
         assertTrue(differences(base, head).isEmpty())
-        assertTrue(SnapshotComparison(base, head).isUnreachable(obligation(helper.identity)))
+        assertEquals(listOf(helper.identity), SnapshotComparison(base, head).differences(obligation(helper.identity)))
     }
 
     @Test
@@ -237,7 +251,7 @@ class SnapshotComparisonTest {
         val comparison = SnapshotComparison(base, head)
         val field = ProofObligation("State.value:I", SymbolKind.FIELD, "State", emptyList())
         assertEquals(listOf(callback.identity, initializer.identity), comparison.differences(field))
-        assertTrue(comparison.isUnreachable(obligation(unrelated.identity)))
+        assertEquals(listOf(unrelated.identity), comparison.differences(obligation(unrelated.identity)))
         assertEquals(listOf(callback.identity, initializer.identity), comparison.differences(field))
     }
 
@@ -249,22 +263,148 @@ class SnapshotComparisonTest {
         val base = snapshot(oldCaller, helper).copy(entryClasses = setOf("Example"))
         val head = snapshot(newCaller, helper.copy(referenceCanonical = "new helper")).copy(entryClasses = setOf("Example"))
         val comparison = SnapshotComparison(base, head)
-        assertTrue(comparison.differences(obligation(helper.identity)).isEmpty())
+        assertEquals(listOf(helper.identity), comparison.differences(obligation(helper.identity)))
         val inline = obligation(helper.identity).copy(inlined = true)
-        assertEquals(listOf(oldCaller.identity), comparison.differences(inline))
+        assertEquals(listOf(oldCaller.identity, helper.identity).sorted(), comparison.differences(inline))
         assertTrue(!comparison.isUnreachable(inline))
     }
 
     @Test
-    fun `dead inline body proves reachable program equivalent instead of trusting missing invocation`() {
+    fun `uncalled inline source body still requires a control proof`() {
         val helper = method("PrivateFacade.bump(I)I", "old helper", isPrivate = true)
         val root = method("Example.run()I")
         val base = snapshot(root, helper).copy(entryClasses = setOf("Example"))
         val head = snapshot(root, helper.copy(referenceCanonical = "new helper")).copy(entryClasses = setOf("Example"))
         val comparison = SnapshotComparison(base, head)
         val inline = obligation(helper.identity).copy(inlined = true)
-        assertTrue(comparison.differences(inline).isEmpty())
+        assertEquals(listOf(helper.identity), comparison.differences(inline))
         assertTrue(!comparison.isUnreachable(inline))
+    }
+
+    @Test fun `literal static comparison does not require external runtime observation semantics`() {
+        val root = method("Example.run()I", calls = setOf("External.consume()V"))
+        val gap = MethodAnalysisGap("Unknown external observer", "External.consume()V",
+            globalObservation = true, externalObservationOnly = true)
+        val base = snapshot(root).copy(methodDiagnostics = mapOf(root.identity to listOf(gap)))
+        assertTrue(SnapshotComparison(base, base).analysisGaps().isEmpty())
+        val changed = base.copy(methods = mapOf(root.identity to root.copy(referenceCanonical = "changed")))
+        assertEquals(listOf(root.identity), SnapshotComparison(base, changed).wholeProgramDifferences())
+        assertTrue(SnapshotComparison(base, changed).analysisGaps().isEmpty())
+        assertEquals(listOf(gap.message), SnapshotComparison(base, base).resourceAnalysisGaps())
+        val missingBody = base.copy(methodDiagnostics = mapOf(root.identity to listOf(gap.copy(externalObservationOnly = false))))
+        assertEquals(listOf(gap.message), SnapshotComparison(missingBody, missingBody).analysisGaps())
+        val omitted = base.copy(controlRemovedMethods = setOf("Hidden.callback()V"))
+        assertEquals(listOf(gap.message), SnapshotComparison(base, omitted).analysisGaps())
+        val metadata = base.copy(declarations = base.declarations + ("Example" to "changed metadata"))
+        assertEquals(listOf(gap.message), SnapshotComparison(base, metadata).analysisGaps())
+    }
+
+    @Test fun `unknown dispatch cannot hide edits to uncalled application bodies in a literal comparison`() {
+        val root = method("Example.run()I", calls = setOf("External.dispatch()V"))
+        val callback = method("Example.callback()V", isPrivate = true)
+        val gap = MethodAnalysisGap("Unresolved dispatch", "External.dispatch()V", dispatchOnly = true,
+            globalObservation = true)
+        val base = snapshot(root, callback).copy(methodDiagnostics = mapOf(root.identity to listOf(gap)),
+            declarations = mapOf("Example" to "class", root.identity to "method", callback.identity to "private method"),
+            entryClasses = setOf("Example"))
+        assertTrue(SnapshotComparison(base, base).analysisGaps().isEmpty())
+        val edited = callback.copy(canonical = "edited", referenceCanonical = "edited")
+        val changed = base.copy(methods = base.methods + (callback.identity to edited))
+        val comparison = SnapshotComparison(base, changed)
+        assertTrue(comparison.analysisGaps().isEmpty())
+        assertEquals(listOf(callback.identity), comparison.wholeProgramDifferences())
+        val partialBase = base.copy(declarations = mapOf("Example" to "class"))
+        val partialHead = changed.copy(declarations = partialBase.declarations)
+        assertEquals(listOf(gap.message), SnapshotComparison(partialBase, partialHead).analysisGaps())
+        val invalid = changed.copy(diagnostics = listOf("Missing inventory owner"))
+        assertEquals(listOf(gap.message), SnapshotComparison(base, invalid).analysisGaps())
+        val incomplete = changed.copy(methodDiagnostics = changed.methodDiagnostics +
+            (callback.identity to listOf(MethodAnalysisGap("Missing callback body"))))
+        assertTrue(gap.message in SnapshotComparison(base, incomplete).analysisGaps())
+        val initializer = changed.copy(initializationDependencies = mapOf("Example" to setOf("NewInitializer")))
+        assertTrue(gap.message in SnapshotComparison(base, initializer).analysisGaps())
+        val observer = MethodAnalysisGap("External observer", globalObservation = true, externalObservationOnly = true)
+        val observedBase = base.copy(methodDiagnostics = mapOf(root.identity to listOf(gap, observer)))
+        val observedHead = changed.copy(methodDiagnostics = observedBase.methodDiagnostics)
+        assertTrue(SnapshotComparison(observedBase, observedHead).analysisGaps().isEmpty())
+        assertEquals(listOf(callback.identity), SnapshotComparison(observedBase, observedHead).wholeProgramDifferences())
+        assertEquals(listOf(gap.message), SnapshotComparison(base, base).resourceAnalysisGaps())
+        val missing = base.copy(methodDiagnostics = mapOf(root.identity to listOf(gap.copy(dispatchOnly = false))))
+        assertEquals(listOf(gap.message), SnapshotComparison(missing, missing).analysisGaps())
+    }
+
+    @Test
+    fun `one revision removal certificate cannot erase an existing unproved body in the other revision`() {
+        val entry = method("Example.run()I")
+        val hidden = method("Example.hidden()I", "old body", isPrivate = true)
+        val base = snapshot(entry, hidden)
+        val changed = hidden.copy(canonical = "new body", referenceCanonical = "new body")
+        val head = snapshot(entry, changed).copy(controlRemovedMethods = setOf(hidden.identity))
+        val comparison = SnapshotComparison(base, head)
+        assertTrue(!comparison.isUnreachable(obligation(hidden.identity)))
+        assertEquals(listOf(hidden.identity), comparison.differences(obligation(hidden.identity)))
+        val removed = snapshot(entry)
+        assertTrue(SnapshotComparison(base.copy(controlRemovedMethods = setOf(hidden.identity)), removed)
+            .isUnreachable(obligation(hidden.identity)))
+        assertTrue(!SnapshotComparison(base, removed).isUnreachable(obligation(hidden.identity)))
+    }
+
+    @Test
+    fun `head-only fold removal cannot borrow literal inventory exemption for opaque observations`() {
+        val entry = method("Example.run()I")
+        val hidden = method("Example.hidden()I", isPrivate = true)
+        val observer = MethodAnalysisGap("Opaque observer", globalObservation = true, externalObservationOnly = true)
+        val base = snapshot(entry, hidden).copy(methodDiagnostics = mapOf(entry.identity to listOf(observer)))
+        val head = base.copy(controlRemovedMethods = setOf(hidden.identity))
+        assertEquals(listOf(observer.message), SnapshotComparison(base, head).analysisGaps())
+    }
+
+    @Test
+    fun `base-only fold removal cannot borrow literal inventory exemption for opaque observations`() {
+        val entry = method("Example.run()I")
+        val hidden = method("Example.hidden()I", isPrivate = true)
+        val observer = MethodAnalysisGap("Opaque observer", globalObservation = true, externalObservationOnly = true)
+        val head = snapshot(entry, hidden).copy(methodDiagnostics = mapOf(entry.identity to listOf(observer)))
+        val base = head.copy(controlRemovedMethods = setOf(hidden.identity))
+        assertEquals(listOf(observer.message), SnapshotComparison(base, head).analysisGaps())
+    }
+
+    @Test
+    fun `class-only metadata changes survive ordinary and inline class obligations without method inventory`() {
+        val entry = method("Other.run()I")
+        val base = snapshot(entry).copy(declarations = mapOf("Other" to "class", "Example" to "old annotation"))
+        val head = base.copy(declarations = base.declarations + ("Example" to "new annotation"))
+        val change = ProofObligation("Example", SymbolKind.CLASS, "Example", emptyList())
+        val comparison = SnapshotComparison(base, head)
+        assertEquals(listOf("Example"), comparison.differences(change))
+        assertEquals(listOf("Example"), comparison.differences(change.copy(inlined = true)))
+    }
+
+    @Test
+    fun `inline removal certificate does not discharge other surviving comparison roots`() {
+        val root = method("Example.run()I", "old root")
+        val helper = method("Inline.helper()I", "old inline body", isPrivate = true)
+        val base = snapshot(root, helper).copy(controlRemovedMethods = setOf(helper.identity))
+        val head = snapshot(root.copy(canonical = "new root", referenceCanonical = "new root"),
+            helper.copy(canonical = "new inline body", referenceCanonical = "new inline body"))
+            .copy(controlRemovedMethods = setOf(helper.identity))
+        val change = obligation(helper.identity).copy(inlined = true)
+        val comparison = SnapshotComparison(base, head)
+        assertTrue(!comparison.isUnreachable(change))
+        assertEquals(listOf(root.identity), comparison.differences(change))
+    }
+
+    @Test
+    fun `indirect class metadata normalization does not erase explicit or whole program field changes`() {
+        val root = method("Example.run()I")
+        val field = io.johnsonlee.graphfold.engine.snapshot.FieldSnapshot("Example.hidden:I", "private int", "1", true)
+        val base = snapshot(root).copy(classShapes = mapOf("Example" to "class"), fields = mapOf(field.identity to field),
+            ignoredFields = setOf(field.identity))
+        val head = base.copy(fields = mapOf(field.identity to field.copy(constant = "2")))
+        val comparison = SnapshotComparison(base, head)
+        assertTrue(comparison.differences(obligation(root.identity)).isEmpty())
+        assertEquals(listOf("Example"), comparison.differences(ProofObligation("Example", SymbolKind.CLASS, "Example", emptyList())))
+        assertEquals(listOf("Example"), comparison.wholeProgramDifferences())
     }
 
     private fun differences(base: ProgramSnapshot, head: ProgramSnapshot): List<String> =

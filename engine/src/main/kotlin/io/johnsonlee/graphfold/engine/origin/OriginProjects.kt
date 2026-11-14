@@ -1,19 +1,21 @@
 package io.johnsonlee.graphfold.engine.origin
 
-import io.johnsonlee.graphfold.engine.build.CompiledProject
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
 import io.johnsonlee.graphfold.engine.git.ChangedFile
 import java.nio.file.Path
 
 internal data class OriginProject(
-    val compiled: CompiledProject, val sourceClasses: Path, val catalog: OriginCatalog, val owners: Map<String, String>,
-    val methodDiagnostics: Map<String, List<io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap>> = emptyMap(),
+    val compiled: StaticScope, val sourceClasses: Path, val catalog: OriginCatalog, val owners: Map<String, String>,
+    val methodDiagnostics: Map<String, List<io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap>> = emptyMap(),
 )
 
 internal data class OriginProjects(val base: OriginProject, val head: OriginProject, val diagnostics: List<String>)
 
 /** Failed provenance stays blocking; raw identities still permit reporting independent diff observations. */
 internal fun prepareOrigins(
-    base: CompiledProject, head: CompiledProject, baseRoot: Path, headRoot: Path, changes: List<ChangedFile>, output: Path,
+    base: StaticScope, head: StaticScope, baseRoot: Path, headRoot: Path, changes: List<ChangedFile>, output: Path,
 ): OriginProjects {
     val old = readOrigins(base, baseRoot)
     val new = readOrigins(head, headRoot)
@@ -44,17 +46,25 @@ internal fun prepareOrigins(
 }
 
 /** Queries see original JVM identities without the compiler instrumentation's private annotations. */
-private fun selectionClasses(project: CompiledProject, normalized: OriginNormalizationResult, output: Path): Path =
+private fun selectionClasses(project: StaticScope, normalized: OriginNormalizationResult, output: Path): Path =
     if (normalized.owners.isEmpty()) normalized.classes else normalizeOriginClasses(project.classes, output, emptyMap()).classes
 
 /** No owner pairing or partial catalog bindings survive a failed provenance proof. */
 private fun unverifiedProjects(
-    base: CompiledProject, head: CompiledProject, old: OriginCatalog, new: OriginCatalog,
+    base: StaticScope, head: StaticScope, old: OriginCatalog, new: OriginCatalog,
     output: Path, diagnostics: List<String>,
 ): OriginProjects {
-    fun original(project: CompiledProject, catalog: OriginCatalog, side: String): OriginProject {
+    fun original(project: StaticScope, catalog: OriginCatalog, side: String): OriginProject {
         val classes = stripOriginInstrumentation(project.classes, output.resolve("unverified-$side"))
         return OriginProject(project.copy(classes = classes), classes, catalog.copy(origins = emptyList()), emptyMap())
     }
     return OriginProjects(original(base, old, "base"), original(head, new, "head"), diagnostics)
+}
+
+/** Compiler outputs are source-index evidence only; Graphite selection always uses packaged sourceClasses. */
+internal fun OriginProject.sourceIndexClasses(source: Path): List<Path> {
+    if (compiled.compilerEvidence.isEmpty()) return listOf(sourceClasses)
+    val outputs = compiled.sourceOutputs.filterKeys { source.toAbsolutePath().normalize().startsWith(it.toAbsolutePath().normalize()) }
+        .values.flatten().map { it.toAbsolutePath().normalize() }.toSet()
+    return compiled.compilerEvidence.map { it.classes }.distinct().filter { it.toAbsolutePath().normalize() in outputs }
 }

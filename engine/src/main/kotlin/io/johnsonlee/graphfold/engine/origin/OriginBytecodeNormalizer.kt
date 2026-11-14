@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine.origin
 
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+
 import io.johnsonlee.graphfold.engine.diagnosticLabel
 import java.nio.file.Files
 import java.nio.file.Path
@@ -12,7 +14,7 @@ import org.objectweb.asm.tree.ClassNode
 
 internal data class OriginNormalizationResult(
     val classes: Path, val owners: Map<String, String>, val diagnostics: List<String>,
-    val methodDiagnostics: Map<String, List<io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap>>,
+    val methodDiagnostics: Map<String, List<io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap>>,
 )
 
 /** Remapping is restricted to ASM's typed JVM references. User strings are never interpreted as class names. */

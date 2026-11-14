@@ -2,8 +2,9 @@ package io.johnsonlee.graphfold.engine.origin
 
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.johnsonlee.graphfold.engine.build.CompiledProject
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
+import io.johnsonlee.graphfold.engine.inputs.archive.toStaticScope
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -24,7 +25,7 @@ class OriginCatalogTest {
     private val mapper = jacksonObjectMapper()
 
     @ParameterizedTest
-    @ValueSource(strings = ["gradle-v1-test-provider", "maven-v1-test-provider"])
+    @ValueSource(strings = ["opaque-provider-a", "opaque-provider-b"])
     fun `cached provenance binds exact class bytes and rejects tampering`(runId: String) {
         val fixture = compile()
         val file = manifest(fixture.project)
@@ -37,10 +38,36 @@ class OriginCatalogTest {
             assertIs<ObjectNode>(record).put("classHash", hash)
         }
         mapper.writeValue(file.toFile(), document)
-        val cached = fixture.project.copy(originRunId = runId)
+        val cached = fixture.project.copy(originRunId = runId, requireOriginClassHashes = true)
         assertTrue(readOrigins(cached, fixture.root).diagnostics.isEmpty())
         stripDebug(cached.classes)
         assertTrue(readOrigins(cached, fixture.root).diagnostics.any { "class hash differs" in it })
+    }
+
+    @Test fun `actual javac compiler records satisfy strict output hashes without manifest rewriting`() {
+        val fixture = compile()
+        val strict = fixture.project.copy(requireOriginClassHashes = true)
+        val catalog = readOrigins(strict, fixture.root)
+        assertTrue(catalog.diagnostics.isEmpty(), catalog.diagnostics.toString())
+        assertTrue(catalog.origins.isNotEmpty())
+        stripDebug(strict.classes)
+        assertTrue(readOrigins(strict, fixture.root).diagnostics.any { "class hash differs" in it })
+    }
+
+    @Test
+    fun `javac provenance cannot claim Kotlin inline copy evidence`() {
+        val fixture = compile()
+        val file = manifest(fixture.project)
+        val document = assertIs<ObjectNode>(mapper.readTree(file.toFile()))
+        assertEquals("javac", document.path("producer").path("compiler").asText())
+        document.putObject("inlineEvidence").apply {
+            put("schema", 1)
+            putArray("classes"); putArray("declarations"); putArray("copies")
+        }
+        mapper.writeValue(file.toFile(), document)
+        val catalog = readOrigins(fixture.project, fixture.root)
+        assertTrue(catalog.diagnostics.any { "Inline evidence requires the Kotlin compiler" in it }, catalog.diagnostics.joinToString())
+        assertTrue(catalog.inlineEvidence.isEmpty(), "Unsupported compiler evidence cannot authorize inline control proof")
     }
 
     @Test
@@ -338,10 +365,11 @@ class OriginCatalogTest {
             "package sample; public class Example { Object first = new Object() {}; Object second = new Object() {}; }"
         }
         Files.writeString(source, format(text))
-        return Fixture(root, source, ProjectCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("output")))
+        return Fixture(root, source, SourceFixtureCompiler(Duration.ofMinutes(2)).compile(root, temporary.resolve("output"))
+            .toStaticScope(Files.createTempDirectory(temporary, "static-")))
     }
 
-    private fun manifest(project: CompiledProject): Path = Files.list(requireNotNull(project.originDirectory)).use {
+    private fun manifest(project: StaticScope): Path = Files.list(requireNotNull(project.originDirectory)).use {
         it.filter { file -> file.toString().endsWith(".json") }.toList().single()
     }
 
@@ -365,5 +393,5 @@ class OriginCatalogTest {
         KIND("originKind"), START("start"), END("end"),
     }
 
-    private data class Fixture(val root: Path, val source: Path, val project: CompiledProject)
+    private data class Fixture(val root: Path, val source: Path, val project: StaticScope)
 }

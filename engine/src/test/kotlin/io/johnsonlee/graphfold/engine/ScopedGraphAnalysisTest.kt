@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+
 import io.johnsonlee.graphfold.engine.graphite.GraphiteAnalyzer
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
@@ -14,25 +16,36 @@ import kotlin.test.assertTrue
 class ScopedGraphAnalysisTest {
     @TempDir lateinit var directory: Path
 
-    @Test fun `bounded third party consumer in unrelated class no longer poisons source proof`() {
+    @Test fun `verified no-op consumer does not observe an application payload`() {
         val snapshot = snapshot()
         assertTrue(snapshot.diagnostics.isEmpty(), snapshot.diagnostics.toString())
-        assertTrue(snapshot.methodDiagnostics.isNotEmpty())
+        assertTrue(snapshot.methodDiagnostics.isEmpty(), snapshot.methodDiagnostics.toString())
         val comparison = SnapshotComparison(snapshot, snapshot)
         assertTrue(comparison.analysisGaps(obligation("Sample.run()I")).isEmpty())
-        assertTrue(comparison.analysisGaps().isNotEmpty())
+        assertTrue(comparison.analysisGaps(obligation("Dto.secret()I")).isEmpty())
+        assertTrue(comparison.analysisGaps().isEmpty())
     }
 
-    @Test fun `known consumer can observe another owner's private method without direct calls`() {
-        val snapshot = snapshot()
+    @Test fun `unchanged literal private bodies do not require predicting a reflective consumer`() {
+        val snapshot = snapshot(reflective = true)
         val gaps = SnapshotComparison(snapshot, snapshot).analysisGaps(obligation("Dto.secret()I"))
-        assertTrue(gaps.any { "Encoder.encode" in it }, gaps.toString())
+        assertTrue(gaps.isEmpty(), gaps.toString())
+        assertTrue(snapshot.methodDiagnostics.values.flatten().any { "Encoder.encode" in it.message })
+        val identity = "Dto.secret()I"
+        val changed = snapshot.copy(methods = snapshot.methods +
+            (identity to snapshot.methods.getValue(identity).copy(referenceCanonical = "changed private body")))
+        assertTrue(identity in SnapshotComparison(snapshot, changed).differences(obligation(identity)))
     }
 
-    @Test fun `unbounded erased payload cannot be scoped away from private method`() {
-        val snapshot = snapshot("Object value")
+    @Test fun `erased payload observations remain evidence without blocking literal body comparison`() {
+        val snapshot = snapshot("Object value", reflective = true)
         val gaps = SnapshotComparison(snapshot, snapshot).analysisGaps(obligation("Dto.secret()I"))
-        assertTrue(gaps.any { "Encoder.encode" in it }, gaps.toString())
+        assertTrue(gaps.isEmpty(), gaps.toString())
+        assertTrue(snapshot.methodDiagnostics.values.flatten().any { "Encoder.encode" in it.message })
+        val identity = "Dto.secret()I"
+        val changed = snapshot.copy(methods = snapshot.methods +
+            (identity to snapshot.methods.getValue(identity).copy(referenceCanonical = "changed private body")))
+        assertTrue(identity in SnapshotComparison(snapshot, changed).differences(obligation(identity)))
         assertTrue(snapshot.methodDiagnostics.values.flatten().all { it.globalObservation })
     }
 
@@ -48,7 +61,7 @@ class ScopedGraphAnalysisTest {
         })
     }
 
-    private fun typeQueries(revision: String, value: Int): io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot {
+    private fun typeQueries(revision: String, value: Int): io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot {
         val output = Files.createDirectory(directory.resolve(revision))
         val source = output.resolve("Sample.java")
         val queries = output.resolve("Queries.java")
@@ -64,10 +77,21 @@ class ScopedGraphAnalysisTest {
         return GraphiteAnalyzer().analyze(output, emptyList())
     }
 
-    private fun snapshot(parameter: String = "Dto value"): io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot {
+    private fun snapshot(
+        parameter: String = "Dto value", reflective: Boolean = false,
+    ): io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot {
         val dependency = Files.createDirectory(directory.resolve("dependency"))
         val encoder = directory.resolve("Encoder.java")
-        Files.writeString(encoder, "package external; public class Encoder { public static void encode(Object value) {} }")
+        val body = if (reflective) """
+            try {
+                var method = value.getClass().getDeclaredMethod("secret");
+                method.setAccessible(true);
+                System.out.println(method.invoke(value));
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+        """.trimIndent() else ""
+        Files.writeString(encoder, "package external; public class Encoder { public static void encode(Object value) { $body } }")
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", dependency.toString(), encoder.toString()))
         val output = Files.createDirectory(directory.resolve("classes"))
         val source = directory.resolve("Sample.java")

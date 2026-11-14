@@ -1,8 +1,10 @@
 package io.johnsonlee.graphfold.engine.git
 
+import org.eclipse.jgit.diff.Edit
 import io.johnsonlee.graphfold.engine.AnalysisRequest
-import io.johnsonlee.graphfold.engine.EngineConfiguration
-import io.johnsonlee.graphfold.engine.GraphFoldEngine
+import io.johnsonlee.graphfold.engine.RepositoryConfiguration
+import io.johnsonlee.graphfold.engine.inputs.SourceInput
+import io.johnsonlee.graphfold.engine.RepositoryAnalyzer
 import io.johnsonlee.graphfold.engine.Verdict
 import java.nio.file.StandardCopyOption
 import java.nio.file.Files
@@ -74,8 +76,7 @@ object GitWithoutExecutableProbe {
             check(Files.readString(it.headDirectory.resolve("Example.java")) == "after\n")
             val change = it.changes().single()
             check(change.basePath == "Example.java" && change.headPath == "Example.java")
-            check(change.baseLines == listOf(ChangedLineRange(1, 1)))
-            check(change.headLines == listOf(ChangedLineRange(1, 1)))
+            check(change.edits == listOf(Edit(0, 1, 0, 1)))
         }
         check(Files.exists(workspace.baseDirectory) && Files.exists(workspace.headDirectory))
         analyzeJavaFixture(root, fixtures)
@@ -108,7 +109,18 @@ object GitWithoutExecutableProbe {
             }
             commit("base") to commit("head")
         }
-        val result = GraphFoldEngine(EngineConfiguration(root.resolve("engine-cache"))).analyze(
+        val result = RepositoryAnalyzer(RepositoryConfiguration(root.resolve("engine-cache"))) { sha, checkout, output ->
+            val sources = checkout.resolve("src/main/java")
+            val classes = Files.createDirectories(output.resolve("classes"))
+            val files = Files.walk(sources).use { paths -> paths.filter { it.toString().endsWith(".java") }.toList() }
+            val compiler = javax.tools.ToolProvider.getSystemJavaCompiler()
+            compiler.getStandardFileManager(null, null, Charsets.UTF_8).use { manager ->
+                check(compiler.getTask(null, manager, null, listOf("-g", "-d", classes.toString()), null,
+                    manager.getJavaFileObjectsFromPaths(files)).call())
+            }
+            io.johnsonlee.graphfold.engine.inputs.StaticInputSnapshots.prepareSource(sha, checkout, output.resolve("input"),
+                SourceInput(classes, listOf(sources), emptyList(), Runtime.version().feature(), mapOf(sources to listOf(classes))))
+        }.analyze(
             AnalysisRequest(
                 source.toString(), revisions.first, revisions.second, Files.readString(fixtures.resolve("fold.yml")),
             ),

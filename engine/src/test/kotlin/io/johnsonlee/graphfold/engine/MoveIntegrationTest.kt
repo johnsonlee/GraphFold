@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.junit.jupiter.api.Test
@@ -108,7 +110,7 @@ class MoveIntegrationTest {
                 args: {0: feature}
                 value: false
         """.trimIndent()
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), base, head, fold),
         )
         assertEquals(metadata.verdict, result.verdict, id)

@@ -7,5 +7,9 @@ while executing fold selection and reporting diff-owned representation observati
 
 Both Java and Kotlin cover an uncontrolled arithmetic change, a controlled branch
 change, and a folded anonymous insertion that renumbers another emitted owner.
-No case may PASS or claim proved obligations under failed provenance. Raw identity
-differences are explicitly unverified observations, never confirmed behavior changes.
+No case may PASS while its provenance blocker remains. Missing origin pairing must
+not suppress independent bytecode folding: the scalar controlled change is proved
+in both languages, and the Kotlin renumbering case retains one independently folded
+obligation. The uncontrolled changes and remaining raw owner-renumbering differences
+stay unproved. Raw identity differences are explicitly unverified observations,
+never claims that runtime behavior changed.

@@ -1,6 +1,9 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
+import io.johnsonlee.graphfold.engine.inputs.archive.toStaticScope
 import io.johnsonlee.graphfold.engine.origin.readOrigins
 import java.nio.file.Files
 import java.nio.file.Path
@@ -29,8 +32,8 @@ class LibraryInlineIntegrationTest {
                 fun order(values: List<String>): List<String> = values.sortedBy { it.length }
             }
         """.trimIndent())
-        val project = ProjectCompiler(Duration.ofMinutes(2)).compile(repository, temporary.resolve("compiled"))
-        val catalog = readOrigins(project, repository)
+        val project = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(repository, temporary.resolve("compiled"))
+        val catalog = readOrigins(project.toStaticScope(temporary.resolve("static-input")), repository)
         assertTrue(catalog.diagnostics.isEmpty(), catalog.diagnostics.toString())
         assertTrue(catalog.origins.isEmpty(), "$catalog")
         assertTrue(catalog.compiledOwners.size > 1, "$catalog")
@@ -53,7 +56,7 @@ class LibraryInlineIntegrationTest {
                     .setCommitter("GraphFold Test", "test@example.invalid").call().name
             }
         }
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), commits[0], commits[1], Files.readString(fixtures.resolve("fold.yml"))),
         )
         assertTrue(result.diagnostics.none { it.blocking }, result.toString())

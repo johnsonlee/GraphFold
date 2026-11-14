@@ -2,7 +2,7 @@ package io.johnsonlee.graphfold.engine.origin
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.johnsonlee.graphfold.engine.build.CompiledProject
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
 import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Backend
 import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Compiler
 import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Kind
@@ -12,6 +12,7 @@ import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.TypeInsnNode
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -19,20 +20,37 @@ import java.security.MessageDigest
 /** Provenance describes validated compiler artifacts, not a generated-name or line-table heuristic. */
 internal data class OriginCatalog(
     val origins: List<SourceOrigin>, val diagnostics: List<String>, val compiledOwners: Set<String> = emptySet(),
+    val inlineEvidence: List<io.johnsonlee.graphfold.engine.inputs.InlineEvidence> = emptyList(),
 )
 
 internal fun readOrigins(
-    project: CompiledProject, checkout: Path,
+    project: StaticScope, checkout: Path,
     readManifest: (Path) -> JsonNode = { jacksonObjectMapper().readTree(it.toFile()) },
-): OriginCatalog = OriginReader(project, checkout.toRealPath(), readManifest).read()
+): OriginCatalog = try {
+    val root = checkout.toFile().canonicalFile.toPath()
+    val catalog = if (project.compilerEvidence.isEmpty()) OriginReader(project, root, readManifest).read()
+        else readPackagedOrigins(project, root, readManifest)
+    catalog.copy(diagnostics = (catalog.diagnostics + project.provenanceIssues).distinct())
+} catch (failure: IOException) {
+    unverifiedCatalog(failure, project.provenanceIssues)
+} catch (failure: IllegalArgumentException) {
+    unverifiedCatalog(failure, project.provenanceIssues)
+}
 
-private class OriginReader(
-    private val project: CompiledProject, private val root: Path, private val readManifest: (Path) -> JsonNode,
+/** Broken mapping evidence reduces attribution precision; it never substitutes or suppresses application bytecode. */
+private fun unverifiedCatalog(failure: Exception, issues: List<String>): OriginCatalog =
+    OriginCatalog(emptyList(), issues + "Compiler provenance could not be read: $failure")
+
+
+internal class OriginReader(
+    private val project: StaticScope, private val root: Path, private val readManifest: (Path) -> JsonNode,
+    private val manifestFiles: List<Path>? = null,
 ) {
     private val runId = project.originRunId.orEmpty()
     private val diagnostics = mutableListOf<String>()
     private val origins = linkedMapOf<String, SourceOrigin>()
     private val recorded = mutableSetOf<String>()
+    private val inlineEvidence = mutableListOf<io.johnsonlee.graphfold.engine.inputs.InlineEvidence>()
     private val sources = mutableMapOf<Path, Pair<String, List<OriginSyntax>>>()
     private val classes = Files.walk(project.classes).use { paths ->
         paths.filter { it.toString().endsWith(".class") }.map { file ->
@@ -42,16 +60,24 @@ private class OriginReader(
 
     fun read(): OriginCatalog {
         val directory = project.originDirectory
-        if (runId.isBlank() || directory == null || !Files.isDirectory(directory)) {
-            return OriginCatalog(emptyList(), listOf("Compiler origin manifest is missing"))
+        return when {
+            project.hasNoProvenanceClaim() -> OriginCatalog(emptyList(), emptyList(), classes.keys)
+            runId.isBlank() || directory == null || !Files.isDirectory(directory) ->
+                OriginCatalog(emptyList(), listOf("Compiler origin manifest is missing"))
+            else -> readManifests(directory)
         }
-        val manifests = Files.list(directory).use { files -> files.filter { it.toString().endsWith(".json") }.sorted().toList() }
+    }
+
+    private fun readManifests(directory: Path): OriginCatalog {
+        val manifests = manifestFiles ?: Files.list(directory).use { files ->
+            files.filter { it.toString().endsWith(".json") }.sorted().toList()
+        }
         if (manifests.isEmpty()) diagnostics += "Compiler origin manifest is empty"
         manifests.forEach { file -> guarded(file.toString()) { manifest(readManifest(file)) } }
         classes.filterValues(::anonymousObject).keys.filter { it !in origins }.forEach {
             diagnostics += "No verified compiler origin for anonymous class $it"
         }
-        return OriginCatalog(withEmissionContexts(), diagnostics.toList(), classes.keys)
+        return OriginCatalog(withEmissionContexts(), diagnostics.toList(), classes.keys, inlineEvidence.toList())
     }
 
     private fun withEmissionContexts(): List<SourceOrigin> {
@@ -81,6 +107,11 @@ private class OriginReader(
         require(document.path("records").isArray) { "Compiler origin records are missing" }
         document.path("unresolved").forEach { diagnostics += "Unresolved compiler origin: $it" }
         document.path("records").forEach { record -> guarded(record.path("owner").asText()) { record(record, compiler) } }
+        if (document.has("inlineEvidence")) {
+            require(compiler == Compiler.KOTLINC) { "Inline evidence requires the Kotlin compiler" }
+            val evidence = readInlineEvidence(document.path("inlineEvidence"), project.classes, root)
+            if (evidence.declarations.isNotEmpty()) inlineEvidence += evidence
+        }
     }
 
     private fun compiler(producer: JsonNode): Compiler {
@@ -99,7 +130,7 @@ private class OriginReader(
         val owner = record.path("owner").asText()
         require(owner in classes) { "Compiler origin owner was not emitted: $owner" }
         // read() rejects absent run IDs before parsing any records.
-        if (runId.let { it.startsWith("gradle-v1-") || it.startsWith("maven-v1-") }) {
+        if (project.requireOriginClassHashes) {
             val bytes = Files.readAllBytes(project.classes.resolve(owner.replace('.', '/') + ".class"))
             val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             require(record.path("classHash").asText() == hash) { "Compiler origin class hash differs: $owner" }
@@ -174,3 +205,7 @@ private class OriginReader(
 }
 
 internal const val ORIGIN_MARKER = "Lio/johnsonlee/graphfold/engine/origin/SourceOrigin;"
+
+/** An omitted optional catalog is distinct from a missing or invalid catalog the caller claimed to supply. */
+internal fun StaticScope.hasNoProvenanceClaim(): Boolean = originDirectory == null && originRunId == null &&
+    compilerEvidence.isEmpty() && provenanceIssues.isEmpty() && !requireOriginClassHashes

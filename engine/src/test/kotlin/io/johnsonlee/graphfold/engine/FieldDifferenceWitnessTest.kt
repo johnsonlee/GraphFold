@@ -1,9 +1,9 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.FieldSnapshot
-import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.FieldSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import io.johnsonlee.graphfold.engine.source.JavaSourceIndex
@@ -178,7 +178,6 @@ class FieldDifferenceWitnessTest {
         val gaps = SnapshotComparison(base, head, originsVerified = false).analysisGaps(obligation)
         assertTrue(gap.message in gaps)
         assertTrue(bodyGap.message in gaps)
-        assertTrue(gaps.any { "Compiler provenance" in it })
     }
 
     private fun snapshot(): ProgramSnapshot {

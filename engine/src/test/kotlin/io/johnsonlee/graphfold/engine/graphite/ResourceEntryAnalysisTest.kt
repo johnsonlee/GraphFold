@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
+
 import io.johnsonlee.graphite.graph.DefaultGraph
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

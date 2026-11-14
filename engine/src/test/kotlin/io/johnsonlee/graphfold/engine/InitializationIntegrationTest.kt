@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.junit.jupiter.api.Test
@@ -10,7 +12,7 @@ import java.net.URLClassLoader
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.time.Duration
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -60,7 +62,7 @@ class InitializationIntegrationTest {
         val base = commit(repository)
         copyTree(fixtures.resolve("cases/$id/head"), repository)
         val head = commit(repository)
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), base, head, Files.readString(Path.of("../fixtures/fold.yml"))),
         )
         assertEquals(fixture.violation, result.verdict == Verdict.FAIL, result.toString())
@@ -86,7 +88,7 @@ class InitializationIntegrationTest {
     }
 
     private fun initializationOutput(source: Path, name: String): String {
-        val compiled = ProjectCompiler(Duration.ofMinutes(2)).compile(
+        val compiled = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(
             source.toAbsolutePath().normalize(), temporary.resolve(name),
         )
         val output = ByteArrayOutputStream()

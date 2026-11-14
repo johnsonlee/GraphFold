@@ -1,8 +1,8 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ResourceRead
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import org.junit.jupiter.api.Test
@@ -18,8 +18,8 @@ class SnapshotBoundaryCoverageTest {
         val base = snapshot(root)
         val head = snapshot(root, added).copy(overrides = setOf(added.identity))
         val comparison = SnapshotComparison(base, head)
-        assertTrue(comparison.isUnreachable(obligation(added.identity)))
-        assertTrue(comparison.differences(obligation(added.identity)).isEmpty())
+        assertFalse(comparison.isUnreachable(obligation(added.identity)))
+        assertEquals(listOf(added.identity), comparison.differences(obligation(added.identity)))
     }
 
     @Test fun `reference operands and head-only or removed callees preserve all difference identities`() {
@@ -46,12 +46,12 @@ class SnapshotBoundaryCoverageTest {
         assertEquals(listOf(headRead, baseRead, externalRead), SnapshotComparison(head, base).resourceEntryReads)
     }
 
-    @Test fun `class and field roots are unreachable only when no relevant runtime method remains`() {
+    @Test fun `class and field declarations never claim selected control removal without evidence`() {
         val dead = method("Dead.run()V", hidden = true)
         val base = snapshot(dead).copy(entryClasses = emptySet())
         val comparison = SnapshotComparison(base, base)
-        assertTrue(comparison.isUnreachable(obligation("Dead", SymbolKind.CLASS)))
-        assertTrue(comparison.isUnreachable(obligation("Dead.value:I", SymbolKind.FIELD)))
+        assertFalse(comparison.isUnreachable(obligation("Dead", SymbolKind.CLASS)))
+        assertFalse(comparison.isUnreachable(obligation("Dead.value:I", SymbolKind.FIELD)))
         val reachable = snapshot(method("Dead.run()V"))
         val live = SnapshotComparison(reachable, reachable)
         assertFalse(live.isUnreachable(obligation("Dead", SymbolKind.CLASS)))

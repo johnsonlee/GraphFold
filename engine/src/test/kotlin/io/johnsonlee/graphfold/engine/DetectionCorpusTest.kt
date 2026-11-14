@@ -1,71 +1,88 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.DetectionFixtures
+import io.johnsonlee.graphfold.engine.testing.DetectionCase
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.assertAll
-import org.junit.jupiter.api.function.Executable
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.TestInstance
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DetectionCorpusTest {
     @TempDir lateinit var temporary: Path
+    private val selected = DetectionFixtures.selectedCases()
+    private val fingerprint by lazy { DetectionFixtures.fingerprint() }
+    private val measurements = ConcurrentHashMap<String, Measurement>()
 
-    @Test
-    fun `real git Java Cypher and folded IR achieve the detection threshold`() {
-        runCorpus("java")
+    fun cases(): List<DetectionCase> = selected.also { assertTrue(it.isNotEmpty(), "No corpus cases matched") }
+
+    @BeforeAll
+    fun `clear previous reports`() {
+        selected.map { it.language }.distinct().forEach { language ->
+            val directory = Path.of("build/reports/detection/$language")
+            Files.deleteIfExists(directory.resolve("results.json"))
+            Files.deleteIfExists(directory.resolve("metrics.json"))
+        }
     }
 
-    @Test
-    fun `Kotlin equivalent and language specific cases run the full pipeline`() {
-        runCorpus("kotlin")
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("cases")
+    fun `precompiled corpus retains exact static evidence`(entry: DetectionCase) {
+        val case = entry.case
+        val descriptor = DetectionFixtures.descriptor(entry, fingerprint)
+        val result = DetectionFixtures.analyze(descriptor, temporary.resolve(entry.toString()))
+        val measurement = Measurement(case.id, case.violation, result.verdict == Verdict.FAIL, result)
+        check(measurements.putIfAbsent(entry.toString(), measurement) == null) { "Duplicate case: $entry" }
+        assertTrue(result.diagnostics.none { it.blocking }, "Operational failure is not detection evidence: $measurement")
+        verifyCaseEvidence(entry.root(DetectionFixtures.fixtures), case, measurement)
+        if (entry.language == "java" && case.id.startsWith("stream_")) verifyStreamLocations(measurement)
+        assertEquals(measurement.expectedViolation, measurement.predictedViolation, "Every labelled regression must match: $measurement")
     }
 
-    private fun runCorpus(language: String) {
-        val fixtures = Path.of("../fixtures").toAbsolutePath().normalize()
+    @AfterAll
+    fun `write complete shard reports`() {
         val mapper = jacksonObjectMapper()
-        val cases = mapper.readValue<List<CorpusCase>>(fixtures.resolve("manifest.json").toFile())
-        val allCases = if (language == "kotlin") cases +
-            mapper.readValue<List<CorpusCase>>(fixtures.resolve("kotlin/features.json").toFile()) else cases
-        val filter = System.getenv("GRAPHFOLD_CASE_FILTER")?.toRegex()
-        val selected = allCases.filter { filter == null || filter.matches(it.id) }
-        assertTrue(selected.isNotEmpty(), "No corpus cases matched")
-        val extension = if (language == "java") "java" else "kt"
-        val caseRoot = if (language == "java") fixtures else fixtures.resolve("kotlin")
-        val report = Path.of("build/reports/detection/$language/results.json")
-        Files.createDirectories(report.parent)
-        Files.deleteIfExists(report.resolveSibling("metrics.json"))
-        val measurements = mutableListOf<Measurement>()
-        assertAll("Every $language fixture must retain complete analysis and exact evidence", selected.map { case ->
-            Executable {
-                val measurement = analyzeCase(fixtures, caseRoot, language, extension, case)
-                measurements += measurement
-                mapper.writerWithDefaultPrettyPrinter().writeValue(report.toFile(), measurements)
-                assertTrue(measurement.result.diagnostics.none { it.blocking },
-                    "Operational failure is not detection evidence: $measurement")
-                verifyCaseEvidence(caseRoot, case, measurement)
+        val missing = selected.filter { !measurements.containsKey(it.toString()) }
+        selected.map { it.language }.distinct().forEach { language ->
+            val results = selected.filter { it.language == language }.mapNotNull { measurements[it.toString()] }
+            val directory = Files.createDirectories(Path.of("build/reports/detection/$language"))
+            fun write(name: String, value: Any) {
+                val staging = directory.resolve("$name.tmp")
+                mapper.writerWithDefaultPrettyPrinter().writeValue(staging.toFile(), value)
+                Files.move(staging, directory.resolve(name), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             }
-        })
-        if (language == "java") measurements.filter { it.id.startsWith("stream_") }.forEach(::verifyStreamLocations)
-        assertTrue(measurements.all { it.expectedViolation == it.predictedViolation },
-            "Every labelled regression must match: ${measurements.filter { it.expectedViolation != it.predictedViolation }}")
-        val truePositive = measurements.count { it.expectedViolation && it.predictedViolation }
-        val falsePositive = measurements.count { !it.expectedViolation && it.predictedViolation }
-        val falseNegative = measurements.count { it.expectedViolation && !it.predictedViolation }
-        val precision = truePositive.toDouble() / (truePositive + falsePositive)
-        val recall = truePositive.toDouble() / (truePositive + falseNegative)
-        mapper.writerWithDefaultPrettyPrinter().writeValue(
-            report.resolveSibling("metrics.json").toFile(),
-            mapOf("filtered" to (filter != null), "cases" to measurements.size, "truePositive" to truePositive,
-                "falsePositive" to falsePositive,
-                "falseNegative" to falseNegative, "precision" to precision, "recall" to recall),
-        )
-        assertTrue(precision > 0.90 && recall > 0.90,
-            "precision=$precision recall=$recall; failures=${measurements.filter { it.expectedViolation != it.predictedViolation }}")
+            write("results.json", results)
+            val truePositive = results.count { it.expectedViolation && it.predictedViolation }
+            val falsePositive = results.count { !it.expectedViolation && it.predictedViolation }
+            val falseNegative = results.count { it.expectedViolation && !it.predictedViolation }
+            val shards = System.getProperty("graphfold.testShards", "1").toInt()
+            val precision = ratio(truePositive, truePositive + falsePositive)
+            val recall = ratio(truePositive, truePositive + falseNegative)
+            write("metrics.json", mapOf(
+                "filtered" to (System.getenv("GRAPHFOLD_CASE_FILTER") != null), "sharded" to (shards > 1),
+                "shard" to System.getProperty("graphfold.testShard", "0").toInt(), "shards" to shards,
+                "cases" to results.size, "complete" to missing.isEmpty(),
+                "truePositive" to truePositive, "falsePositive" to falsePositive, "falseNegative" to falseNegative,
+                "precision" to precision, "recall" to recall,
+            ))
+            assertTrue((precision == null || precision > MINIMUM_ACCURACY) && (recall == null || recall > MINIMUM_ACCURACY),
+                "precision=${precision ?: "undefined"} recall=${recall ?: "undefined"}; " +
+                    "failures=${results.filter { it.expectedViolation != it.predictedViolation }}")
+        }
+        assertTrue(missing.isEmpty(), "Selected corpus cases did not produce results: $missing")
     }
+
+    private fun ratio(numerator: Int, denominator: Int): Double? =
+        if (denominator == 0) null else numerator.toDouble() / denominator
 
     private fun verifyCaseEvidence(caseRoot: Path, case: CorpusCase, measurement: Measurement) {
         val inline = case.id.startsWith("kotlin_inline_")
@@ -77,35 +94,6 @@ class DetectionCorpusTest {
             assertTrue(measurement.result.reasons.any { it.code == ReasonCode.FOLDED_EQUIVALENT },
                 "Retained execution must be proved equivalent, not only declared unreachable: $measurement")
         }
-    }
-
-    private fun analyzeCase(
-        fixtures: Path, caseRoot: Path, language: String, extension: String, case: CorpusCase,
-    ): Measurement {
-        val repository = Files.createDirectory(temporary.resolve(case.id))
-        git(repository, "init", "--quiet")
-        git(repository, "config", "user.name", "GraphFold Test")
-        git(repository, "config", "user.email", "test@example.invalid")
-        val sources = Files.createDirectories(repository.resolve("src/main/java/sample"))
-        Files.copy(fixtures.resolve("common/Ab.java"), sources.resolve("Ab.java"))
-        val caseSources = Files.createDirectories(repository.resolve("src/main/$language/sample"))
-        Files.copy(
-            caseRoot.resolve("cases/${case.id}/base/Example.$extension"), caseSources.resolve("Example.$extension"),
-        )
-        git(repository, "add", ".")
-        git(repository, "commit", "--quiet", "-m", "base")
-        val base = git(repository, "rev-parse", "HEAD").trim()
-        Files.copy(
-            caseRoot.resolve("cases/${case.id}/head/Example.$extension"), caseSources.resolve("Example.$extension"),
-            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-        )
-        git(repository, "add", ".")
-        git(repository, "commit", "--quiet", "-m", "head")
-        val head = git(repository, "rev-parse", "HEAD").trim()
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
-            AnalysisRequest(repository.toString(), base, head, Files.readString(fixtures.resolve("fold.yml"))),
-        )
-        return Measurement(case.id, case.violation, result.verdict == Verdict.FAIL, result)
     }
 
     private fun verifyInlineLocations(caseRoot: Path, measurement: Measurement) {
@@ -138,12 +126,7 @@ class DetectionCorpusTest {
         assertEquals(expected, measurement.result.findings.single().locations, measurement.id)
     }
 
-    private fun git(directory: Path, vararg arguments: String): String {
-        val process = ProcessBuilder(listOf("git") + arguments).directory(directory.toFile()).redirectErrorStream(true).start()
-        val text = process.inputStream.bufferedReader().readText()
-        check(process.waitFor() == 0) { text }
-        return text
-    }
+    private companion object { const val MINIMUM_ACCURACY = 0.90 }
 
     data class CorpusCase(val id: String, val violation: Boolean)
     data class Measurement(val id: String, val expectedViolation: Boolean, val predictedViolation: Boolean, val result: AnalysisResult)

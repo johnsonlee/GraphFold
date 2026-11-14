@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+
 import io.johnsonlee.graphfold.engine.diagnosticLabel
 import io.johnsonlee.graphite.core.CallSiteNode
 import io.johnsonlee.graphite.core.NodeId
@@ -18,14 +20,12 @@ import io.johnsonlee.graphite.sootup.MethodObservationEvidence
  * When [receipts] are supplied, reconcile every delivered method with the final graph and
  * require a receipt for each analyzed or explicitly failed declaration. [applicationOwners]
  * is the independent application inventory; artifact role alone does not establish entry scope.
- * A [metadataOnlyMultiRelease] exemption requires an independent inspection of the actual archive;
- * a library name, version label or graph flag alone must never establish it.
+ * Archive normalization belongs to the input adapter; residual multi-release evidence stays explicit.
  */
 internal class GraphiteCompleteness(
     graph: Graph,
     receipts: Map<String, MethodObservationEvidence>? = null,
     applicationOwners: Set<String>? = null,
-    metadataOnlyMultiRelease: (String) -> Boolean = { false },
     modeledResourceCall: (CallSiteNode) -> Boolean = { false },
     provenDispatch: (CallSiteNode) -> Boolean = { false },
 ) {
@@ -54,9 +54,7 @@ internal class GraphiteCompleteness(
                 failures.add("Graphite duplicate class definition: $owner in ${origins.joinToString()}")
             }
             evidence.artifacts.toSortedMap().filterValues { it.multiRelease }.forEach { (origin, _) ->
-                if (!metadataOnlyMultiRelease(origin)) {
-                    failures.add("Graphite did not select runtime variants for multi-release artifact: $origin")
-                }
+                failures.add("Unnormalized multi-release artifact in prepared input: $origin")
             }
             evidence.classes.toSortedMap().filterValues { it.status == AnalysisStatus.RESOLUTION_FAILED }
                 .forEach { (owner, declaration) ->

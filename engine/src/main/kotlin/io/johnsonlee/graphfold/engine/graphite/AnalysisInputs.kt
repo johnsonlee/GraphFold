@@ -9,7 +9,7 @@ import io.johnsonlee.graphfold.engine.cleanupDirectory
 
 /** A loader directory keeps dependency artifacts separate from the application's loose class files. */
 internal class AnalysisInputs(artifact: Path, dependencies: List<Path>) : AutoCloseable {
-    private val staged = if (dependencies.isEmpty()) null else Files.createTempDirectory("graphfold-classpath-")
+    private val staged = stagingDirectory(artifact, dependencies)
     val path: Path = staged ?: artifact
 
     init {
@@ -54,12 +54,8 @@ internal class AnalysisInputs(artifact: Path, dependencies: List<Path>) : AutoCl
     }
 
     private fun stageArtifact(artifact: Path, target: Path) {
-        if (!Files.isDirectory(artifact)) {
-            Files.createSymbolicLink(target.resolve("application.jar"), artifact.toAbsolutePath())
-            return
-        }
         Files.walk(artifact).use { paths ->
-            paths.filter { Files.isRegularFile(it) }.forEach { file ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".class") }.forEach { file ->
                 val output = target.resolve(artifact.relativize(file))
                 Files.createDirectories(output.parent)
                 Files.createSymbolicLink(output, file.toAbsolutePath())
@@ -70,4 +66,13 @@ internal class AnalysisInputs(artifact: Path, dependencies: List<Path>) : AutoCl
     override fun close() {
         staged?.let { cleanupDirectory(it) }
     }
+}
+
+/** Resource files, including embedded archives, must not become frontend classpath entries. */
+private fun stagingDirectory(classes: Path, dependencies: List<Path>): Path? {
+    require(Files.isDirectory(classes)) { "Application input must be a prepared class directory: $classes" }
+    val clean = dependencies.isEmpty() && Files.walk(classes).use { paths ->
+        paths.noneMatch { Files.isRegularFile(it) && !it.toString().endsWith(".class") }
+    }
+    return if (clean) null else Files.createTempDirectory("graphfold-classpath-")
 }

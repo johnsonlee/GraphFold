@@ -1,6 +1,6 @@
 package io.johnsonlee.graphfold.engine.origin
 
-import io.johnsonlee.graphfold.engine.build.CompiledProject
+import io.johnsonlee.graphfold.engine.inputs.StaticScope
 import io.johnsonlee.graphfold.engine.graphite.GraphiteAnalyzer
 import java.nio.file.Files
 import java.nio.file.Path
@@ -46,7 +46,7 @@ class OriginObservationIdentityTest {
             it.callee == "java.lang.RuntimeException.getStackTrace()[Ljava/lang/StackTraceElement;"
         })
         assertTrue(normalized.methodDiagnostics.values.flatten().all { it.observedOwners == setOf("Host\$Stable") })
-        val project = OriginProject(CompiledProject(normalized.classes, listOf(temporary), emptyList()),
+        val project = OriginProject(StaticScope(normalized.classes, listOf(temporary), emptyList()),
             classes, OriginCatalog(emptyList(), emptyList()), normalized.owners, normalized.methodDiagnostics)
         val snapshot = GraphiteAnalyzer().analyzeOriginProject(project, emptyList())
         assertTrue(snapshot.diagnostics.isEmpty(), snapshot.diagnostics.toString())

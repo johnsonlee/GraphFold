@@ -1,8 +1,10 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import io.johnsonlee.graphfold.engine.build.ProjectCompiler
+import io.johnsonlee.graphfold.engine.testing.SourceFixtureCompiler
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -36,7 +38,7 @@ class OriginObservationReachabilityIntegrationTest {
             val owners = listOf("base", "head").map { revision ->
                 val repository = Files.createDirectory(directory.resolve(revision))
                 writeSources(repository, case, revision)
-                val compiled = ProjectCompiler(Duration.ofMinutes(2)).compile(repository, directory.resolve("$revision-output"))
+                val compiled = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(repository, directory.resolve("$revision-output"))
                 liveOwner(compiled.classes)
             }
             assertNotEquals(owners[0], owners[1], "The real compiler must renumber the callback in $language")
@@ -49,7 +51,7 @@ class OriginObservationReachabilityIntegrationTest {
                 val directory = Files.createDirectory(temporary.resolve("dynamic-${case.id}"))
                 val repository = Files.createDirectory(directory.resolve("repository"))
                 writeSources(repository, case, "head")
-                val compiled = ProjectCompiler(Duration.ofMinutes(2)).compile(repository, directory.resolve("output"))
+                val compiled = SourceFixtureCompiler(Duration.ofMinutes(2)).compile(repository, directory.resolve("output"))
                 val factories = nodes(compiled.classes).flatMap { type -> type.methods.flatMap { method ->
                     method.instructions.filterIsInstance<InvokeDynamicInsnNode>()
                 } }
@@ -73,7 +75,7 @@ class OriginObservationReachabilityIntegrationTest {
                     .setCommitter("GraphFold Test", "test@example.invalid").call().name
             }
         }
-        val result = GraphFoldEngine(EngineConfiguration(directory.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(directory.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), commits[0], commits[1], Files.readString(fixtures.resolve("fold.yml"))),
         )
         assertEquals(case.expectedVerdict, result.verdict, "${case.language}/${case.id}: $result")

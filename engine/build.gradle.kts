@@ -5,40 +5,49 @@ plugins {
     alias(libs.plugins.sonatype)
 }
 dependencies {
-    implementation(project(":gfc")) {
-        attributes { attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR)) }
-    }
-    implementation("org.eclipse.jgit:org.eclipse.jgit:7.8.0.202609011348-r")
-    implementation("org.eclipse.jgit:org.eclipse.jgit.ssh.apache:7.8.0.202609011348-r")
-    implementation("org.jetbrains.kotlin:kotlin-metadata-jvm:2.1.20")
-    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20")
-    implementation("org.soot-oss:sootup.core:3.0.1")
-    implementation("org.soot-oss:sootup.java.core:3.0.1")
-    implementation("org.soot-oss:sootup.java.bytecode.frontend:3.0.1")
+    implementation(project(":gfc"))
+    implementation(libs.jgit.core)
+    implementation(libs.jgit.ssh.apache)
+    implementation(libs.kotlin.metadata.jvm)
+    implementation(libs.kotlin.compiler.embeddable)
+    implementation(libs.sootup.core)
+    implementation(libs.sootup.java.core)
+    implementation(libs.sootup.java.bytecode.frontend)
     implementation(libs.graphite.core)
     implementation(libs.graphite.sootup)
     implementation(libs.graphite.cypher)
     implementation(libs.javaparser)
     implementation(libs.asm.tree)
     implementation(libs.asm.analysis)
-    implementation("org.ow2.asm:asm-commons:${libs.versions.asm.get()}")
+    implementation(libs.asm.commons)
     implementation(libs.jackson.kotlin)
     implementation(libs.jackson.yaml)
-    testImplementation("com.networknt:json-schema-validator:1.5.9")
+    testImplementation(libs.junit.platform.launcher)
+    testImplementation(libs.json.schema.validator)
+    testImplementation(libs.mockito.core)
 }
 
 tasks.withType<Test>().configureEach {
-    dependsOn(tasks.named("jar"))
-    systemProperty("graphfold.test.engineJar", tasks.named<Jar>("jar").get().archiveFile.get().asFile.absolutePath)
+    dependsOn(":gfc:jar")
+    forkEvery = 1
+    systemProperty("graphfold.test.runtimeClasspath", sourceSets.test.get().runtimeClasspath.asPath)
     inputs.dir(rootProject.layout.projectDirectory.dir("fixtures"))
         .withPropertyName("analysisFixtures")
         .withPathSensitivity(PathSensitivity.RELATIVE)
-    // Gradle isolates test classloaders; java.class.path need not contain the test runtime.
-    systemProperty("graphfold.test.runtimeClasspath", sourceSets.test.get().runtimeClasspath.asPath)
 }
 
-// Shared regression helpers are local build variants, not part of the public engine SDK.
-components.named<AdhocComponentWithVariants>("java") {
-    withVariantsFromConfiguration(configurations["testFixturesApiElements"]) { skip() }
-    withVariantsFromConfiguration(configurations["testFixturesRuntimeElements"]) { skip() }
+// Explicit compilation phase: test JVMs only consume these compiler-emitted inputs.
+val prepareDetectionCorpus by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Compile every Java and Kotlin detection fixture before running corpus tests."
+    dependsOn(tasks.testClasses, ":gfc:jar")
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("io.johnsonlee.graphfold.engine.testing.DetectionFixturesKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(17)) })
+    workingDir = projectDir
+    maxHeapSize = "1g"
+    inputs.dir(rootProject.layout.projectDirectory.dir("fixtures"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(sourceSets.test.get().runtimeClasspath).withNormalizer(ClasspathNormalizer::class)
+    outputs.dir(layout.buildDirectory.dir("detection-fixtures"))
 }

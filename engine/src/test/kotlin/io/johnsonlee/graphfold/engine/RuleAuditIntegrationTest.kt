@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import io.johnsonlee.graphfold.engine.testing.createFixture
 import java.nio.file.Path
 import org.junit.jupiter.api.Test
@@ -47,7 +49,7 @@ class RuleAuditIntegrationTest {
 
     private fun analyze(fold: String): AnalysisResult {
         val fixture = createFixture(temporary, "arithmetic")
-        return GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        return sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(fixture.repository.toString(), fixture.base, fixture.head, fold),
         )
     }

@@ -1,24 +1,26 @@
 # Detection regression fixtures
 
-The shared fold sets `sample.Ab.enabled("feature")` to false. A positive label means
-behavior or an existing API changes outside that assumption. A negative label means
-the changed behavior disappears, the code is unreachable under the modeled entry
-points, or a supported refactoring preserves behavior. Labels describe expected
-semantics and must not be changed merely to accommodate analyzer output.
+The shared fold sets `sample.Ab.enabled("feature")` to false. A positive label
+means a production change remains outside that selected control. A negative label
+requires static evidence that folding the selected control removes the change or
+that the changed structure is equivalent. An uncalled method, uninvoked lambda,
+unconsumed Stream, or equal observed output cannot excuse an uncontrolled edit.
+Labels must not be changed merely to accommodate analyzer output.
 
 ## Checked-in corpus inventory
 
 | Fixture input | Cases | Positive | Negative | Test code |
 | --- | ---: | ---: | ---: | --- |
-| `manifest.json` + `cases/` | 132 | 61 | 71 | `DetectionCorpusTest` Java test |
-| Same manifest + `kotlin/cases/` | 132 | 61 | 71 | `DetectionCorpusTest` Kotlin test |
-| `kotlin/features.json` + `kotlin/cases/` | 77 | 31 | 46 | `DetectionCorpusTest` Kotlin test |
+| `manifest.json` + `cases/` | 134 | 67 | 67 | `DetectionCorpusTest` Java test |
+| Same manifest + `kotlin/cases/` | 134 | 67 | 67 | `DetectionCorpusTest` Kotlin test |
+| `kotlin/features.json` + `kotlin/cases/` | 77 | 38 | 39 | `DetectionCorpusTest` Kotlin test |
 
-These are 341 language-specific scenarios, including 132 explicitly authored Kotlin
+These are 345 language-specific scenarios, including 134 explicitly authored Kotlin
 counterparts of Java cases. Counts identify checked-in coverage, not a claim that the
-latest test run passed. `DetectionCorpusTest` creates real Git commits, compiles both
-worktrees, executes Cypher selection and Graphite folding, and compares verdicts with
-labels. Every listed case must match; a blocking diagnostic fails independently and
+latest test run passed. `prepareDetectionCorpus` creates real Git revisions and
+compiles each case once. `DetectionCorpusTest` consumes those prepared inputs, runs
+the static engine against the Git revisions with Cypher selection and Graphite
+folding, and compares verdicts with labels. Every listed case must match; a blocking diagnostic fails independently and
 never counts as a true positive. Exact changed-character coordinates are additionally
 asserted for the six uncontrolled Java Stream cases.
 
@@ -51,13 +53,62 @@ These negatives require nonzero proof obligations and at least one
 
 ## Additional checked-in integration fixtures
 
+### Primary packaged Web applications
+
+`SpringBootArchiveGoldenTest` builds real Spring Boot JARs with the official
+packaging plugin. `ServletWarGoldenTest` builds real WARs with business code in
+`WEB-INF/lib` and build-declared servlet API dependencies. Both assert static
+control-coverage verdicts and source locations against the packaged bytes. Neither
+starts the application or a container. These main paired cases require two complete
+PASS results and two located FAIL results; diagnostic-only failures are not detections.
+
+### Flagr business inputs
+
+`FlagrControlGoldenTest` packages a price service in Boot and WAR layouts. Its
+business code contains the real HTTP/JSON client calls, but the test does not run
+that client or start Flagr. The selected decision is folded to both boolean values.
+Changes to the enabled and fallback prices give eight static semantic cases across
+the two layouts. Reports under `adapters/build/reports/flagr` retain analysis
+results without runtime observations.
+
+The application context dimensions are:
+
+| Dimension | All | Single | Multiple | Domain |
+| --- | --- | --- | --- | --- |
+| Platform | No constraint | Android | Android, iOS | Android, iOS, Web |
+| Region | No constraint | KR | KR, US | KR, US, JP |
+
+Historical tests exercised 81 request contexts against a running Flagr evaluator.
+Those observations were never 81 independent static proofs and are no longer part
+of the test suite. The static verdict labels depend on the edited branch and the
+selected control, not on any request assignment or observed price.
+
+`AdvancedFlagrControlGoldenTest` retains six packaged implementations: captured
+lambdas/custom functional interfaces, bound and unbound method references, static
+MethodHandle lookup with `invokeExact`, final-receiver `bindTo` with `invoke`, and
+a serial `filter/map/collect/reduce` pipeline. It inspects actual nested business
+bytecode before checking the same positive/negative static labels and source paths.
+
+`LazyFlagrProductionChangeGoldenTest` checks an uncontrolled lambda-body edit in an
+unconsumed Stream. Both layouts must report the production change; no invocation or
+observed output is needed to establish the expected FAIL.
+
+`ExposureFlagrControlGoldenTest` checks new and existing exposure predicates before
+the selected decision for all nine combinations of all/single/multiple platform and
+region selection. Each archive contains 18 control calls: nine existing-exposure
+price edits and eight new predicates; the all/all new-exposure case has no predicate
+to add and remains unchanged. AB=false must prove coverage; AB=true must locate all
+17 edited sources. Separate compiler
+goldens cover primitive/private-helper and AND/OR conditions, nullable inputs,
+exceptions, side effects, altered fallbacks and unrelated conditions.
+
 | Input | Cases | Test code | Contract |
 | --- | ---: | --- | --- |
 | `negative-scenarios/manifest.json` and full trees | 6 | `NegativeScenarioIntegrationTest` | Multi-ID, A/NA and mixed-key negatives; the same changes must be detected under enabled-path rules |
 | `moves/manifest.json` and full trees | 6 | `MoveIntegrationTest` | Java/Kotlin directory moves, Kotlin facade rename and stable `JvmName`, Java/Kotlin moves with changed arithmetic |
-| `additions/manifest.json` and full trees | 4 | `AdditionIntegrationTest` | New unused and referenced physical source files in Java/Kotlin |
+| `additions/manifest.json` and full trees | 6 | `AdditionIntegrationTest` | New unused, uncontrolled referenced and selected-control-covered physical source files in Java/Kotlin |
 | `initialization/manifest.json` and full trees | 4 | `InitializationIntegrationTest` | Java/Kotlin default-superinterface effects and newly activated initialization from adding an unused default method |
-| `reasons/manifest.json` referencing corpus cases | 5 | `ResultReasonIntegrationTest` | Report categories, verdict reasons, and field-change coordinates |
+| `reasons/manifest.json` referencing corpus cases | 6 | `ResultReasonIntegrationTest` | Report categories, verdict reasons, and field-change coordinates |
 | `analysis-gaps/reflective-dependency/` | 2 | `ReflectiveDependencyIntegrationTest` | Java/Kotlin reflected private field names cannot silently disappear across an external-library boundary |
 
 Pure source moves carry old/new paths and no invented changed-character ranges.
@@ -71,7 +122,7 @@ increase the number of independent detection scenarios.
 ## Generated-code location regressions
 
 The separate source-location matrix contains **22 base/head pairs: Java 8 and
-Kotlin 14**. These do not increase the **341-case detection corpus** or its accuracy
+Kotlin 14**. These do not increase the **345-case detection corpus** or its accuracy
 sample size. They are checked-in regression inputs; their presence alone is not a
 claim that validation has passed.
 
@@ -118,7 +169,36 @@ The compiler-version source-mapping matrix lives in
 It does not claim cross-compiler behavioral equivalence. Final execution and coverage
 evidence belongs in [the validation record](../docs/validation.md).
 
+Packaged golden tests build and inspect artifacts, then assert static verdicts.
+They do not start applications, containers or HTTP evaluators.
+
 ## Limits of this inventory
+
+### Verdict acceptance and independent evidence
+
+The 345 source-corpus scenarios contain 172 expected differences and 173 expected
+equivalences. They include 134 Java/Kotlin counterpart pairs, not 345 independent
+samples. The corpus compiles source-only fixtures; its accuracy does not validate
+build-declared artifact selection, archive normalization, or source-provenance export.
+Line/branch coverage and matching these development labels do not establish that
+verdicts have converged on real applications.
+
+Deployment acceptance must distinguish proved equivalence, detected difference,
+incomplete/unsupported analysis, and operational failure. The public API uses FAIL
+for the latter three, so a FAIL assertion alone is insufficient. An unsupported or
+incomplete result is not a detection true positive. Report these outcomes separately,
+including incomplete cases by their semantic label, instead of silently excluding
+them from an accuracy claim. An unsafe PASS remains a false negative.
+
+For a supported feature, use paired full-engine fixtures with actual packaged
+BASE/HEAD artifacts: a behavior-changing case must produce a finding without a
+blocking diagnostic, and a behavior-preserving case must PASS with completed proof.
+Fix expected outcomes before inspecting analyzer results. Executed witnesses provide
+independent evidence for the selected inputs; they are not a proof of equivalence for
+all inputs. Unsupported-loader fixtures separately assert the exact blocking reason
+and must include ordinary-resource controls so that broad rejection cannot masquerade
+as improved detection. Development regressions still need a frozen, independently
+labelled real-project holdout before supporting a general accuracy claim.
 
 The new-unused-class corpus case places the new class in an existing source file;
 `AdditionIntegrationTest` separately exercises actual new physical files in both
@@ -135,10 +215,18 @@ edge cases, more callback frameworks, and general asynchronous execution remain
 outside these fixture claims. Kotlin-specific coverage is the enumerated set above,
 not every language feature or compiler mode.
 
-Opaque third-party object-graph escape is a separate analysis boundary: arrays, collections,
-`Optional`, application objects, and unmodeled library receivers fail closed unless a model proves
-them safe. Even `List<String>` is currently conservative. Scalar-only external calls and supported
-JDK/Kotlin callback paths are handled separately. These diagnostics do not contribute true positives
-to the regression corpus.
+Opaque third-party object-graph escape is a separate analysis boundary. Scalar-typed arrays
+(including nested arrays, field reads and element loads) cannot carry application-object payloads;
+unknown `Object[]` and application-object arrays retain their observation guards. Exact immutable
+factories and static/private/final application helper calls preserve proven scalar-only payloads,
+including local aliases and distinct safe/unsafe argument contexts. A declared `List<String>` alone
+still does not establish its contents. Mutable object graphs, unknown field contents, overridable
+helpers and unmodeled library receivers remain guarded. These payload proofs do not erase array
+mutation, resource effects or diagnostics inside helpers. Recursion and the bounded helper-depth
+budget cannot produce a proof. Provided dependencies additionally need a closed bytecode observation
+proof for the exact callee and its initialization closure. The reflective dependency regression
+executes a zero-argument library call whose hidden reflection observes a changed private application
+method; it must retain a finding or gap despite receiving no application-object argument.
+These diagnostics do not contribute true positives to the corpus.
 
 Four additional full-engine runs reuse the controlled/uncontrolled Kotlin same-line fixtures with CRLF and BOM+CRLF. They assert the same verdicts and exact diff line/column ranges. Compiler-provider tests additionally cover physical UTF-16 offsets for astral Unicode, tabs, mixed line endings and inline copies. The persistent compiler matrix validates 20 compiler/frontend/encoding combinations with one unchanged provider binary.

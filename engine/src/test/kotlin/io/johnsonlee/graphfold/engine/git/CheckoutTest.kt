@@ -2,6 +2,7 @@ package io.johnsonlee.graphfold.engine.git
 
 import java.nio.file.Files
 import java.nio.file.Path
+import org.eclipse.jgit.dircache.InvalidPathException
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.CommitBuilder
 import org.eclipse.jgit.lib.Constants
@@ -20,9 +21,35 @@ import kotlin.test.assertTrue
 class CheckoutTest {
     @TempDir lateinit var temporary: Path
 
+    @Test
+    fun `native checkout restores raw bytes without running configured filters`() {
+        val source = Files.createDirectory(temporary.resolve("source"))
+        Git.init().setDirectory(source.toFile()).call().use { git ->
+            Files.writeString(source.resolve(".gitattributes"), "* filter=external text eol=crlf ident\n")
+            Files.writeString(source.resolve("payload"), "first\nsecond\n${'$'}Id${'$'}\n")
+            git.add().addFilepattern(".").call()
+            val revision = git.commit().setMessage("filter fixture").setAuthor("Fixture", "fixture@example.invalid")
+                .setCommitter("Fixture", "fixture@example.invalid").call().name
+            val destination = temporary.resolve("checkout")
+            checkout(git.repository, revision, destination)
+            Git.open(destination.toFile()).use { restored ->
+                restored.repository.config.apply {
+                    setString("filter", "external", "smudge", "exit 73")
+                    setString("filter", "external", "clean", "exit 74")
+                    setBoolean("filter", "external", "required", true)
+                    setBoolean("core", null, "autocrlf", true)
+                    save()
+                }
+            }
+            Files.writeString(destination.resolve("payload"), "dirty")
+            checkout(git.repository, revision, destination)
+            assertEquals("first\nsecond\n${'$'}Id${'$'}\n", Files.readString(destination.resolve("payload")))
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = [".git", ".GiT"])
-    fun `raw tree cannot overwrite checkout metadata`(metadataName: String) {
+    fun `native checkout cannot overwrite checkout metadata`(metadataName: String) {
         Git.init().setBare(true).setDirectory(temporary.resolve("objects.git").toFile()).call().use { git ->
             val commit = git.repository.newObjectInserter().use { objects ->
                 val blob = objects.insert(Constants.OBJ_BLOB, "malicious metadata".toByteArray())
@@ -38,10 +65,9 @@ class CheckoutTest {
                 id
             }
             val destination = temporary.resolve("checkout")
-            val failure = assertFailsWith<GitOperationException> {
+            assertFailsWith<InvalidPathException> {
                 checkout(git.repository, commit.name, destination)
             }
-            assertEquals("Unsafe checkout path", failure.message)
             assertTrue(Files.isDirectory(destination.resolve(".git")))
             assertTrue(Files.readString(destination.resolve(".git/HEAD")).startsWith("ref: refs/heads/"))
         }
@@ -65,10 +91,9 @@ class CheckoutTest {
                 objects.flush()
                 id
             }
-            val failure = assertFailsWith<GitOperationException> {
+            assertFailsWith<InvalidPathException> {
                 checkout(git.repository, commit.name, temporary.resolve("checkout"))
             }
-            assertEquals("Unsafe checkout path", failure.message)
             assertFalse(Files.exists(temporary.resolve("escape")))
         }
     }

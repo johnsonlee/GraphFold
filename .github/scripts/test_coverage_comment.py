@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 from coverage_comment import (CoverageStatus, GitHub, MARKER, MAX_ARCHIVE, MAX_JSON, SafeRedirect, comment_body,
                               documents, latest, publish, read_archive, resolve, upsert)
-from coverage_report import PLATFORMS
+from coverage_report import MODULES, PLATFORMS
 from test_coverage_report import report
 
 
@@ -127,8 +127,8 @@ class CoverageCommentTest(unittest.TestCase):
         self.assertEqual(("/issues/7/comments", "POST"), (path, method))
         self.assertTrue(payload["body"].startswith(MARKER + "\n"))
         self.assertIn("Unit test coverage: Passed", payload["body"])
-        self.assertEqual(5, payload["body"].count("ubuntu-latest"))
-        self.assertEqual(5, payload["body"].count("macos-latest"))
+        self.assertEqual(len(MODULES) + 1, payload["body"].count("ubuntu-latest"))
+        self.assertEqual(len(MODULES) + 1, payload["body"].count("macos-latest"))
         self.assertIn("https://github.com/owner/graphfold/actions/runs/100", payload["body"])
 
     def test_existing_owned_comment_is_updated_and_owned_duplicates_deleted(self):

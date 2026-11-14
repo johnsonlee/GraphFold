@@ -42,13 +42,15 @@ import org.objectweb.asm.tree.ClassNode
  * @param classes Directory of application class files emitted for the same revision as the indexed sources.
  * @param sourceOutputs Source-root to original class-output mapping; when supplied, limits owners to their build module.
  */
-class KotlinSourceIndex(classes: Path, private val sourceOutputs: Map<Path, List<Path>> = emptyMap()) : AutoCloseable {
+class KotlinSourceIndex(classes: List<Path>, private val sourceOutputs: Map<Path, List<Path>> = emptyMap()) : AutoCloseable {
+    constructor(classes: Path, sourceOutputs: Map<Path, List<Path>> = emptyMap()) : this(listOf(classes), sourceOutputs)
+
     private val disposable = Disposer.newDisposable("graphfold-kotlin-source")
     private val environment = KotlinCoreEnvironment.createForProduction(
         disposable, CompilerConfiguration(), EnvironmentConfigFiles.JVM_CONFIG_FILES,
     )
     private val factory = KtPsiFactory(environment.project, false)
-    private val inventory: List<Owner> = readOwners(classes)
+    private val inventory: List<Owner> = classes.distinct().flatMap(::readOwners)
 
     /** Disposes the Kotlin PSI environment; this index must not be used afterward. */
     override fun close() {

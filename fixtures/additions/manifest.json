@@ -1,7 +1,7 @@
 [
   {
     "id": "java_unused_file",
-    "violation": false,
+    "violation": true,
     "addedPath": "src/main/java/sample/Additional.java"
   },
   {
@@ -11,12 +11,22 @@
   },
   {
     "id": "kotlin_unused_file",
-    "violation": false,
+    "violation": true,
     "addedPath": "src/main/kotlin/sample/Additional.kt"
   },
   {
     "id": "kotlin_used_file",
     "violation": true,
+    "addedPath": "src/main/kotlin/sample/Additional.kt"
+  },
+  {
+    "id": "java_gated_file",
+    "violation": false,
+    "addedPath": "src/main/java/sample/Additional.java"
+  },
+  {
+    "id": "kotlin_gated_file",
+    "violation": false,
     "addedPath": "src/main/kotlin/sample/Additional.kt"
   }
 ]

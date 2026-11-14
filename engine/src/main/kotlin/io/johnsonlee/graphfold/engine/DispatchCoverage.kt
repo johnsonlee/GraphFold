@@ -1,6 +1,6 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
 
 /**
  * Proves that an omitted dispatch edge cannot hide a changed application implementation outside

@@ -30,17 +30,19 @@ public final class GraphFoldOrigins implements Plugin {
      * Installs provenance capture on javac's compilation task.
      *
      * @param task the actual compilation task, before compilation starts
-     * @param arguments exactly three Base64 URL-encoded UTF-8 values: output directory, checkout root,
-     *                  and analysis run ID, in that order
+     * @param arguments three or four Base64 URL-encoded UTF-8 values: provenance directory, checkout root,
+     *                  analysis run ID, and optional actual class-output directory, in that order
      * @throws IllegalArgumentException if the argument count or encoding is invalid, or the source root
      *                                  cannot be resolved
      */
     @Override
     public void init(JavacTask task, String... arguments) {
-        if (arguments.length != 3) {
-            throw new IllegalArgumentException("GraphFoldOrigins requires encoded output directory, source root and run ID");
+        if (arguments.length != 3 && arguments.length != 4) {
+            throw new IllegalArgumentException("GraphFoldOrigins requires encoded output directory, source root, run ID and optional class-output directory");
         }
-        attach(task, decode(arguments[0]), decode(arguments[1]), new String(Base64.getUrlDecoder().decode(arguments[2]), StandardCharsets.UTF_8));
+        attach(task, decode(arguments[0]), decode(arguments[1]),
+            new String(Base64.getUrlDecoder().decode(arguments[2]), StandardCharsets.UTF_8),
+            arguments.length == 4 ? decode(arguments[3]) : null);
     }
 
     /**
@@ -67,7 +69,22 @@ public final class GraphFoldOrigins implements Plugin {
      * @throws IllegalArgumentException if the source root cannot be resolved
      */
     public static void attach(JavacTask task, Path outputDirectory, Path sourceRoot, String runId) {
-        task.addTaskListener(new OriginListener(task, outputDirectory, sourceRoot, runId));
+        attach(task, outputDirectory, sourceRoot, runId, null);
+    }
+
+    /**
+     * Captures origins and hashes the final compiler-emitted classes at compilation completion.
+     * The class-output directory must be the actual destination supplied to javac; no directory is inferred.
+     * Older overloads omit class hashes and cannot satisfy strict prepared-origin validation.
+     *
+     * @param task the actual compilation task
+     * @param outputDirectory provenance output directory
+     * @param sourceRoot checkout root containing compiled sources
+     * @param runId compilation identity
+     * @param classesDirectory actual javac class-output directory, or null for legacy unsealed evidence
+     */
+    public static void attach(JavacTask task, Path outputDirectory, Path sourceRoot, String runId, Path classesDirectory) {
+        task.addTaskListener(new OriginListener(task, outputDirectory, sourceRoot, runId, classesDirectory));
     }
 
     private static Path decode(String value) {

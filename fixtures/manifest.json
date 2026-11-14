@@ -8,6 +8,14 @@
     "violation": false
   },
   {
+    "id": "gated_new_field",
+    "violation": false
+  },
+  {
+    "id": "gated_new_class",
+    "violation": false
+  },
+  {
     "id": "gated_throw",
     "violation": false
   },
@@ -77,7 +85,7 @@
   },
   {
     "id": "new_public_method",
-    "violation": false
+    "violation": true
   },
   {
     "id": "anonymous_callback",
@@ -365,7 +373,7 @@
   },
   {
     "id": "new_unused_class",
-    "violation": false
+    "violation": true
   },
   {
     "id": "new_referenced_class",
@@ -397,7 +405,7 @@
   },
   {
     "id": "unused_existing_field",
-    "violation": false
+    "violation": true
   },
   {
     "id": "referenced_existing_field",
@@ -405,7 +413,7 @@
   },
   {
     "id": "unused_new_field",
-    "violation": false
+    "violation": true
   },
   {
     "id": "effectful_new_field",
@@ -441,7 +449,7 @@
   },
   {
     "id": "new_unreferenced_static_block",
-    "violation": false
+    "violation": true
   },
   {
     "id": "new_referenced_static_block",
@@ -465,7 +473,7 @@
   },
   {
     "id": "constant_reference_static_block",
-    "violation": false
+    "violation": true
   },
   {
     "id": "new_inherited_override",

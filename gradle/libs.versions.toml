@@ -1,28 +1,50 @@
 [versions]
 graphite = "2.15.0"
 kotlin = "2.1.20"
-clikt = "5.0.3"
 jackson = "2.18.3"
 javaparser = "3.26.3"
-asm = "9.7.1"
+asm = "9.10.1"
 junit = "5.12.1"
 ksp = "2.1.20-1.0.32"
+jgit = "7.8.0.202609011348-r"
+sootup = "3.0.1"
+jacoco = "0.8.13"
+mockito = "5.16.1"
+json-schema-validator = "1.5.9"
+maven-api = "3.9.9"
+maven-plugin-tools = "3.15.1"
 
 [libraries]
+jgit-core = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+jgit-ssh-apache = { module = "org.eclipse.jgit:org.eclipse.jgit.ssh.apache", version.ref = "jgit" }
+kotlin-metadata-jvm = { module = "org.jetbrains.kotlin:kotlin-metadata-jvm", version.ref = "kotlin" }
+kotlin-compiler-embeddable = { module = "org.jetbrains.kotlin:kotlin-compiler-embeddable", version.ref = "kotlin" }
+sootup-core = { module = "org.soot-oss:sootup.core", version.ref = "sootup" }
+sootup-java-core = { module = "org.soot-oss:sootup.java.core", version.ref = "sootup" }
+sootup-java-bytecode-frontend = { module = "org.soot-oss:sootup.java.bytecode.frontend", version.ref = "sootup" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+maven-plugin-api = { module = "org.apache.maven:maven-plugin-api", version.ref = "maven-api" }
+maven-core = { module = "org.apache.maven:maven-core", version.ref = "maven-api" }
+maven-plugin-annotations = { module = "org.apache.maven.plugin-tools:maven-plugin-annotations", version.ref = "maven-plugin-tools" }
+javax-inject = { module = "javax.inject:javax.inject", version = "1" }
 graphite-core = { module = "io.johnsonlee.graphite:core", version.ref = "graphite" }
 graphite-sootup = { module = "io.johnsonlee.graphite:sootup", version.ref = "graphite" }
 graphite-cypher = { module = "io.johnsonlee.graphite:cypher", version.ref = "graphite" }
-clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
 jackson-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
 javaparser = { module = "com.github.javaparser:javaparser-symbol-solver-core", version.ref = "javaparser" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
 asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
 asm-analysis = { module = "org.ow2.asm:asm-analysis", version.ref = "asm" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 auto-service-annotations = { module = "com.google.auto.service:auto-service-annotations", version = "1.1.1" }
 auto-service-ksp = { module = "dev.zacsweers.autoservice:auto-service-ksp", version = "1.2.0" }
 
 [plugins]
+maven-plugin-development = { id = "org.gradlex.maven-plugin-development", version = "1.0.3" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version = "1.23.8" }

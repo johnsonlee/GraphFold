@@ -9,8 +9,8 @@ dependencies {
     compileOnly(libs.auto.service.annotations)
     ksp(libs.auto.service.ksp)
     // Compiler APIs and Kotlin runtime come from the host compiler, never from the provider JAR.
-    compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20")
-    testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20")
+    compileOnly(libs.kotlin.compiler.embeddable)
+    testImplementation(libs.kotlin.compiler.embeddable)
     testImplementation(libs.jackson.kotlin)
     testImplementation(libs.asm.tree)
 }

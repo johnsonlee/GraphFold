@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.zip.ZipFile
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.junit.jupiter.api.Test
@@ -49,10 +50,28 @@ class KotlinInitializerBindingTest {
             "match" to mapOf("CallSite" to mapOf("callee_class" to "SampleKt", "callee_name" to "gate")), "value" to false,
         ))) else emptyList()
         val analyzer = GraphiteAnalyzer()
-        val comparison = SnapshotComparison(analyzer.analyze(before.resolve("classes"), rules, listOf(library)),
-            analyzer.analyze(after.resolve("classes"), rules, listOf(library)))
+        val dependency = preparedLibrary()
+        val comparison = SnapshotComparison(analyzer.analyze(before.resolve("classes"), rules, listOf(dependency)),
+            analyzer.analyze(after.resolve("classes"), rules, listOf(dependency)))
         assertTrue(comparison.analysisGaps(obligation).isEmpty())
         assertEquals(controlled, comparison.differences(obligation).isEmpty())
+    }
+
+    /** The core fixture supplies classpath bytes, with module-only MR metadata removed by its input preparation. */
+    private fun preparedLibrary(): Path {
+        val target = Files.createDirectory(directory.resolve("library-classes"))
+        ZipFile(library.toFile()).use { archive ->
+            val entries = archive.entries().asSequence().filter { !it.isDirectory && it.name.endsWith(".class") }.toList()
+            require(entries.filter { it.name.startsWith("META-INF/versions/") }.all { it.name.endsWith("/module-info.class") }) {
+                "Fixture needs explicit alternative class inputs"
+            }
+            entries.filter { !it.name.startsWith("META-INF/versions/") && it.name != "module-info.class" }.forEach { entry ->
+                val file = target.resolve(entry.name)
+                Files.createDirectories(file.parent)
+                archive.getInputStream(entry).use { Files.copy(it, file) }
+            }
+        }
+        return target
     }
 
     @Test fun `top level scope keeps outer companion and nested lowerings together without unrelated owners`() {

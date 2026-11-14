@@ -676,14 +676,14 @@
   {
     "id": "earlier_unused_declaration",
     "language": "java",
-    "expectedVerdict": "PASS",
+    "expectedVerdict": "FAIL",
     "operation": "insert",
     "anonymousOwnerDrift": true
   },
   {
     "id": "earlier_unused_declaration",
     "language": "kotlin",
-    "expectedVerdict": "PASS",
+    "expectedVerdict": "FAIL",
     "operation": "insert",
     "anonymousOwnerDrift": false
   },

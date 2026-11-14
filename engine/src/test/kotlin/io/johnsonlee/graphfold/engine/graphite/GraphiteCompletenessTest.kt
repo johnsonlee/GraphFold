@@ -51,6 +51,20 @@ class GraphiteCompletenessTest {
         assertTrue(!gaps.single().dispatchOnly)
     }
 
+    @Test fun `exact dispatch does not claim a native target has modeled effects`() {
+        val builder = DefaultGraph.Builder()
+        builder.addMethod(caller)
+        builder.addMethod(callee)
+        builder.addNode(CallSiteNode(NodeId(1), caller, callee, null, null, emptyList(), 0))
+        builder.setAnalysisCompleteness(evidence.copy(
+            methods = mapOf(callee.identity to MethodEvidence(AnalysisStatus.NATIVE)),
+            callSiteGaps = mapOf(1 to CallSiteGap.DISPATCH_UNRESOLVED),
+        ))
+        val result = GraphiteCompleteness(builder.build(), provenDispatch = { true })
+        assertEquals(setOf(callee.identity), result.incompleteResourceMethods { true })
+        assertTrue(result.methodDiagnostics.getValue(callee.identity).single().message.contains("NATIVE"))
+    }
+
     @Test fun `a graph without evidence is unknown rather than empty and complete`() {
         val result = GraphiteCompleteness(DefaultGraph.Builder().build())
         assertEquals(1, result.diagnostics.size)
@@ -118,26 +132,12 @@ class GraphiteCompletenessTest {
         assertTrue(result.diagnostics.any { "multi-release" in it && "versions.jar" in it })
     }
 
-    @Test fun `independently verified descriptor metadata exempts only its exact artifact origin`() {
-        val checked = mutableListOf<String>()
-        val result = inspect(evidence.copy(artifacts = evidence.artifacts + mapOf(
-            "metadata.jar" to ArtifactEvidence(ArtifactRole.LIBRARY, multiRelease = true),
-            "variants.jar" to ArtifactEvidence(ArtifactRole.LIBRARY, multiRelease = true),
-        ))) { origin ->
-            checked += origin
-            origin == "metadata.jar"
-        }
-        assertEquals(listOf("metadata.jar", "variants.jar"), checked)
-        assertEquals(1, result.diagnostics.size)
-        assertTrue("variants.jar" in result.diagnostics.single())
-    }
-
-    @Test fun `descriptor exemption does not hide an incomplete method body`() {
+    @Test fun `raw multi release inputs cannot hide an incomplete method body`() {
         val result = inspect(evidence.copy(
             artifacts = mapOf("application.jar" to ArtifactEvidence(ArtifactRole.APPLICATION, multiRelease = true)),
             methods = mapOf(caller.identity to MethodEvidence(AnalysisStatus.INCOMPLETE)),
-        )) { true }
-        assertTrue(result.diagnostics.isEmpty())
+        ))
+        assertTrue("application.jar" in result.diagnostics.single())
         assertEquals(setOf(caller.identity), result.incompleteMethods)
     }
 
@@ -169,7 +169,7 @@ class GraphiteCompletenessTest {
     }
 
     private fun inspect(
-        completeness: AnalysisCompleteness, metadataOnlyMultiRelease: (String) -> Boolean = { false },
+        completeness: AnalysisCompleteness,
     ): GraphiteCompleteness {
         val builder = DefaultGraph.Builder()
         builder.addMethod(caller)
@@ -177,7 +177,7 @@ class GraphiteCompletenessTest {
         builder.addNode(CallSiteNode(NodeId(1), caller, callee, null, null, emptyList(), 0, null))
         builder.addNode(ReturnNode(NodeId(2), caller))
         builder.setAnalysisCompleteness(completeness)
-        return GraphiteCompleteness(builder.build(), metadataOnlyMultiRelease = metadataOnlyMultiRelease)
+        return GraphiteCompleteness(builder.build())
     }
 }
 

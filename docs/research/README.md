@@ -7,4 +7,3 @@ Research artifacts are grouped by topic. Retained logs, JSON results, and patche
 | [UAST](uast/README.md) | Archived frontend evaluation, reproducible candidate patch, source hashes, and installed-CLI probes. UAST was not adopted. |
 | [Compiler](compiler/README.md) | Compiler-origin compatibility matrix, fixture, reproducible probe, and retained run logs. |
 | [Validation](validation/README.md) | Current aggregate quality-gate results and historical cross-module validation records. |
-| [Release](release/README.md) | Version derivation and publication/rebuild validation records. |

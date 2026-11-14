@@ -5,6 +5,8 @@ import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Compiler
 import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Kind
 import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.KotlinFrontend
 import io.johnsonlee.graphfold.compiler.protocol.OriginProtocol.Provenance
+import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.util.file
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -20,15 +22,22 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
     private val sources = linkedMapOf<String, Source>()
     private val outputs = linkedMapOf<String, String>()
     private val outputClasses = linkedMapOf<String, Path>()
+    private val inlineCapture = KotlinInlineCapture { identity, declaration ->
+        capture(identity, declaration.file.fileEntry.name, declaration.startOffset, declaration.endOffset, Kind.DECLARATION)
+    }
+
+    fun method(owner: String, declaration: IrFunction?, name: String, descriptor: String) {
+        inlineCapture.method(owner, declaration, name, descriptor)
+    }
 
     fun output(owner: String, sourceFiles: List<Path>, classFile: Path? = null) {
         val inputs = sourceFiles.distinct().map { file ->
             val path = file.toRealPath().toString()
             val source = requireNotNull(readSource(path)) { "Compiler output source is unreadable: $path" }
-            "{\"path\":${json(path)},\"hash\":${json(source.hash)}}"
+            "{\"path\":${originJson(path)},\"hash\":${originJson(source.hash)}}"
         }
         if (classFile != null) outputClasses[owner] = classFile
-        outputs[owner] = "{\"owner\":${json(owner)},\"sources\":[${inputs.joinToString(",")}] }"
+        outputs[owner] = "{\"owner\":${originJson(owner)},\"sources\":[${inputs.joinToString(",")}] }"
     }
 
     fun start() {
@@ -87,19 +96,22 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
             val origin = emission.origin
             if (emission.ignorable() || emission.generatedDeclaration(generated)) return@forEach
             if (origin == null || emission.markers != 1 || !emission.complete) {
-                unresolved += "{\"owner\":${json(emission.owner.replace('/', '.'))},\"reason\":" +
-                    json(failures[emission.owner] ?: "Emitted class has no unique verified compiler provenance") + "}"
+                unresolved += "{\"owner\":${originJson(emission.owner.replace('/', '.'))},\"reason\":" +
+                    originJson(failures[emission.owner] ?: "Emitted class has no unique verified compiler provenance") + "}"
             } else records += record(emission, origin)
         }
         writeDocument(records, unresolved, complete = true)
     }
 
     private fun writeDocument(records: List<String>, unresolved: List<String>, complete: Boolean) {
-        val document = "{\"schema\":1,\"runId\":${json(runId)},\"producer\":{\"compiler\":${json(Compiler.KOTLINC.wireValue())}," +
-            "\"version\":${json(version)}," +
-            "\"frontend\":${json(frontend.name)},\"backend\":${json(Backend.JVM.name)}},\"complete\":$complete," +
+        val inline = if (complete) inlineCapture.evidence(outputClasses, emitted.keys.map { it.replace('/', '.') }.toSet()) else "{}"
+        val document = "{\"schema\":1,\"runId\":${originJson(runId)},\"producer\":{ " +
+            "\"compiler\":${originJson(Compiler.KOTLINC.wireValue())}," +
+            "\"version\":${originJson(version)}," +
+            "\"frontend\":${originJson(frontend.name)},\"backend\":${originJson(Backend.JVM.name)}},\"complete\":$complete," +
             "\"records\":[${records.joinToString(",")}],\"unresolved\":[${unresolved.joinToString(",")}]," +
-            "\"outputs\":[${outputs.values.joinToString(",")}] }"
+            "\"outputs\":[${outputs.values.joinToString(",")}]," +
+            "\"inlineEvidence\":$inline }"
         val target = output.toAbsolutePath().normalize()
         Files.createDirectories(target.parent)
         val temporary = Files.createTempFile(target.parent, "graphfold-origin-", ".json")
@@ -113,11 +125,15 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
 
     private fun record(emission: Emission, origin: Origin): String {
         val span = "{\"start\":${origin.start},\"end\":${origin.end}}"
-        return "{\"owner\":${json(emission.owner.replace('/', '.'))},\"source\":${json(origin.source)}," +
-            "\"sourceHash\":${json(origin.sourceHash)},\"declaration\":$span,\"allocation\":$span," +
-            "\"originKind\":${json(origin.kind.name)},\"provenance\":${json(emission.kind.name)}," +
-            "\"enclosingOwner\":${json(emission.outerOwner?.replace('/', '.'))}," +
-            "\"enclosingMethod\":${json(emission.outerMethod)},\"enclosingDescriptor\":${json(emission.outerDescriptor)}}"
+        val classHash = outputClasses[emission.owner.replace('/', '.')]?.let {
+            MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(it)).joinToString("") { byte -> "%02x".format(byte) }
+        }
+        return "{\"owner\":${originJson(emission.owner.replace('/', '.'))},\"source\":${originJson(origin.source)}," +
+            "\"classHash\":${originJson(classHash)},\"sourceHash\":${originJson(origin.sourceHash)}," +
+            "\"declaration\":$span,\"allocation\":$span," +
+            "\"originKind\":${originJson(origin.kind.name)},\"provenance\":${originJson(emission.kind.name)}," +
+            "\"enclosingOwner\":${originJson(emission.outerOwner?.replace('/', '.'))}," +
+            "\"enclosingMethod\":${originJson(emission.outerMethod)},\"enclosingDescriptor\":${originJson(emission.outerDescriptor)}}"
     }
 
     private fun decode(values: Map<String, Any?>): Origin? {
@@ -192,7 +208,7 @@ internal class KotlinOriginCollector(outputDirectory: Path, private val version:
 }
 
 /** Compiler plugins cannot rely on the host build's Jackson version or classloader. */
-private fun json(value: String?): String = if (value == null) "null" else buildString {
+internal fun originJson(value: String?): String = if (value == null) "null" else buildString {
     append('"')
     value.forEach { character ->
         when (character) {

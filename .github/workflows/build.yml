@@ -1,16 +1,17 @@
 name: Build
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
-    name: verify (${{ matrix.os }})
+  prepare:
+    name: prepare (${{ matrix.os }})
     permissions:
       contents: read
       packages: read
@@ -27,21 +28,139 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: gradle/actions/setup-gradle@v4
       - run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
-      - run: ./gradlew check :cli:installDist --no-daemon --stacktrace
-      - run: cli/build/install/graphfold/bin/graphfold --help
-      - run: cli/build/install/graphfold/bin/graphfold --version
-      - name: Generate reports even after failed tests
+      - name: Compile modules, test classes, publications and corpus once
+        run: >-
+          ./gradlew testClasses :plugin:gradle:pluginUnderTestMetadata
+          publishAllPublicationsToReleaseVerificationRepository :engine:prepareDetectionCorpus writeTestInventory
+          check -x test -x jacocoTestReport -x jacocoTestCoverageVerification
+          -Pversion=0.1.0-ci --no-daemon --stacktrace
+      - name: Package prepared outputs including fixture Git metadata
+        run: python3 .github/scripts/test_shards.py pack --archive "${{ runner.temp }}/prepared.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prepared-${{ matrix.os }}
+          overwrite: true
+          path: ${{ runner.temp }}/prepared.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+  verify:
+    name: verify (${{ matrix.os }}, shard ${{ matrix.shard }})
+    needs: prepare
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        shard: [0, 1, 2, 3]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prepared-${{ matrix.os }}
+          path: ${{ runner.temp }}/prepared
+      - run: python3 .github/scripts/test_shards.py restore --archive "${{ runner.temp }}/prepared/prepared.tar.gz"
+      - name: Run precompiled unit and corpus tests
+        run: >-
+          ./gradlew precompiledTest -Pversion=0.1.0-ci
+          -Pgraphfold.testShard=${{ matrix.shard }} -Pgraphfold.testShards=4
+          --max-workers=1 --no-daemon --stacktrace --continue
+      - name: Collect shard evidence even after a failed test
         if: always()
         run: >-
-          ./gradlew :engine:jacocoTestReport :cli:jacocoTestReport :gfc:jacocoTestReport
-          :gradle-plugin:jacocoTestReport -x test --continue --no-daemon --stacktrace
+          python3 .github/scripts/test_shards.py collect
+          --shard ${{ matrix.shard }} --shards 4
+          --output "${{ runner.temp }}/test-shard/shard-${{ matrix.shard }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-shard-${{ matrix.os }}-${{ matrix.shard }}
+          overwrite: true
+          path: ${{ runner.temp }}/test-shard/
+          if-no-files-found: error
+  aggregate:
+    # Preserve the platform check names required by the repository ruleset.
+    name: verify (${{ matrix.os }})
+    needs: [prepare, verify]
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prepared-${{ matrix.os }}
+          path: ${{ runner.temp }}/prepared
+      - run: python3 .github/scripts/test_shards.py restore --archive "${{ runner.temp }}/prepared/prepared.tar.gz"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: test-shard-${{ matrix.os }}-*
+          path: ${{ runner.temp }}/shards
+          merge-multiple: true
+      - name: Require complete successful test and corpus evidence
+        run: |
+          python3 .github/scripts/test_shards.py aggregate --input "${{ runner.temp }}/shards" --output build/shard-summary --shards 4
+          cat build/shard-summary/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Merge coverage from all shards without recompiling
+        if: always()
+        run: >-
+          ./gradlew jacocoTestReport jacocoTestCoverageVerification
+          -Pgraphfold.coverageDataDirectory="${{ runner.temp }}/shards"
+          -Pversion=0.1.0-ci --continue --no-daemon --stacktrace
       - name: Require exact 100 percent line and branch coverage per module
         if: always()
+        run: python3 .github/scripts/coverage_report.py --platform "${{ matrix.os }}" --output coverage/coverage.json
+      - name: Verify prepared publications
+        run: python3 .github/scripts/release.py verify build/repository 0.1.0-ci
+      - name: Verify actual Maven library, Boot JAR and WAR lifecycles
         env:
-          COVERAGE_PLATFORM: ${{ matrix.os }}
-        run: python3 .github/scripts/coverage_report.py --platform "$COVERAGE_PLATFORM" --output coverage/coverage.json
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: >-
+          python3 tools/verification/verify_maven_lifecycle.py
+          --publication-repository build/repository --version 0.1.0-ci
+          --output "${{ runner.temp }}/graphfold-maven-lifecycle"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: maven-lifecycle-${{ matrix.os }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/graphfold-maven-lifecycle/summary.json
+            ${{ runner.temp }}/graphfold-maven-lifecycle/*/*-report.json
+            ${{ runner.temp }}/graphfold-maven-lifecycle/*/maven.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -51,14 +170,22 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reports-${{ matrix.os }}
-          path: '**/build/reports/'
+          name: reports-${{ matrix.os }}-attempt-${{ github.run_attempt }}
+          path: |
+            **/build/reports/
+            build/shard-summary/
+          if-no-files-found: error
   run-unit-test:
-    needs: verify
+    needs: [prepare, verify, aggregate]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Require successful verification on every platform
+      - name: Require every preparation, shard and platform aggregate to succeed
         env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
-        run: test "$VERIFY_RESULT" = success
+          AGGREGATE_RESULT: ${{ needs.aggregate.result }}
+        run: |
+          test "$PREPARE_RESULT" = success
+          test "$VERIFY_RESULT" = success
+          test "$AGGREGATE_RESULT" = success

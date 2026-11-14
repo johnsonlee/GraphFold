@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.BytecodeInventory
+
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.tools.ToolProvider

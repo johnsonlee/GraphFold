@@ -1,8 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.git.ChangedFile
-import io.johnsonlee.graphfold.engine.git.ChangedHunk
-import io.johnsonlee.graphfold.engine.git.ChangedLineRange
+import io.johnsonlee.graphfold.engine.git.changedFile
+import org.eclipse.jgit.diff.Edit
 import io.johnsonlee.graphfold.engine.source.IndexedSource
 import io.johnsonlee.graphfold.engine.source.JavaSourceIndex
 import io.johnsonlee.graphfold.engine.source.SymbolKind
@@ -19,14 +18,14 @@ class SourceChangePlanningTest {
     @Test fun `addition and deletion retain the available revision and declaration operations`() {
         val text = "class Example { int value() { return 1; } }"
         val head = source(text, "Example.java", Revision.HEAD)
-        val added = ChangedFile(null, head.path, emptyList(), listOf(ChangedLineRange(1, 1)))
+        val added = changedFile(null, head.path, edits = listOf(Edit(0, 0, 0, 1)))
         val planned = planSourceChanges(null, head, added)
         assertEquals(setOf("Example", "Example.value()I"), planned.map { it.identity }.toSet())
         assertTrue(planned.all { it.basePath == null && it.headPath == head.path })
         assertTrue(planned.flatMap { it.locations }.all { it.revision == Revision.HEAD })
         assertTrue(planned.any { ChangeKind.METHOD_ADDED in it.changes })
         val base = source(text, "Example.java", Revision.BASE)
-        val deleted = ChangedFile(base.path, null, listOf(ChangedLineRange(1, 1)), emptyList())
+        val deleted = changedFile(base.path, null, edits = listOf(Edit(0, 1, 0, 0)))
         val removed = planSourceChanges(base, null, deleted)
         assertTrue(removed.flatMap { it.locations }.all { it.revision == Revision.BASE })
         assertTrue(removed.any { ChangeKind.METHOD_REMOVED in it.changes })
@@ -36,8 +35,7 @@ class SourceChangePlanningTest {
         val before = source("class Example { int value() { return 1; } }", "Example.java", Revision.BASE)
         val after = source("class Example { int value() { return 2; } }", "Example.java", Revision.HEAD)
             .let { it.copy(symbols = it.symbols.map { symbol -> symbol.copy(inlined = symbol.kind == SymbolKind.METHOD) }) }
-        val change = ChangedFile(before.path, after.path, emptyList(), emptyList(),
-            hunks = listOf(ChangedHunk(1, 1, 1, 1)))
+        val change = changedFile(before.path, after.path, edits = listOf(Edit(0, 1, 0, 1)))
         val obligation = planSourceChanges(before, after, change).single()
         assertEquals("Example.value()I", obligation.identity)
         assertTrue(obligation.inlined)
@@ -50,7 +48,7 @@ class SourceChangePlanningTest {
         for ((destination, kind) in listOf("new/Example.java" to ChangeKind.FILE_MOVED, "NewName.java" to ChangeKind.FILE_RENAMED)) {
             val before = source("class Example { int value() { return 1; } }", "old/Example.java", Revision.BASE)
             val after = source(before.text, destination, Revision.HEAD)
-            val change = ChangedFile(before.path, after.path, emptyList(), emptyList())
+            val change = changedFile(before.path, after.path)
             val obligation = planSourceChanges(before, after, change).single()
             assertEquals("Example", obligation.identity)
             assertEquals(SymbolKind.CLASS, obligation.kind)

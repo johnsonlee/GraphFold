@@ -1,5 +1,7 @@
 package io.johnsonlee.graphfold.engine
 
+import io.johnsonlee.graphfold.engine.testing.sourceAnalyzer
+
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.junit.jupiter.api.Test
@@ -12,10 +14,13 @@ import kotlin.test.assertTrue
 class AdditionIntegrationTest {
     @TempDir lateinit var temporary: Path
 
-    @Test fun `new unused Java source file passes`() { verifyFixture("java_unused_file") }
-    @Test fun `new referenced Java source file changes production behavior`() { verifyFixture("java_used_file") }
-    @Test fun `new unused Kotlin source file passes`() { verifyFixture("kotlin_unused_file") }
-    @Test fun `new referenced Kotlin source file changes production behavior`() { verifyFixture("kotlin_used_file") }
+    @Test fun `new unused Java production source remains uncontrolled`() { verifyFixture("java_unused_file") }
+    @Test fun `new referenced Java production source remains uncontrolled`() { verifyFixture("java_used_file") }
+    @Test fun `new unused Kotlin production source remains uncontrolled`() { verifyFixture("kotlin_unused_file") }
+    @Test fun `new referenced Kotlin production source remains uncontrolled`() { verifyFixture("kotlin_used_file") }
+
+    @Test fun `selected control covers new Java production file`() { verifyFixture("java_gated_file") }
+    @Test fun `selected control in Java caller covers new Kotlin implementation file`() { verifyFixture("kotlin_gated_file") }
 
     private fun verifyFixture(id: String) {
         val fixtures = Path.of("../fixtures/additions")
@@ -32,10 +37,10 @@ class AdditionIntegrationTest {
         val base = commit(repository)
         copyTree(fixtures.resolve("cases/$id/head"), repository)
         val head = commit(repository)
-        val result = GraphFoldEngine(EngineConfiguration(temporary.resolve("cache"))).analyze(
+        val result = sourceAnalyzer(RepositoryConfiguration(temporary.resolve("cache"))).analyze(
             AnalysisRequest(repository.toString(), base, head, Files.readString(Path.of("../fixtures/fold.yml"))),
         )
-        assertEquals(fixture.violation, result.verdict == Verdict.FAIL, result.toString())
+        assertEquals(if (fixture.violation) Verdict.FAIL else Verdict.PASS, result.verdict, result.toString())
         assertTrue(result.diagnostics.isEmpty(), "An analysis gap is not successful detection: $result")
         assertTrue(result.reasons.any { it.headPath == fixture.addedPath }, result.toString())
         if (fixture.violation) {

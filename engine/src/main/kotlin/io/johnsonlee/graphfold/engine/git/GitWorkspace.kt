@@ -5,69 +5,6 @@ import java.nio.file.Path
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 
 /**
- * A one-based inclusive changed line range. Empty sides of a hunk have no range.
- *
- * @property start First changed line, greater than zero.
- * @property end Last changed line, at or after [start].
- * @throws IllegalArgumentException if the range is empty, reversed, or starts before line one.
- */
-data class ChangedLineRange(val start: Int, val end: Int) {
-    init {
-        require(start > 0 && end >= start) { "Invalid changed line range" }
-    }
-}
-
-/**
- * One edit in Git's unified-diff coordinate system, without surrounding context.
- *
- * @property baseStart One-based first base line; for an empty side, the number of lines before the insertion.
- * @property baseCount Number of removed or replaced base lines, zero for a pure insertion.
- * @property headStart One-based first head line; for an empty side, the number of lines before the deletion.
- * @property headCount Number of added or replacement head lines, zero for a pure deletion.
- */
-data class ChangedHunk(val baseStart: Int, val baseCount: Int, val headStart: Int, val headCount: Int)
-
-/** Repository tree operation reported by JGit, including detected renames and copies. */
-enum class GitChangeType {
-    /** A path exists only in the head tree. */
-    ADD,
-    /** A path exists only in the base tree. */
-    DELETE,
-    /** An existing path has different content or mode within the same file type. */
-    MODIFY,
-    /** A path changes Git file type, such as a regular file becoming a symbolic link. */
-    TYPE_CHANGE,
-    /** Similarity detection associates a removed path with a new path. */
-    RENAME,
-    /** Similarity detection associates a new path with a retained source path. */
-    COPY,
-}
-
-/**
- * A changed repository path pair; line ranges contain changed lines, never context.
- *
- * @property basePath Repository-relative old path, or null for an added file.
- * @property headPath Repository-relative new path, or null for a deleted file.
- * @property baseLines Inclusive changed line ranges in the base revision.
- * @property headLines Inclusive changed line ranges in the head revision.
- * @property binary Whether JGit reports a binary patch, for which text ranges may be absent.
- * @property changeType Tree operation associated with this path pair.
- * @property hunks Paired edit coordinates, preserving empty insertion or deletion sides.
- * @property similarityScore Git similarity percentage for a rename or copy, otherwise absent.
- */
-data class ChangedFile(
-    val basePath: String?,
-    val headPath: String?,
-    val baseLines: List<ChangedLineRange>,
-    val headLines: List<ChangedLineRange>,
-    val binary: Boolean = false,
-    val changeType: GitChangeType = GitChangeType.MODIFY,
-    val hunks: List<ChangedHunk> = emptyList(),
-    /** Git similarity percentage for a rename or copy, otherwise absent. */
-    val similarityScore: Int? = null,
-)
-
-/**
  * Exclusively leases two persistent private checkouts until [close] releases their slot.
  * Closing retains source trees and incremental build outputs for later reuse.
  *
@@ -94,7 +31,8 @@ class GitWorkspace internal constructor(
      * @throws InterruptedException if the calling thread is interrupted.
      */
     @Synchronized
-    fun changes(): List<ChangedFile> {
+    @JvmSynthetic
+    internal fun changes(): List<ChangedFile> {
         check(!closed) { "Workspace is closed" }
         return diff(repository, baseSha, headSha)
     }

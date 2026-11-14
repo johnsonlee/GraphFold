@@ -1,5 +1,10 @@
 package io.johnsonlee.graphfold.engine.graphite
 
+import io.johnsonlee.graphfold.engine.bytecode.asm.BytecodeInventory
+
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
+
 import sootup.core.model.MethodModifier
 import io.johnsonlee.graphite.input.ConstantFold
 import io.johnsonlee.graphite.input.FoldSites
@@ -41,6 +46,35 @@ class GraphiteAnalyzerTest {
         "match" to mapOf("CallSite" to mapOf("callee_class" to "Sample", "callee_name" to "enabled")),
         "args" to mapOf(0 to key), "value" to false,
     ))
+
+    @Test fun `anonymous callback removal requires its construction to be covered by the selected control`() {
+        val callback = "new java.util.function.IntUnaryOperator() { public int applyAsInt(int x) { return x + 1; } }"
+        val gated = compile("gatedAnonymous", """
+            public static int run(int x) {
+                if (enabled("checkout")) {
+                    java.util.function.IntUnaryOperator callback = $callback;
+                    return callback.applyAsInt(x);
+                }
+                return x;
+            }
+        """.trimIndent())
+        val surviving = compile("survivingAnonymous", """
+            public static int run(int x) {
+                java.util.function.IntUnaryOperator callback = $callback;
+                if (enabled("checkout")) return callback.applyAsInt(x);
+                return x;
+            }
+        """.trimIndent())
+        val plain = GraphiteAnalyzer().analyze(gated, emptyList())
+        val folded = GraphiteAnalyzer().analyze(gated, listOf(rule()))
+        val constructed = GraphiteAnalyzer().analyze(surviving, listOf(rule()))
+        val identity = "Sample\$1.applyAsInt(I)I"
+        assertTrue(identity in folded.methods)
+        assertTrue(identity in folded.controlRemovedMethods, folded.toString())
+        assertFalse(identity in plain.controlRemovedMethods)
+        assertFalse(identity in constructed.controlRemovedMethods,
+            "A callback constructed outside control remains production code even if its invocation is folded")
+    }
 
     @Test fun `public SPI captures folded method bodies and retains following work`() {
         val classes = compile("fold", "static void run() { if (enabled(\"checkout\")) work(); tail(); }")
@@ -157,15 +191,9 @@ class GraphiteAnalyzerTest {
         assertFailsWith<IllegalStateException> { GraphiteAnalyzer().analyze(classes, listOf(selected)) }
     }
 
-    @Test fun `jars preserve declaration metadata and abstract native method inventory`() {
+    @Test fun `prepared classes preserve declaration metadata and abstract native method inventory`() {
         val classes = compile("metadata", "@Deprecated static final int VALUE = 7; private static native void nativeCall();")
-        val jar = directory.resolve("sample.jar")
-        ZipOutputStream(Files.newOutputStream(jar)).use { zip ->
-            zip.putNextEntry(ZipEntry("Sample.class"))
-            zip.write(Files.readAllBytes(classes.resolve("Sample.class")))
-            zip.closeEntry()
-        }
-        val snapshot = GraphiteAnalyzer().analyze(jar, emptyList())
+        val snapshot = GraphiteAnalyzer().analyze(classes, emptyList())
         assertTrue(snapshot.diagnostics.single().contains("Native/JNI"), snapshot.diagnostics.toString())
         val nativeMethod = snapshot.methods.getValue("Sample.nativeCall()V")
         assertEquals(setOf(MethodModifier.NATIVE, MethodModifier.PRIVATE, MethodModifier.STATIC), nativeMethod.modifiers)
@@ -195,9 +223,26 @@ class GraphiteAnalyzerTest {
 
     @Test fun `nonconstant shared helper argument is retained and diagnosed`() {
         val classes = compile("shared", "static void run(String key) { if (enabled(key)) work(); }")
-        val result = GraphiteAnalyzer().analyze(classes, listOf(rule()))
-        assertTrue("Sample.work()V" in result.methods.getValue("Sample.run(Ljava/lang/String;)V").calls)
-        assertTrue(result.diagnostics.any { it.contains("not a constant") }, result.diagnostics.toString())
+        val selected = FoldSites.parse(mapOf(
+            "select" to "MATCH (cs:CallSite {callee_name: 'enabled'}) RETURN cs",
+            "args" to mapOf(0 to "checkout"), "value" to false,
+        ))
+        listOf(rule(), selected).forEach { constrained ->
+            val result = GraphiteAnalyzer().analyze(classes, listOf(constrained))
+            assertTrue("Sample.work()V" in result.methods.getValue("Sample.run(Ljava/lang/String;)V").calls)
+            assertTrue(result.diagnostics.any { it.contains("not a constant") }, result.diagnostics.toString())
+        }
+    }
+
+    @Test fun `bare selection deliberately folds shared parameter calls without inventing incompleteness`() {
+        val classes = compile("shared-bare", "static void run(String key) { if (enabled(key)) work(); }")
+        val rule = FoldSites.parse(mapOf(
+            "select" to "MATCH (cs:CallSite {callee_name: 'enabled'}) RETURN cs", "value" to false,
+        ))
+        val result = GraphiteAnalyzer().analyze(classes, listOf(rule))
+        assertEquals(listOf(1), result.matchedRules)
+        assertFalse("Sample.work()V" in result.methods.getValue("Sample.run(Ljava/lang/String;)V").calls)
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
     }
 
     @Test fun `receiver argument checks preserve the other experiment`() {
@@ -349,7 +394,7 @@ class GraphiteAnalyzerTest {
         assertTrue(ResourceRead(null, null) in incomplete.methods.getValue("App.run()I").resourceReads)
     }
 
-    @Test fun `unread constructor scalar initializers erase without erasing following work`() {
+    @Test fun `unread constructor scalar initializers remain production differences`() {
         val before = compile("initializer-before", """
             private String label = "before";
             private Object optional = null;
@@ -365,8 +410,10 @@ class GraphiteAnalyzerTest {
         val left = GraphiteAnalyzer().analyze(before, emptyList()).methods.getValue("Sample.<init>()V")
         val right = GraphiteAnalyzer().analyze(after, emptyList()).methods.getValue("Sample.<init>()V")
         assertNotEquals(left.canonical, right.canonical)
-        assertEquals(left.referenceCanonical, right.referenceCanonical)
+        assertNotEquals(left.referenceCanonical, right.referenceCanonical)
         assertEquals(left.references, right.references)
+        assertTrue(setOf("Sample.label:Ljava/lang/String;", "Sample.optional:Ljava/lang/Object;", "Sample.count:I")
+            .all { it in right.references })
         assertTrue("Sample.tail()V" in right.references)
     }
 
@@ -419,28 +466,16 @@ class GraphiteAnalyzerTest {
             assertTrue(Files.exists(stage.resolve("dependency-0.jar")))
         }
         assertFalse(Files.exists(stage))
-        val jarStage = AnalysisInputs(file, listOf(file)).use { inputs ->
-            assertTrue(Files.isSymbolicLink(inputs.path.resolve("application.jar")))
-            inputs.path
-        }
-        assertFalse(Files.exists(jarStage))
+        assertFailsWith<IllegalArgumentException> { AnalysisInputs(file, listOf(file)) }
         assertFailsWith<IllegalArgumentException> { AnalysisInputs(classes, listOf(directory.resolve("missing.jar"))) }
     }
 
-    @Test fun `inventory refuses duplicate and multi release declaration ambiguity`() {
+    @Test fun `inventory retains duplicate class identity diagnostics in prepared directories`() {
         val classes = compile("inventory", "static void run() { tail(); }")
-        val bytes = Files.readAllBytes(classes.resolve("Sample.class"))
-        val jar = directory.resolve("ambiguous.jar")
-        ZipOutputStream(Files.newOutputStream(jar)).use { zip ->
-            listOf("Sample.class", "copy/Sample.class", "META-INF/versions/17/Sample.class", "lib/nested.jar", "docs/", "README.txt")
-                .forEach { name ->
-                zip.putNextEntry(ZipEntry(name)); zip.write(bytes); zip.closeEntry()
-            }
-        }
-        val inventory = BytecodeInventory().also { it.read(jar) }
+        val copy = Files.createDirectories(classes.resolve("copy"))
+        Files.copy(classes.resolve("Sample.class"), copy.resolve("Sample.class"))
+        val inventory = BytecodeInventory().also { it.read(classes) }
         assertTrue(inventory.diagnostics.any { it.contains("Duplicate class") })
-        assertTrue(inventory.diagnostics.any { it.contains("Multi-release") })
-        assertTrue(inventory.diagnostics.any { it.contains("Nested archive") })
     }
 
 }

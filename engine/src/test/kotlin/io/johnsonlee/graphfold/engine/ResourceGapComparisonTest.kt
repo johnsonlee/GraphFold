@@ -1,11 +1,12 @@
 package io.johnsonlee.graphfold.engine
 
-import io.johnsonlee.graphfold.engine.build.ProductionInventory
+
+import io.johnsonlee.graphfold.engine.inputs.ContentInventory
 import io.johnsonlee.graphfold.engine.graphite.GraphiteCompleteness
-import io.johnsonlee.graphfold.engine.graphite.MethodAnalysisGap
-import io.johnsonlee.graphfold.engine.graphite.MethodSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ProgramSnapshot
-import io.johnsonlee.graphfold.engine.graphite.ResourceRead
+import io.johnsonlee.graphfold.engine.snapshot.MethodAnalysisGap
+import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ProgramSnapshot
+import io.johnsonlee.graphfold.engine.snapshot.ResourceRead
 import io.johnsonlee.graphfold.engine.source.ProofObligation
 import io.johnsonlee.graphfold.engine.source.SymbolKind
 import io.johnsonlee.graphite.core.CallSiteNode
@@ -78,13 +79,11 @@ class ResourceGapComparisonTest {
         assertEquals(extra.map { it.message }.sorted(), comparison.resourceAnalysisGaps())
     }
 
-    @Test fun `unverified compiler provenance is required for resource and structural proofs`() {
+    @Test fun `mapping uncertainty retains real graph gaps without inventing resource failures`() {
         val snapshot = snapshot(completeness())
         val comparison = SnapshotComparison(snapshot, snapshot, originsVerified = false)
-        assertEquals(2, comparison.analysisGaps().size)
-        val resourceGaps = comparison.resourceAnalysisGaps()
-        assertEquals(1, resourceGaps.size)
-        assertTrue("Compiler provenance is unverified" in resourceGaps.single())
+        assertEquals(1, comparison.analysisGaps().size)
+        assertTrue(comparison.resourceAnalysisGaps().isEmpty())
     }
 
     @Test fun `a head resource model cannot excuse an unmodeled base dispatch`() {
@@ -110,7 +109,7 @@ class ResourceGapComparisonTest {
         val dynamicRead = method.copy(resourceReads = listOf(ResourceRead("messages", null)))
         val snapshot = captured.copy(methods = mapOf(caller.identity to dynamicRead))
         val comparison = comparisonWithUncomparedChange(snapshot)
-        val proof = BuildInputProof(emptyList(), inventory("before"), inventory("after"))
+        val proof = InputChangeProof(emptyList(), inventory("before"), inventory("after"))
         assertTrue(comparison.resourceAnalysisGaps().isEmpty())
         assertFalse(proof.resourcesUnreachable(comparison.reachableSnapshots(), comparison.resourceDependenciesAnalyzed))
     }
@@ -147,9 +146,9 @@ class ResourceGapComparisonTest {
             methodDiagnostics = completeness.methodDiagnostics, resourceDependenciesAnalyzed = true)
     }
 
-    private fun inventory(value: String): ProductionInventory {
+    private fun inventory(value: String): ContentInventory {
         val entries = mapOf("resource/0/messages.properties" to value)
-        return ProductionInventory(entries, entries, resourceEntries = mapOf("messages.properties" to mapOf("changed" to value)),
+        return ContentInventory(entries, entries, resourceEntries = mapOf("messages.properties" to mapOf("changed" to value)),
             resourceIndependentEntries = mapOf("resource/0/messages.properties" to "properties:messages.properties"),
             resourceConsumersKnown = true)
     }

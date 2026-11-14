@@ -70,8 +70,8 @@ class ProofPlannerTest {
     fun `one hunk spanning separate top level headers preserves every changed class`() {
         val old = "class A {} class B {}"
         val new = "class A { } class B implements java.io.Serializable {}"
-        val change = io.johnsonlee.graphfold.engine.git.ChangedFile("Example.java", "Example.java", emptyList(), emptyList(),
-            hunks = listOf(io.johnsonlee.graphfold.engine.git.ChangedHunk(1, 1, 1, 1)))
+        val change = io.johnsonlee.graphfold.engine.git.changedFile("Example.java", "Example.java",
+            edits = listOf(org.eclipse.jgit.diff.Edit(0, 1, 0, 1)))
         val locations = DiffLocations.locations(change, old, new)
         listOf(Revision.BASE to old, Revision.HEAD to new).forEach { (revision, text) ->
             val obligations = ProofPlanner.plan(index(text, revision), locations.filter { it.revision == revision })
