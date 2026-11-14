@@ -21,7 +21,7 @@ class MavenPluginDescriptorTest {
         assertEquals("3.9.9", document.getElementsByTagName("requiredMavenVersion").item(0).textContent)
         assertEquals("graphfold", descriptor.goalPrefix)
         assertEquals("io.johnsonlee.graphfold", descriptor.groupId)
-        assertEquals("maven-plugin", descriptor.artifactId)
+        assertEquals("graphfold-maven-plugin", descriptor.artifactId)
         assertTrue(!descriptor.version.contains("@"))
         assertEquals(setOf("snapshot", "check"), descriptor.mojos.map { it.goal }.toSet())
         descriptor.mojos.forEach { mojo ->

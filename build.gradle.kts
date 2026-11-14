@@ -171,7 +171,7 @@ gradle.projectsEvaluated {
         val mavenPlugin = path == ":plugin:maven"
         val publicationArtifact = when (path) {
             ":plugin:gradle" -> "gradle-plugin"
-            ":plugin:maven" -> "maven-plugin"
+            ":plugin:maven" -> "graphfold-maven-plugin"
             else -> name
         }
         extensions.findByType<PublishingExtension>()?.publications?.withType<MavenPublication>()?.configureEach {

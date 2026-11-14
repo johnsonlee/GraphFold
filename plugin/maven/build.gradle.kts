@@ -12,7 +12,7 @@ plugins {
     alias(libs.plugins.maven.plugin.development) apply false
 }
 
-base { archivesName.set("maven-plugin") }
+base { archivesName.set("graphfold-maven-plugin") }
 
 /** Maven Plugin Tools reads compiled annotations; retain the provider's minimum host versions. */
 @CacheableTask
@@ -34,7 +34,7 @@ val generateMavenPluginDescriptor by tasks.registering(GraphFoldPluginDescriptor
     // Maven resolves provider dependencies from the published POM, as it does for the existing plugin.
     runtimeDependencies.set(emptyList())
     pluginDescriptor.set(provider {
-        MavenPluginDescriptor(GAV.of(project.group.toString(), "maven-plugin", project.version.toString()),
+        MavenPluginDescriptor(GAV.of(project.group.toString(), base.archivesName.get(), project.version.toString()),
             "GraphFold Maven Plugin", "Analyze static control coverage from Maven's current model.", "graphfold")
     })
     minimumJavaVersion.set(java.toolchain.languageVersion.map { it.asInt().toString() })
