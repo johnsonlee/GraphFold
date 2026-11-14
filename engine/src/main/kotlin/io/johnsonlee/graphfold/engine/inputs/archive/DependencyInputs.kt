@@ -56,7 +56,7 @@ private fun materializeArchive(
     if (!requiresArchiveProjection(archive, physical, entries.size, retained.size)) return@use dependency
     validateArchiveProjection(archive, dependency)
     writeInputArchive(target) { zip ->
-        retained.forEach { entry ->
+        retained.filterNot { archiveSignature(it.name) }.forEach { entry ->
             val bytes = contents(entry)
             writeEntry(zip, entry.name, if (entry.name == JarFile.MANIFEST_NAME) projectedManifest(bytes) else bytes)
         }
@@ -96,7 +96,7 @@ private fun materializeDirectory(
     }
     if (retained.size == entries.size) return dependency
     writeInputArchive(target) { zip ->
-        retained.forEach { (name, file) ->
+        retained.filterKeys { !archiveSignature(it) }.forEach { (name, file) ->
             val bytes = Files.readAllBytes(file)
             writeEntry(zip, name, if (name == JarFile.MANIFEST_NAME) projectedManifest(bytes) else bytes)
         }

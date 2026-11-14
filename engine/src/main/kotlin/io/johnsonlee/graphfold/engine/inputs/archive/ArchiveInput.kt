@@ -3,7 +3,8 @@ package io.johnsonlee.graphfold.engine.inputs.archive
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarFile
-import java.util.jar.JarEntry
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 
 /** An explicitly selected archive; compiler outputs provide source evidence, never replacement graph bytes. */
 data class ArchiveEntryInput(
@@ -52,7 +53,7 @@ private fun prepareFlatArchiveInput(
     val restored = original.mapIndexed { index, artifact ->
         selectedArchiveInventory(artifact, variantThreshold, output.resolve("inventory/$index.jar"))
     }
-    val ordinary = restored.mapIndexed { index, path ->
+    val ordinary = original.mapIndexed { index, path ->
         val archive = output.resolve("archives/$index.jar")
         if (input.classpath[index].inventoryOnly) {
             Files.createDirectories(archive.parent)
@@ -78,7 +79,7 @@ private fun prepareFlatArchiveInput(
         .mapValues { (_, groups) -> groups.flatten().map { it.toFile().canonicalFile.toPath() }
             .filter { it in ownedOutputs }.distinct() }.filterValues { it.isNotEmpty() }
     val resources = restored.mapIndexed { index, artifact ->
-        packagedResources(artifact, output.resolve("resources/$index"))
+        packagedResources(artifact, output.resolve("resources/$index"), original = artifact == original[index])
     }
     val inventory = captureProductionInventory(classes, resources, restored,
         input.classpath.indices.filter { input.classpath[it].application }.map { restored[it] })
@@ -115,9 +116,11 @@ private fun copyPackagedClasses(archive: Path, output: Path) {
 }
 
 /** Preserve each artifact's effective resource entries separately; conflicting properties remain unproved. */
-private fun packagedResources(artifact: Path, output: Path): Path {
+private fun packagedResources(artifact: Path, output: Path, original: Boolean): Path {
     Files.createDirectories(output)
-    JarFile(artifact.toFile()).use { jar ->
+    // The inventory projection preserves signature evidence, but only original bytes can be authenticated.
+    val archive = if (original) JarFile(artifact.toFile()) else ZipFile(artifact.toFile())
+    archive.use { jar ->
         jar.stream().use { entries ->
             entries.filter { !it.isDirectory && !it.name.endsWith(".class") && !it.name.startsWith("META-INF/versions/") }
                 .forEach { entry -> copyPackagedResource(jar, entry, output) }
@@ -133,7 +136,7 @@ private fun ProductionInventory.withArchiveMetadata(input: ArchiveInput): Produc
         resourceIndependentEntries = resourceIndependentEntries + inputs)
 }
 
-private fun copyPackagedResource(jar: JarFile, entry: JarEntry, output: Path) {
+private fun copyPackagedResource(jar: ZipFile, entry: ZipEntry, output: Path) {
     val target = output.resolve(entry.name).normalize()
     checkInput(target.startsWith(output) && target != output && output.relativize(target).joinToString("/") == entry.name,
         "Unsupported packaged resource path: ${entry.name}")

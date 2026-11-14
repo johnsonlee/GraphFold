@@ -49,7 +49,7 @@ internal fun normalizePackagedArchive(path: Path, output: Path): Path = JarFile(
     val encoded = manifest?.let { value -> ByteArrayOutputStream().also { value.write(it) }.toByteArray() }
     Files.createDirectories(output.parent)
     ZipOutputStream(Files.newOutputStream(output)).use { zip ->
-        retained.forEach { entry -> copyPackagedEntry(jar, zip, entry, encoded) }
+        retained.filterNot { archiveSignature(it.name) }.forEach { entry -> copyPackagedEntry(jar, zip, entry, encoded) }
     }
     output
 }
