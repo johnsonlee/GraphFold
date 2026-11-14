@@ -43,16 +43,15 @@ class ArchiveInputTest {
 
     @ParameterizedTest
     @ValueSource(booleans = [false, true])
-    fun `different packaged definitions are rejected in either archive order`(externalFirst: Boolean) {
+    fun `explicit archive order selects different packaged definitions without ownership reordering`(externalFirst: Boolean) {
         val compiled = provenance()
         val external = archive("external.jar", mapOf("sample/Main.class" to bytecode("sample/Main", 7)))
         val app = archive("app.jar", mapOf("sample/Main.class" to bytecode("sample/Main", 1)))
         val entries = listOf(ArchiveEntryInput(app, listOf(compiled.classes)), ArchiveEntryInput(external))
-        val failure = assertFailsWith<InputFailure> {
-            prepareArchiveInput(ArchiveInput("app", if (externalFirst) entries.reversed() else entries), compiled,
-                temporary.resolve("prepared"))
-        }
-        assertTrue(failure.message.contains("Ambiguous static class definition"))
+        val result = prepareArchiveInput(ArchiveInput("app", if (externalFirst) entries.reversed() else entries), compiled,
+            temporary.resolve("prepared"))
+        assertContentEquals(bytecode("sample/Main", if (externalFirst) 7 else 1),
+            Files.readAllBytes(result.classes.resolve("sample/Main.class")))
     }
 
     @ParameterizedTest

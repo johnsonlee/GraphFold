@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /** Static WAR scope consists of packaged application classes/libraries and explicitly provided external types. */
-internal fun warArchiveInput(input: ArchiveInput, output: Path): ArchiveInput? {
+internal fun warArchiveInput(input: ArchiveInput, output: Path): ArchiveProjection? {
     val wars = input.classpath.filter { it.artifact.fileName.toString().endsWith(".war", ignoreCase = true) }
     if (wars.isEmpty()) return null
     checkInput(wars.size == 1, "A WAR input must identify one WAR: ${input.id}")
@@ -35,9 +35,9 @@ internal fun warArchiveInput(input: ArchiveInput, output: Path): ArchiveInput? {
     }
     val ordered = web + provided
     val resources = writeAnalysisArchive(output.resolve("web-resources.jar"), envelope)
-    return input.copy(classpath = ordered + ArchiveEntryInput(resources, inventoryOnly = true),
+    return ArchiveProjection(input.copy(classpath = ordered + ArchiveEntryInput(resources, inventoryOnly = true),
         archiveMetadata = input.archiveMetadata + mapOf("kind" to "war",
-            "webResources" to archiveContentIdentity(envelope)))
+            "webResources" to archiveContentIdentity(envelope))), StaticClassOrder.UNAMBIGUOUS)
 }
 
 private fun warLibrary(name: String): Boolean = name.startsWith("WEB-INF/lib/") &&

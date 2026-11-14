@@ -20,8 +20,6 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
-import io.johnsonlee.graphfold.engine.inputs.archive.InputFailure
-import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -368,15 +366,18 @@ class ArchiveClasspathIntegrationTest {
         assertTrue(result.diagnostics.none { it.code == DiagnosticCode.ANALYSIS_FAILED }, result.toString())
     }
 
-    @Test fun `conflicting definitions in one selected scope remain an explicit input failure`() {
+    @Test fun `explicit model classpath order supports controlled changes with repeated definitions`() {
         val repository = repository()
         val build = repository.resolve("build.gradle")
         Files.writeString(build, Files.readString(build).replace("files(rootProject.file('libs/second.jar'))",
             "files(rootProject.file('libs/second.jar'), rootProject.file('libs/first.jar'))"))
         val base = commit(repository)
         write(repository, "two/src/main/java/two/App.java", program("two", "12", ""))
-        val failure = assertFailsWith<InputFailure> { analyze(repository, base) }
-        assertTrue(failure.message.contains("library/Value"), failure.message)
+        val result = analyze(repository, base)
+        assertEquals(Verdict.PASS, result.verdict, result.toString())
+        assertTrue(result.diagnostics.isEmpty(), result.toString())
+        assertTrue(result.findings.isEmpty(), result.toString())
+        assertTrue(result.ruleAudits.all { it.matchedCallCount == 1 }, result.toString())
     }
 
     private fun analyze(repository: Path, base: String): AnalysisResult =
