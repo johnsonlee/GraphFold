@@ -85,6 +85,47 @@ class PreparedInputGoldenTest {
         assertEquals(expected == Verdict.FAIL, result.findings.isNotEmpty(), result.toString())
         assertEquals(2, result.ruleAudits.size)
         assertTrue(result.ruleAudits.all { it.matchedCallCount == 1 }, result.toString())
+        assertPrivateChangeAssessment(mode, result)
+    }
+
+    private fun assertPrivateChangeAssessment(mode: String, result: AnalysisResult) {
+        val modes = setOf("unused", "added-unused", "lambda", "stream", "controlled", "added-controlled")
+        if (mode !in modes) return
+        val callback = mode == "lambda" || mode == "stream"
+        val line = if (callback) 4 else 5
+        val changed = result.reasons.filter { reason -> reason.locations.any {
+            it.path == "Example.java" && it.line == SourceRange(line, line)
+        } }
+        assertTrue(changed.isNotEmpty(), "$mode: changed source obligation needs its own assessment: $result")
+        val controlled = mode == "controlled" || mode == "added-controlled"
+        changed.forEach { reason ->
+            val assessment = reason.assessment
+            assertEquals(if (controlled) ControlClassification.CONTROLLED else ControlClassification.UNCONTROLLED,
+                assessment.control, "$mode: $reason")
+            assertEquals(if (controlled) AcceptanceDecision.ACCEPTED else AcceptanceDecision.REJECTED,
+                assessment.decision, "$mode: $reason")
+            assertEquals(if (controlled) AcceptanceBasis.CONTROL_COVERAGE else AcceptanceBasis.INCOMPLETE_PROOF,
+                assessment.basis, "$mode: $reason")
+            if (controlled) {
+                assertTrue(assessment.safety.isEmpty(), "Control coverage must not invent a safety certificate: $reason")
+            } else {
+                assertUncontrolledSafetyEvidence(mode, reason)
+            }
+        }
+    }
+
+    private fun assertUncontrolledSafetyEvidence(mode: String, reason: VerdictReason) {
+        val whole = reason.assessment.safety.single { it.claim == SafetyClaim.WHOLE_CHANGE_EQUIVALENT }
+        assertEquals(SafetyStatus.UNPROVEN, whole.status, "$mode: $reason")
+        val identity = when (mode) {
+            "lambda" -> "Example.lambda\$value\$0()I"
+            "stream" -> "Example.lambda\$value\$0(Ljava/lang/Integer;)Ljava/lang/Integer;"
+            else -> "Example.unused()I"
+        }
+        assertEquals(identity, whole.subject, "$mode: changed obligation: $reason")
+        assertTrue(whole.evidence.isNotEmpty() && whole.evidence.all(String::isNotBlank), "$mode: $reason")
+        assertTrue(reason.assessment.safety.none { it.status == SafetyStatus.REFUTED },
+            "Missing equivalence proof does not establish an exception or effect hazard: $reason")
     }
 
     @ParameterizedTest

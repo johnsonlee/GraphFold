@@ -2,7 +2,7 @@ package io.johnsonlee.graphfold.engine
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 
-/** Common report encoding for the CLI, Gradle plugin, and SDK consumers. */
+/** Common report encoding for Gradle and Maven plugins and SDK consumers. */
 object AnalysisReports {
     private val mapper = jacksonObjectMapper()
 
@@ -57,6 +57,8 @@ object AnalysisReports {
         foldSelectionSummary(result).forEach { appendLine(it) }
         result.reasons.forEach { reason ->
             appendLine("${reason.code} [${reason.changes.joinToString()}]: ${reason.message}")
+            appendLine("  ${reason.assessment.control}: ${reason.assessment.decision} via ${reason.assessment.basis}")
+            reason.assessment.safety.forEach { proof -> appendSafetyEvidence(proof) }
         }
         result.findings.forEach { finding ->
             appendLine("${finding.kind}: ${finding.message}")
@@ -71,4 +73,10 @@ object AnalysisReports {
             appendLine("${diagnostic.stage}/${diagnostic.code}: ${diagnostic.message}")
         }
     }.trimEnd()
+}
+
+private fun StringBuilder.appendSafetyEvidence(proof: SafetyEvidence) {
+    appendLine("  ${proof.claim} ${proof.status}: ${proof.subject}")
+    proof.evidence.forEach { appendLine("    evidence: $it") }
+    proof.assumptions.forEach { appendLine("    assumption: $it") }
 }

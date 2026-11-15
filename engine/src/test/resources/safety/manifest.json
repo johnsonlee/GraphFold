@@ -1,0 +1,2386 @@
+[
+  {
+    "id": "java/boot/safe",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "safe",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/return-change",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "return-change",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/null-dereference",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "null-dereference",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/safe",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "safe",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/return-change",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "return-change",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/null-dereference",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "null-dereference",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/safe",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "safe",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/return-change",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "return-change",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/null-dereference",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "null-dereference",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/safe",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "safe",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/return-change",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "return-change",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/null-dereference",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "null-dereference",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/helper-pure",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "helper-pure",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/helper-effect",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "helper-effect",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "REFUTED",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/helper-opaque",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "helper-opaque",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "java/war/helper-pure",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "helper-pure",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/helper-effect",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "helper-effect",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "REFUTED",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/helper-opaque",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "helper-opaque",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/helper-pure",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "helper-pure",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/helper-effect",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "helper-effect",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "REFUTED",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/helper-opaque",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "helper-opaque",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/helper-pure",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "helper-pure",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/helper-effect",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "helper-effect",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "REFUTED",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/helper-opaque",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "helper-opaque",
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/guarded-string",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "guarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-string/base.java",
+      "headResource": "/safety/cases/java/guarded-string/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/guarded-string",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "guarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-string/base.java",
+      "headResource": "/safety/cases/java/guarded-string/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/guarded-string",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "guarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-string/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-string/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/guarded-string",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "guarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-string/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-string/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/unguarded-string",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "unguarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unguarded-string/base.java",
+      "headResource": "/safety/cases/java/unguarded-string/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/unguarded-string",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "unguarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unguarded-string/base.java",
+      "headResource": "/safety/cases/java/unguarded-string/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/unguarded-string",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "unguarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unguarded-string/base.kt",
+      "headResource": "/safety/cases/kotlin/unguarded-string/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/unguarded-string",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "unguarded-string",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unguarded-string/base.kt",
+      "headResource": "/safety/cases/kotlin/unguarded-string/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/guarded-chain",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "guarded-chain",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-chain/base.java",
+      "headResource": "/safety/cases/java/guarded-chain/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/guarded-chain",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "guarded-chain",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-chain/base.java",
+      "headResource": "/safety/cases/java/guarded-chain/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/guarded-chain",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "guarded-chain",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-chain/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-chain/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/guarded-chain",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "guarded-chain",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-chain/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-chain/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/context-only",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "context-only",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/context-only/base.java",
+      "headResource": "/safety/cases/java/context-only/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/context-only",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "context-only",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/context-only/base.java",
+      "headResource": "/safety/cases/java/context-only/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/context-only",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "context-only",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/context-only/base.kt",
+      "headResource": "/safety/cases/kotlin/context-only/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/context-only",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "context-only",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/context-only/base.kt",
+      "headResource": "/safety/cases/kotlin/context-only/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/literal-equals-nullable",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "literal-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/literal-equals-nullable/base.java",
+      "headResource": "/safety/cases/java/literal-equals-nullable/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/literal-equals-nullable",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "literal-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/literal-equals-nullable/base.java",
+      "headResource": "/safety/cases/java/literal-equals-nullable/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/literal-equals-nullable",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "literal-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/literal-equals-nullable/base.kt",
+      "headResource": "/safety/cases/kotlin/literal-equals-nullable/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/literal-equals-nullable",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "literal-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/literal-equals-nullable/base.kt",
+      "headResource": "/safety/cases/kotlin/literal-equals-nullable/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/instance-equals-nullable",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "instance-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/instance-equals-nullable/base.java",
+      "headResource": "/safety/cases/java/instance-equals-nullable/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/instance-equals-nullable",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "instance-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/instance-equals-nullable/base.java",
+      "headResource": "/safety/cases/java/instance-equals-nullable/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/instance-equals-nullable",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "instance-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/instance-equals-nullable/base.kt",
+      "headResource": "/safety/cases/kotlin/instance-equals-nullable/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/instance-equals-nullable",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "instance-equals-nullable",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/instance-equals-nullable/base.kt",
+      "headResource": "/safety/cases/kotlin/instance-equals-nullable/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/guarded-unbox",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "guarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-unbox/base.java",
+      "headResource": "/safety/cases/java/guarded-unbox/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/guarded-unbox",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "guarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-unbox/base.java",
+      "headResource": "/safety/cases/java/guarded-unbox/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/guarded-unbox",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "guarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-unbox/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-unbox/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/guarded-unbox",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "guarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-unbox/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-unbox/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/unguarded-unbox",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "unguarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unguarded-unbox/base.java",
+      "headResource": "/safety/cases/java/unguarded-unbox/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/unguarded-unbox",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "unguarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unguarded-unbox/base.java",
+      "headResource": "/safety/cases/java/unguarded-unbox/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/unguarded-unbox",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "unguarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unguarded-unbox/base.kt",
+      "headResource": "/safety/cases/kotlin/unguarded-unbox/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/unguarded-unbox",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "unguarded-unbox",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unguarded-unbox/base.kt",
+      "headResource": "/safety/cases/kotlin/unguarded-unbox/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/callee-safe",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "callee-safe",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/callee-safe/base.java",
+      "headResource": "/safety/cases/java/callee-safe/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/callee-safe",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "callee-safe",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/callee-safe/base.java",
+      "headResource": "/safety/cases/java/callee-safe/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/callee-safe",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "callee-safe",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/callee-safe/base.kt",
+      "headResource": "/safety/cases/kotlin/callee-safe/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/callee-safe",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "callee-safe",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/callee-safe/base.kt",
+      "headResource": "/safety/cases/kotlin/callee-safe/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/callee-NPE",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "callee-NPE",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/callee-NPE/base.java",
+      "headResource": "/safety/cases/java/callee-NPE/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/callee-NPE",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "callee-NPE",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/callee-NPE/base.java",
+      "headResource": "/safety/cases/java/callee-NPE/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/callee-NPE",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "callee-NPE",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/callee-NPE/base.kt",
+      "headResource": "/safety/cases/kotlin/callee-NPE/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/callee-NPE",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "callee-NPE",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/callee-NPE/base.kt",
+      "headResource": "/safety/cases/kotlin/callee-NPE/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "REFUTED",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/guarded-join",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "guarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-join/base.java",
+      "headResource": "/safety/cases/java/guarded-join/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/guarded-join",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "guarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/guarded-join/base.java",
+      "headResource": "/safety/cases/java/guarded-join/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/guarded-join",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "guarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-join/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-join/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/guarded-join",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "guarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/guarded-join/base.kt",
+      "headResource": "/safety/cases/kotlin/guarded-join/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/unguarded-join",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "unguarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unguarded-join/base.java",
+      "headResource": "/safety/cases/java/unguarded-join/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/unguarded-join",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "unguarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unguarded-join/base.java",
+      "headResource": "/safety/cases/java/unguarded-join/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/unguarded-join",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "unguarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unguarded-join/base.kt",
+      "headResource": "/safety/cases/kotlin/unguarded-join/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/unguarded-join",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "unguarded-join",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unguarded-join/base.kt",
+      "headResource": "/safety/cases/kotlin/unguarded-join/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/resolved-alternatives",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "resolved-alternatives",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/resolved-alternatives/base.java",
+      "headResource": "/safety/cases/java/resolved-alternatives/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/war/resolved-alternatives",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "resolved-alternatives",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/resolved-alternatives/base.java",
+      "headResource": "/safety/cases/java/resolved-alternatives/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/boot/resolved-alternatives",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "resolved-alternatives",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/resolved-alternatives/base.kt",
+      "headResource": "/safety/cases/kotlin/resolved-alternatives/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "kotlin/war/resolved-alternatives",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "resolved-alternatives",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/resolved-alternatives/base.kt",
+      "headResource": "/safety/cases/kotlin/resolved-alternatives/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "PROVEN",
+        "NONTHROWING": "PROVEN",
+        "TERMINATING": "PROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "PROVEN"
+      },
+      "decision": "ACCEPTED",
+      "basis": "STATIC_SAFETY",
+      "verdict": "PASS",
+      "diagnosticCodes": []
+    }
+  },
+  {
+    "id": "java/boot/opaque-alternative",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "opaque-alternative",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/opaque-alternative/base.java",
+      "headResource": "/safety/cases/java/opaque-alternative/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "java/war/opaque-alternative",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "opaque-alternative",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/opaque-alternative/base.java",
+      "headResource": "/safety/cases/java/opaque-alternative/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/opaque-alternative",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "opaque-alternative",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/opaque-alternative/base.kt",
+      "headResource": "/safety/cases/kotlin/opaque-alternative/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/opaque-alternative",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "opaque-alternative",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/opaque-alternative/base.kt",
+      "headResource": "/safety/cases/kotlin/opaque-alternative/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "INCOMPLETE_GRAPH",
+        "UNVERIFIED_BUILD_INPUT"
+      ]
+    }
+  },
+  {
+    "id": "java/boot/unresolved-dispatch",
+    "language": "java",
+    "inputVariant": "boot",
+    "change": "unresolved-dispatch",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unresolved-dispatch/base.java",
+      "headResource": "/safety/cases/java/unresolved-dispatch/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "java/war/unresolved-dispatch",
+    "language": "java",
+    "inputVariant": "war",
+    "change": "unresolved-dispatch",
+    "sourcePair": {
+      "baseResource": "/safety/cases/java/unresolved-dispatch/base.java",
+      "headResource": "/safety/cases/java/unresolved-dispatch/head.java"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/boot/unresolved-dispatch",
+    "language": "kotlin",
+    "inputVariant": "boot",
+    "change": "unresolved-dispatch",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unresolved-dispatch/base.kt",
+      "headResource": "/safety/cases/kotlin/unresolved-dispatch/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  },
+  {
+    "id": "kotlin/war/unresolved-dispatch",
+    "language": "kotlin",
+    "inputVariant": "war",
+    "change": "unresolved-dispatch",
+    "sourcePair": {
+      "baseResource": "/safety/cases/kotlin/unresolved-dispatch/base.kt",
+      "headResource": "/safety/cases/kotlin/unresolved-dispatch/head.kt"
+    },
+    "evidenceRequirements": [
+      "NONEMPTY_SUBJECT",
+      "NONEMPTY_CITATIONS",
+      "NONEMPTY_ASSUMPTIONS"
+    ],
+    "expected": {
+      "control": "UNCONTROLLED",
+      "claims": {
+        "EFFECT_FREE": "UNPROVEN",
+        "NONTHROWING": "UNPROVEN",
+        "TERMINATING": "UNPROVEN",
+        "WHOLE_CHANGE_EQUIVALENT": "UNPROVEN"
+      },
+      "decision": "REJECTED",
+      "basis": "INCOMPLETE_PROOF",
+      "verdict": "FAIL",
+      "diagnosticCodes": [
+        "PRODUCTION_OUTPUT_CHANGED"
+      ]
+    }
+  }
+]

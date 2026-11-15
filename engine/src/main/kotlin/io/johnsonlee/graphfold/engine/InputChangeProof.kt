@@ -75,9 +75,11 @@ internal class InputChangeProof(
         }
     }
 
-    fun reasons(code: ReasonCode, scenario: String, message: String): List<VerdictReason> = changes.map {
+    fun reasons(
+        code: ReasonCode, scenario: String, message: String, assessment: ChangeAssessment = code.defaultAssessment(),
+    ): List<VerdictReason> = changes.map {
         VerdictReason(if (it in sourceChanges) emptySet() else setOf(ChangeKind.BUILD_INPUT_CHANGED),
-            code, message, emptyList(), scenario, it.basePath, it.headPath)
+            code, message, emptyList(), scenario, it.basePath, it.headPath, assessment)
     }
 
     /** Classifies an already failing comparison; every difference needs complete, located declaration evidence. */

@@ -4,6 +4,8 @@ import io.johnsonlee.graphfold.engine.bytecode.asm.LeafApplicationDispatch
 import io.johnsonlee.graphfold.engine.bytecode.asm.BytecodeInventory
 import io.johnsonlee.graphfold.engine.bytecode.asm.ResourceDeclarations
 import io.johnsonlee.graphfold.engine.bytecode.asm.inlineControlRemovedMethods
+import io.johnsonlee.graphfold.engine.bytecode.asm.StaticSafetyAnalysis
+import io.johnsonlee.graphfold.engine.safety.ProofStatus
 
 import io.johnsonlee.graphfold.engine.FoldReachability
 import io.johnsonlee.graphfold.engine.snapshot.MethodSnapshot
@@ -64,7 +66,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         val resources = if (dependencyResources) ResourceDeclarations(listOf(artifact) + dependencies) else null
         return AnalysisInputs(artifact, dependencies).use { inputs ->
             val snapshot = analyzeInputs(inputs.path, rules, inventory, RuleAuditCapture(onAudit), resources,
-                AnalysisContext())
+                AnalysisContext(totalMethods = { totalMethods(artifact, dependencies, it) }))
             snapshot
         }
     }
@@ -112,7 +114,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
             val snapshot = analyzeInputs(inputs.path, selected, inventory, audit, resources,
                 AnalysisContext(exposure, reachability,
                     if (unchangedOwners && project.catalog.diagnostics.isEmpty()) project.catalog.inlineEvidence else emptyList(),
-                    project.sourceClasses))
+                    project.sourceClasses, { totalMethods(compiled.classes, dependencies, it) }))
                 .copy(originalOwners = project.owners.entries.associate { (original, normalized) -> normalized to original })
             snapshot
         }
@@ -154,7 +156,7 @@ class GraphiteAnalyzer internal constructor(private val onAudit: (Int, RuleAudit
         } else rules
         val sink = SnapshotSink(if (resources == null) inventory.classes else resources.classes,
             resources != null, resources != null && resources.trustedIntrinsics,
-            inventory.disposablePrimitiveMethods, exposure)
+            inventory.disposablePrimitiveMethods, exposure, { context.totalMethods(audit.selectedCallees) })
         val config = LoaderConfig(
             folding = resolved.takeIf { it.isNotEmpty() }?.let { FoldPlan(it) },
             verbose = log,
@@ -336,12 +338,22 @@ private fun requirePreparedClasses(classes: Path) {
 private data class AnalysisContext(
     val selection: ExposureProvenance? = null, val reachability: FoldReachability = FoldReachability(),
     val inlineEvidence: List<io.johnsonlee.graphfold.engine.inputs.InlineEvidence> = emptyList(), val inlineClasses: Path? = null,
+    val totalMethods: (Set<String>) -> Set<String> = { emptySet() },
 ) {
     fun removedInlineMethods(snapshot: ProgramSnapshot, rules: List<FoldRule>, applied: Map<String, Map<Int, Int>>): Set<String> =
         if (inlineClasses != null && snapshot.diagnostics.isEmpty() && snapshot.methodDiagnostics.values.all { it.isEmpty() }) {
             inlineControlRemovedMethods(inlineClasses, inlineEvidence, rules, applied)
         } else emptySet()
 }
+
+/** General callee properties; authorization, argument evaluation and redundancy remain separate IR obligations. */
+private fun totalMethods(artifact: Path, dependencies: List<Path>, selected: Set<String>): Set<String> =
+    StaticSafetyAnalysis(artifact, dependencies).use { analysis ->
+        analysis.summaries().filterValues { summary ->
+            val independent = (summary.dependencies + summary.identity).none { it in selected }
+            independent && listOf(summary.effectFree, summary.nonThrowing, summary.terminating).all { it.status == ProofStatus.PROVEN }
+        }.keys
+    }
 
 private fun OriginProject.requiresOriginAnalysis(): Boolean =
     owners.isNotEmpty() || methodDiagnostics.isNotEmpty() || catalog.inlineEvidence.isNotEmpty()

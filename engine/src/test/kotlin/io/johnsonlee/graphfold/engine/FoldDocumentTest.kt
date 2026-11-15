@@ -17,6 +17,17 @@ class FoldDocumentTest {
     }
 
     @Test
+    fun `explicit empty controls request an independent static safety analysis`() {
+        val baseline = FoldDocument.parse("version: 1\nfolds: []", 1).single()
+        assertEquals("baseline", baseline.name)
+        assertTrue(baseline.rules.isEmpty())
+        val named = FoldDocument.parse("scenarios: [{name: safety, folds: []}]", 1).single()
+        assertEquals("safety", named.name)
+        assertTrue(named.rules.isEmpty())
+        assertFails { FoldDocument.parse("version: 1", 1) }
+    }
+
+    @Test
     fun `explicit scenarios are preserved as complete independent assumptions`() {
         val scenarios = FoldDocument.parse("""
             scenarios:
@@ -105,7 +116,7 @@ class FoldDocumentTest {
         val invalid = listOf(
             "scenarios: [{name: A, typo: true, folds: [$rule]}]",
             "scenarios: []", "scenarios: nope", "scenarios: [1]", "scenarios: []\nextra: 1",
-            "folds: []", "folds: nope", "folds: [1]", "folds: [$rule]\nversion: 2",
+            "folds: nope", "folds: [1]", "folds: [$rule]\nversion: 2",
             "folds: [$rule]\nextra: 1", "name: ignored\nfolds: [$rule]", "scenarios: [{folds: [$rule]}]",
             "scenarios: [{name: '', folds: [$rule]}]",
             "scenarios: [{name: same, folds: [$rule]}, {name: same, folds: [$rule]}]",
