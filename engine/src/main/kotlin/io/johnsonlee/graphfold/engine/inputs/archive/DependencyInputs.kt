@@ -18,13 +18,14 @@ import org.objectweb.asm.tree.ClassNode
  * Normalizes explicitly selected static classpaths without selecting bytecode by the analyzer JVM.
  * All bytecode consumers must receive these same paths; production inventories retain the original archives.
  * Multi-release alternatives are explicit variants. Validated module descriptors remain metadata, while service
- * resources remain in the selected classpath. Different class definitions are ambiguous; independent scopes are never combined.
+ * resources remain in the selected classpath. Definitions follow explicit input order when supplied; independent scopes stay separate.
  */
 internal fun normalizeDependencyInputs(
     dependencies: List<Path>, output: Path, variantThreshold: Int = 0,
     applicationClasses: Path? = null, cache: DependencyInputCache? = null,
+    classOrder: StaticClassOrder = StaticClassOrder.UNAMBIGUOUS,
 ): List<Path> {
-    val selection = StaticClassSelection(applicationClasses)
+    val selection = StaticClassSelection(applicationClasses, classOrder)
     return dependencies.mapIndexed { index, dependency ->
         checkInput(Files.exists(dependency), "Missing input dependency: $dependency")
         val target = output.resolve("dependency-$index.jar")
@@ -33,7 +34,7 @@ internal fun normalizeDependencyInputs(
             else materializeArchive(dependency, target, selection, variantThreshold)
         }
         if (cache == null) produce()
-        else cache.materialize(dependency, variantThreshold, applicationClasses, selection.selected, produce)
+        else cache.materialize(dependency, variantThreshold, applicationClasses, selection.selected, classOrder, produce)
     }
 }
 
@@ -104,8 +105,8 @@ private fun materializeDirectory(
     return target
 }
 
-/** A static scope may contain identical copies, but never two different definitions of one class. */
-private class StaticClassSelection(applicationClasses: Path?) {
+/** Different definitions require explicit classpath order; ownership never determines the selected bytes. */
+private class StaticClassSelection(applicationClasses: Path?, private val classOrder: StaticClassOrder) {
     private val application = applicationClasses?.toAbsolutePath()?.normalize()
     val selected = mutableMapOf<String, String>()
 
@@ -114,12 +115,14 @@ private class StaticClassSelection(applicationClasses: Path?) {
         val contents = bytes()
         val identity = MessageDigest.getInstance("SHA-256").digest(contents).joinToString("") { "%02x".format(it) }
         val previous = selected.putIfAbsent(name, identity)
-        checkInput(previous == null || previous == identity, "Ambiguous static class definition: $name")
+        checkInput(classOrder == StaticClassOrder.EXPLICIT_ORDER || previous == null || previous == identity,
+            "Ambiguous static class definition: $name")
         val file = application?.let { root ->
             root.resolve(name).normalize().takeIf { it.startsWith(root) && Files.isRegularFile(it) }
         }
         if (file != null) {
-            checkInput(Files.readAllBytes(file).contentEquals(contents), "Ambiguous application/dependency class definition: $name")
+            checkInput(classOrder == StaticClassOrder.EXPLICIT_ORDER || Files.readAllBytes(file).contentEquals(contents),
+                "Ambiguous application/dependency class definition: $name")
         }
         return previous == null && file == null
     }

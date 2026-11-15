@@ -34,8 +34,8 @@ internal fun prepareArchiveInput(
         entry.copy(application = entry.application || selectedPrimary || input.ownsApplicationArchive(entry.artifact))
     })
     val expanded = springBootArchiveInput(selected, output.resolve("boot"))
-        ?: warArchiveInput(selected, output.resolve("war")) ?: selected
-    return prepareFlatArchiveInput(expanded, provenance, output, variantThreshold).copy(archiveInput = input)
+        ?: warArchiveInput(selected, output.resolve("war")) ?: ArchiveProjection(selected, StaticClassOrder.EXPLICIT_ORDER)
+    return prepareFlatArchiveInput(expanded.input, provenance, output, variantThreshold, expanded.classOrder).copy(archiveInput = input)
 }
 
 /** Membership is independent of source association; legacy producer records also establish project ownership. */
@@ -43,7 +43,7 @@ internal fun ArchiveInput.ownsApplicationArchive(artifact: Path): Boolean =
     (applicationArchives + producerArchives.keys).any { Files.isRegularFile(it) && Files.mismatch(it, artifact) == -1L }
 
 private fun prepareFlatArchiveInput(
-    input: ArchiveInput, provenance: InputProject, output: Path, variantThreshold: Int,
+    input: ArchiveInput, provenance: InputProject, output: Path, variantThreshold: Int, classOrder: StaticClassOrder,
 ): InputProject {
     checkInput(input.classpath.isNotEmpty(), "Input scope ${input.id} has no packaged classpath")
     val original = input.classpath.map { canonicalPackagedArchive(it.artifact) }
@@ -61,17 +61,11 @@ private fun prepareFlatArchiveInput(
             archive
         } else normalizePackagedArchive(path, archive)
     }
-    // Identical definitions may deduplicate, but an application's copy must retain its application role.
-    // Different definitions still fail shared normalization regardless of this role-based processing order.
-    val classOrder = input.classpath.indices.sortedBy { if (input.classpath[it].application) 0 else 1 }
-    val normalized = normalizeDependencyInputs(classOrder.map(ordinary::get), output.resolve("effective"),
-        variantThreshold = variantThreshold)
-    val byIndex = classOrder.zip(normalized).toMap()
-    val effective = ordinary.indices.map(byIndex::getValue)
+    val effective = normalizeDependencyInputs(ordinary, output.resolve("effective"),
+        variantThreshold = variantThreshold, classOrder = classOrder)
     val classes = Files.createDirectories(output.resolve("classes"))
-    input.classpath.indices.filter { input.classpath[it].application }.forEach { index ->
-        copyPackagedClasses(effective[index], classes)
-    }
+    copyApplicationClasses(effective, input.classpath.indices.filter { input.classpath[it].application }.map(ordinary::get),
+        classes, variantThreshold)
     val dependencies = normalizeDependencyInputs(effective, output.resolve("dependencies"),
         variantThreshold = variantThreshold, applicationClasses = classes)
     val ownedOutputs = input.classpath.flatMap { it.producerOutputs }.map { it.toFile().canonicalFile.toPath() }.toSet()
@@ -102,18 +96,6 @@ private fun canonicalCompilerClasspaths(
             if (contexts.size != 1) issues += "Ambiguous compiler classpaths for source root: $source"
             contexts.singleOrNull().orEmpty()
         }
-
-private fun copyPackagedClasses(archive: Path, output: Path) {
-    JarFile(archive.toFile()).use { jar ->
-        jar.entries().asSequence().filter { !it.isDirectory && it.name.endsWith(".class") }.forEach { entry ->
-            val target = output.resolve(entry.name).normalize()
-            checkInput(target.startsWith(output) && output.relativize(target).joinToString("/") == entry.name,
-                "Unsupported packaged class path: ${entry.name}")
-            Files.createDirectories(target.parent)
-            jar.getInputStream(entry).use { Files.copy(it, target) }
-        }
-    }
-}
 
 /** Preserve each artifact's effective resource entries separately; conflicting properties remain unproved. */
 private fun packagedResources(artifact: Path, output: Path, original: Boolean): Path {

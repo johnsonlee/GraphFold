@@ -98,7 +98,8 @@ class PackagedMavenGoldenTest {
         }).apply {
             file = directory.resolve("pom.xml").toFile()
             addCompileSourceRoot(Files.createDirectories(directory.resolve("src/main/java")).toString())
-            artifact = DefaultArtifact("fixture", name, "1", "compile", packaging, null, DefaultArtifactHandler(packaging))
+            artifact = DefaultArtifact("fixture", name, "1", "compile", packaging, null,
+                DefaultArtifactHandler(packaging).apply { isAddedToClasspath = packaging == "jar" })
                 .apply { file = directory.resolve("target/$name.$packaging").toFile() }
         }
     }

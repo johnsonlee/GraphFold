@@ -28,7 +28,7 @@ class WarArchiveInputTest {
         val selected = ArchiveInput("web", listOf(ArchiveEntryInput(war, listOf(classes))),
             producerArchives = mapOf(library to listOf(libraryClasses), other to listOf(root.resolve("unused")),
                 root.resolve("missing.jar") to listOf(root.resolve("missing-classes"))))
-        val actual = requireNotNull(warArchiveInput(selected, root.resolve("out")))
+        val actual = requireNotNull(warArchiveInput(selected, root.resolve("out"))).input
         val application = actual.classpath.indexOfFirst { it.producerOutputs == listOf(classes) }
         val libraryIndex = actual.classpath.indexOfFirst { it.producerOutputs == listOf(libraryClasses) }
         assertTrue(application >= 0 && libraryIndex == application + 1)
@@ -45,7 +45,7 @@ class WarArchiveInputTest {
         val provided = Files.createDirectories(root.resolve("api/package"))
         Files.writeString(provided.resolve("Type.class"), "external type bytes")
         val input = ArchiveInput("web", listOf(ArchiveEntryInput(war)), staticDependencies = listOf(provided.parent))
-        val projected = requireNotNull(warArchiveInput(input, root.resolve("out")))
+        val projected = requireNotNull(warArchiveInput(input, root.resolve("out"))).input
         val dependency = projected.classpath.single { readWarArchive(it.artifact).containsKey("package/Type.class") }
         assertTrue(!dependency.application && dependency.producerOutputs.isEmpty())
         assertEquals("external type bytes", readWarArchive(dependency.artifact).getValue("package/Type.class").decodeToString())
@@ -74,7 +74,7 @@ class WarArchiveInputTest {
         val second = library("second.jar", if (different) 2 else 1)
         val war = projectionArchive(root.resolve("app.war"), mapOf("WEB-INF/lib/one.jar" to Files.readAllBytes(first),
             "WEB-INF/lib/two.jar" to Files.readAllBytes(second)))
-        val expanded = requireNotNull(warArchiveInput(ArchiveInput("web", listOf(ArchiveEntryInput(war))), root.resolve("out")))
+        val expanded = requireNotNull(warArchiveInput(ArchiveInput("web", listOf(ArchiveEntryInput(war))), root.resolve("out"))).input
         val normalize = {
             normalizeDependencyInputs(expanded.classpath.filterNot { it.inventoryOnly }.map { it.artifact },
                 root.resolve("normalized"))
@@ -101,7 +101,7 @@ class WarArchiveInputTest {
         }
         val war = projectionArchive(root.resolve("app.war"), mapOf(
             "WEB-INF/lib/first.jar" to library("first"), "WEB-INF/lib/second.jar" to library("second")))
-        val expanded = requireNotNull(warArchiveInput(ArchiveInput("web", listOf(ArchiveEntryInput(war))), root.resolve("out")))
+        val expanded = requireNotNull(warArchiveInput(ArchiveInput("web", listOf(ArchiveEntryInput(war))), root.resolve("out"))).input
         for (variant in listOf(0, 9)) {
             val inputs = normalizeDependencyInputs(expanded.classpath.filterNot { it.inventoryOnly }.map { it.artifact },
                 root.resolve("variant-$variant"), variantThreshold = variant)

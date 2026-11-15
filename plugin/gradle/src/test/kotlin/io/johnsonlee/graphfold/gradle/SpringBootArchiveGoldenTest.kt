@@ -102,7 +102,10 @@ class SpringBootArchiveGoldenTest {
     private fun project(): Path {
         val root = Files.createDirectory(temporary.resolve("project"))
         Files.writeString(root.resolve(".gitignore"), ".gradle/\nbuild/\n")
-        Files.writeString(root.resolve("settings.gradle"), "rootProject.name='parent'; include 'library', 'boot'")
+        Files.writeString(root.resolve("settings.gradle"), """
+            pluginManagement { repositories { mavenCentral(); gradlePluginPortal() } }
+            rootProject.name='parent'; include 'library', 'boot'
+        """.trimIndent())
         Files.writeString(root.resolve("build.gradle"), """
             plugins { id 'io.johnsonlee.graphfold'; id 'org.springframework.boot' version '3.5.7' apply false }
             allprojects { group='fixture'; version='1'; repositories { mavenCentral() } }
